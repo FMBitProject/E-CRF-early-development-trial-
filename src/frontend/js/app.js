@@ -1,0 +1,210 @@
+// ============================================================
+// E-CRF Main App — Router, Sidebar, Breadcrumb
+// ============================================================
+
+import { api } from './modules/api.js';
+import { showToast, showModal, closeModal } from './modules/utils.js';
+import { renderDashboard } from './modules/dashboard.js';
+import { renderSubjects, renderSubjectDetail } from './modules/subjects.js';
+import { renderDataEntry } from './modules/forms.js';
+import { renderAuditTrail } from './modules/audit.js';
+import { renderQueries } from './modules/queries.js';
+
+export { showToast, showModal, closeModal };
+
+// ---- Auth Guard ----
+const user = api.getCurrentUser();
+if (!user) {
+    window.location.href = 'login.html';
+    throw new Error('Not authenticated');
+}
+
+// ---- Navigation Config ----
+const NAV_ITEMS = [
+    { id: 'dashboard', label: 'Dashboard',   icon: 'layout-dashboard', roles: ['admin', 'investigator', 'cra', 'crc'] },
+    { id: 'subjects',  label: 'Subjects',    icon: 'users',            roles: ['admin', 'investigator', 'cra', 'crc'] },
+    { id: 'queries',   label: 'Queries',     icon: 'message-square',   roles: ['admin', 'cra', 'investigator'] },
+    { id: 'audit',     label: 'Audit Trail', icon: 'shield-check',     roles: ['admin', 'cra'] },
+];
+
+const ROLE_CONFIG = {
+    admin:        { label: 'Administrator',  cls: 'bg-indigo-600' },
+    investigator: { label: 'Investigator',   cls: 'bg-blue-600' },
+    cra:          { label: 'CRA / Monitor',  cls: 'bg-amber-600' },
+    crc:          { label: 'CRC',            cls: 'bg-emerald-600' },
+};
+
+// ---- Sidebar ----
+function renderSidebar(currentRoute) {
+    const nav      = document.getElementById('sidebar-nav');
+    const userArea = document.getElementById('sidebar-user');
+    if (!nav || !userArea) return;
+
+    const visible = NAV_ITEMS.filter(item => item.roles.includes(user.role));
+
+    nav.innerHTML = visible.map(item => {
+        const isActive = currentRoute === item.id;
+        const badge = item.id === 'queries' ? getOpenQueryBadge() : '';
+        return `
+        <a href="#${item.id}"
+            class="nav-link flex items-center gap-3 px-3 py-2 rounded-md text-xs font-medium transition mb-0.5 ${
+                isActive
+                    ? 'nav-active text-white'
+                    : 'text-blue-200 hover:text-white'
+            }">
+            <i data-lucide="${item.icon}" class="w-4 h-4 flex-shrink-0 opacity-80"></i>
+            <span class="flex-1 tracking-wide">${item.label}</span>
+            ${badge}
+        </a>`;
+    }).join('');
+
+    const initials = user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+    const rc = ROLE_CONFIG[user.role] || { label: user.role, cls: 'bg-slate-500' };
+
+    userArea.innerHTML = `
+    <div class="px-2 pt-2">
+        <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-md ${rc.cls} flex items-center justify-center text-white text-xs font-bold flex-shrink-0 uppercase">
+                ${initials}
+            </div>
+            <div class="min-w-0 flex-1">
+                <p class="text-white text-xs font-semibold truncate leading-tight">${user.name}</p>
+                <p class="text-blue-300 text-xs leading-none mt-0.5">${rc.label}</p>
+            </div>
+            <button onclick="window.appLogout()" title="Sign Out"
+                class="p-1.5 text-blue-300 hover:text-white hover:bg-white/10 rounded-md transition flex-shrink-0">
+                <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+            </button>
+        </div>
+    </div>
+    `;
+
+    lucide.createIcons();
+}
+
+function getOpenQueryBadge() {
+    try {
+        const data = JSON.parse(localStorage.getItem('ecrf_data') || '{}');
+        const open = (data.queries || []).filter(q => q.status === 'Open').length;
+        if (!open) return '';
+        return `<span class="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">${open}</span>`;
+    } catch { return ''; }
+}
+
+// ---- Breadcrumb ----
+function renderBreadcrumb(segments) {
+    const el = document.getElementById('breadcrumb');
+    if (!el) return;
+    el.innerHTML = [
+        `<span class="text-blue-600 font-semibold text-xs uppercase tracking-widest">E-CRF</span>`,
+        ...segments.map((seg, i) => {
+            const isLast = i === segments.length - 1;
+            const chevron = `<i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-300 mx-0.5"></i>`;
+            if (isLast) return chevron + `<span class="font-semibold text-slate-700 text-sm">${seg.label}</span>`;
+            return chevron + `<a href="#${seg.route}" class="text-sm text-slate-500 hover:text-blue-600 transition">${seg.label}</a>`;
+        })
+    ].join('');
+    lucide.createIcons();
+}
+
+// ---- Route Handlers ----
+const routes = {
+    'dashboard': async () => {
+        renderBreadcrumb([{ label: 'Dashboard', route: 'dashboard' }]);
+        await renderDashboard();
+    },
+    'subjects': async () => {
+        renderBreadcrumb([{ label: 'Subjects', route: 'subjects' }]);
+        await renderSubjects();
+    },
+    'subjects/new': async () => {
+        renderBreadcrumb([
+            { label: 'Subjects', route: 'subjects' },
+            { label: 'Enroll New Subject', route: 'subjects/new' },
+        ]);
+        await renderSubjects({ showNewForm: true });
+    },
+    'subjects/:id': async (id) => {
+        renderBreadcrumb([
+            { label: 'Subjects', route: 'subjects' },
+            { label: `Subject ${id}`, route: `subjects/${id}` },
+        ]);
+        await renderSubjectDetail(id);
+    },
+    'subjects/:id/visits/:vid/forms/:fid': async (id, vid, fid) => {
+        renderBreadcrumb([
+            { label: 'Subjects', route: 'subjects' },
+            { label: `Subject ${id}`, route: `subjects/${id}` },
+            { label: 'Data Entry', route: `subjects/${id}/visits/${vid}/forms/${fid}` },
+        ]);
+        await renderDataEntry({ subjectId: id, visitId: vid, formId: fid });
+    },
+    'audit': async () => {
+        renderBreadcrumb([{ label: 'Audit Trail', route: 'audit' }]);
+        await renderAuditTrail();
+    },
+    'queries': async () => {
+        renderBreadcrumb([{ label: 'Data Queries', route: 'queries' }]);
+        await renderQueries();
+    },
+};
+
+// ---- Router ----
+function parseRoute(hash) {
+    const path = (hash || '').replace(/^#\/?/, '');
+    if (!path) return { key: 'dashboard', params: [] };
+
+    let m;
+    m = path.match(/^subjects\/(\d+)\/visits\/(\d+)\/forms\/(\d+)$/);
+    if (m) return { key: 'subjects/:id/visits/:vid/forms/:fid', params: [m[1], m[2], m[3]] };
+
+    m = path.match(/^subjects\/new$/);
+    if (m) return { key: 'subjects/new', params: [] };
+
+    m = path.match(/^subjects\/(\d+)$/);
+    if (m) return { key: 'subjects/:id', params: [m[1]] };
+
+    if (routes[path]) return { key: path, params: [] };
+    return { key: 'dashboard', params: [] };
+}
+
+async function navigate(hash) {
+    const { key, params } = parseRoute(hash);
+    const basePath = key.split('/')[0] || 'dashboard';
+    renderSidebar(basePath);
+
+    const handler = routes[key];
+    const contentEl = document.getElementById('main-content');
+    if (!contentEl) return;
+
+    if (!handler) {
+        contentEl.innerHTML = `
+        <div class="flex items-center justify-center h-full">
+            <div class="text-center">
+                <p class="text-7xl font-bold text-slate-200 mb-3 tracking-tight">404</p>
+                <p class="text-slate-500 text-sm mb-4">Page not found</p>
+                <a href="#dashboard" class="text-blue-600 hover:underline text-sm font-medium">Return to Dashboard</a>
+            </div>
+        </div>`;
+        return;
+    }
+
+    try {
+        await handler(...params);
+    } catch (err) {
+        console.error('Route error:', err);
+        contentEl.innerHTML = `
+        <div class="p-6">
+            <div class="ph-card p-5 border-red-200">
+                <p class="text-sm font-semibold text-red-800 mb-1">Error loading page</p>
+                <p class="text-sm text-red-700">${err.message}</p>
+            </div>
+        </div>`;
+    }
+}
+
+window.navigate  = (path) => { window.location.hash = path; };
+window.appLogout = () => { api.logout(); };
+
+window.addEventListener('hashchange', () => navigate(window.location.hash));
+navigate(window.location.hash || '#dashboard');

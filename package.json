@@ -1,0 +1,29 @@
+{
+  "name": "ecrf-system",
+  "version": "1.0.0",
+  "description": "Electronic Case Report Form System - FDA 21 CFR Part 11 Compliant",
+  "type": "module",
+  "main": "src/backend/server.js",
+  "scripts": {
+    "start": "node src/backend/server.js",
+    "dev": "node --watch src/backend/server.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "node src/backend/db/seed.js"
+  },
+  "dependencies": {
+    "better-auth": "^1.2.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.36.4",
+    "express": "^4.21.2",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.28.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -1,0 +1,197 @@
+/* ============================================================
+   E-CRF System — Pharmaceutical-Grade Design System
+   ============================================================ */
+
+/* ---- Google Font: Inter ---- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ---- CSS Custom Properties ---- */
+:root {
+    --navy:         #0A2E5C;
+    --navy-light:   #0F3872;
+    --navy-hover:   #1A4690;
+    --navy-border:  rgba(255,255,255,0.08);
+    --navy-active:  rgba(255,255,255,0.12);
+    --brand:        #1554A0;
+    --brand-hover:  #124290;
+    --brand-light:  #EBF2FD;
+    --page-bg:      #F0F3F8;
+    --card-border:  #D8E0EE;
+    --text-primary: #1A2B4A;
+    --text-secondary: #5B6B8A;
+}
+
+/* ---- Base ---- */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+    font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    color: var(--text-primary);
+    background-color: var(--page-bg);
+}
+
+/* ---- Sidebar ---- */
+#sidebar {
+    background-color: var(--navy) !important;
+}
+#sidebar-nav a.nav-active {
+    background-color: var(--navy-active);
+    border-left: 3px solid #4A9EFF;
+    padding-left: calc(0.75rem - 3px);
+}
+#sidebar-nav a:not(.nav-active):hover {
+    background-color: rgba(255,255,255,0.06);
+}
+
+/* ---- Sidebar scrollbar (thinner/dark) ---- */
+#sidebar-nav::-webkit-scrollbar { width: 3px; }
+#sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+
+/* ---- Scrollbar ---- */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #E8EEF5; }
+::-webkit-scrollbar-thumb { background: #A8B8CC; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #7A92B0; }
+
+/* ---- Lucide icon shorthands ---- */
+.w-4\.5 { width: 1.125rem; }
+.h-4\.5 { height: 1.125rem; }
+
+/* ---- Modal animation ---- */
+@keyframes modal-in {
+    from { opacity: 0; transform: scale(0.97) translateY(-6px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.animate-modal-in { animation: modal-in 0.15s ease-out both; }
+
+/* ---- Spinner ---- */
+@keyframes spin { to { transform: rotate(360deg); } }
+.animate-spin { animation: spin 0.8s linear infinite; }
+
+/* ---- Focus ring reset ---- */
+input:focus, select:focus, textarea:focus, button:focus { outline: none; }
+
+/* ---- Disabled inputs ---- */
+input:disabled, select:disabled, textarea:disabled {
+    background-color: #F5F7FA;
+    color: #94A3B8;
+    cursor: not-allowed;
+}
+
+/* ---- Table rows ---- */
+tbody tr { transition: background-color 0.1s ease; }
+
+/* ---- Pharma table header ---- */
+.ph-table-head {
+    background-color: #F0F3F8;
+    border-bottom: 2px solid #D8E0EE;
+}
+.ph-table-head th {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    padding: 0.65rem 1rem;
+}
+.ph-table-body tr:hover { background-color: #F7F9FC; }
+.ph-table-body td { padding: 0.75rem 1rem; border-bottom: 1px solid #EBF0F8; }
+
+/* ---- Primary button ---- */
+.btn-primary {
+    background-color: var(--brand);
+    color: #fff;
+    font-weight: 600;
+    border-radius: 0.375rem;
+    transition: background-color 0.15s, box-shadow 0.15s;
+}
+.btn-primary:hover { background-color: var(--brand-hover); }
+.btn-primary:focus { box-shadow: 0 0 0 3px rgba(21, 84, 160, 0.25); }
+
+/* ---- Pharma status badges ---- */
+.badge { display: inline-flex; align-items: center; gap: 4px; font-size: 0.7rem; font-weight: 600; padding: 3px 10px; border-radius: 3px; letter-spacing: 0.03em; }
+.badge-active   { background: #D1FAE5; color: #065F46; }
+.badge-locked   { background: #E2E8F0; color: #475569; }
+.badge-withdrawn{ background: #FEE2E2; color: #991B1B; }
+.badge-completed{ background: #DBEAFE; color: #1E40AF; }
+.badge-open     { background: #FEE2E2; color: #991B1B; }
+.badge-resolved { background: #D1FAE5; color: #065F46; }
+.badge-closed   { background: #E2E8F0; color: #475569; }
+.badge-draft    { background: #FEF3C7; color: #92400E; }
+.badge-saved    { background: #DBEAFE; color: #1E40AF; }
+.badge-insert   { background: #D1FAE5; color: #065F46; }
+.badge-update   { background: #DBEAFE; color: #1E40AF; }
+.badge-delete   { background: #FEE2E2; color: #991B1B; }
+.badge-lock     { background: #E2E8F0; color: #334155; }
+.badge-unlock   { background: #FEF3C7; color: #92400E; }
+
+/* ---- Card ---- */
+.ph-card {
+    background: #fff;
+    border: 1px solid var(--card-border);
+    border-radius: 0.5rem;
+}
+.ph-card-header {
+    padding: 0.875rem 1.25rem;
+    border-bottom: 1px solid var(--card-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.ph-card-header h3 {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* ---- Validation states ---- */
+.field-error   { border-color: #EF4444 !important; box-shadow: 0 0 0 2px rgba(239,68,68,0.15); }
+.field-warning { border-color: #F59E0B !important; box-shadow: 0 0 0 2px rgba(245,158,11,0.15); }
+.field-ok      { border-color: #10B981 !important; }
+
+/* ---- CRF field: label highlight on focus ---- */
+.crf-field-group:focus-within label { color: var(--brand); }
+
+/* ---- Input focus ring ---- */
+.ph-input:focus {
+    border-color: #4A9EFF !important;
+    box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.15);
+}
+
+/* ---- Compliance banner ---- */
+.compliance-bar {
+    background: linear-gradient(90deg, #0A2E5C 0%, #1554A0 100%);
+    color: rgba(255,255,255,0.85);
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    font-weight: 500;
+    padding: 0.375rem 1.25rem;
+}
+
+/* ---- Split login ---- */
+.login-left {
+    background: linear-gradient(160deg, #0A2E5C 0%, #0D3878 60%, #1554A0 100%);
+}
+
+/* ---- Toast ---- */
+#toast-container > div { transition: transform 0.22s ease, opacity 0.22s ease; }
+
+/* ---- Stat card KPI number ---- */
+.kpi-number { font-size: 2rem; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+
+/* ---- Print (audit trail) ---- */
+@media print {
+    #sidebar, #modal-root, #toast-container, button, .no-print { display: none !important; }
+    #main-content { overflow: visible; }
+    body { background: white; font-size: 10px; }
+    .ph-card { border: 1px solid #ccc !important; border-radius: 0 !important; }
+}
+
+/* ---- Responsive table ---- */
+@media (max-width: 640px) {
+    .overflow-x-auto table { min-width: 620px; }
+}
