@@ -78,6 +78,24 @@
     <!-- Toast -->
     <div id="toast-container" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 pointer-events-none"></div>
 
+    <!-- Auto-reset stale localStorage from versions with dummy data -->
+    <script>
+    (function () {
+        try {
+            var d = JSON.parse(localStorage.getItem('ecrf_data') || '{}');
+            if ((d._version || 0) < 4) {
+                localStorage.removeItem('ecrf_data');
+                localStorage.removeItem('ecrf_session');
+                window.location.replace('login.html');
+            }
+        } catch (e) {
+            localStorage.removeItem('ecrf_data');
+            localStorage.removeItem('ecrf_session');
+            window.location.replace('login.html');
+        }
+    })();
+    </script>
+
     <script type="module" src="js/app.js"></script>
 </body>
 </html>

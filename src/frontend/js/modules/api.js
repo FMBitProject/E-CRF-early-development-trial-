@@ -5,12 +5,12 @@
 // ============================================================
 
 const STORAGE_KEY = 'ecrf_data';
-const STORAGE_VER  = 3; // increment when BOOTSTRAP_DATA schema changes
+const STORAGE_VER  = 4; // v4: purge all legacy dummy clinical data
 
 // ---- Protocol Bootstrap Data (non-clinical) ----
 // Sites and CRF form templates are defined at study setup, not entered per-subject
 const BOOTSTRAP_DATA = {
-    _version: STORAGE_VER,
+    _version: 4,
     _nextId: { subjects: 1, visits: 1, crf_data_entries: 1, audit_trails: 1, queries: 1 },
 
     // ── Study Sites ───────────────────────────────────────────
@@ -138,13 +138,20 @@ function loadData() {
         return init;
     }
     const stored = JSON.parse(raw);
-    // Migrate: if stored version is behind, re-apply bootstrap CRF forms & sites
+    // Migrate: purge all clinical data when version is behind
     if ((stored._version || 0) < STORAGE_VER) {
-        stored._version = STORAGE_VER;
-        stored.crf_forms = JSON.parse(JSON.stringify(BOOTSTRAP_DATA.crf_forms));
-        stored.sites     = stored.sites?.length ? stored.sites : JSON.parse(JSON.stringify(BOOTSTRAP_DATA.sites));
-        stored._nextId   = stored._nextId || { ...BOOTSTRAP_DATA._nextId };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+        const clean = JSON.parse(JSON.stringify(BOOTSTRAP_DATA));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
+        // Also clear any stale session with old dummy names
+        const OLD_NAMES = ['Dr. Admin User', 'Dr. Anya Sharma', 'Mr. Budi Santoso'];
+        const sess = localStorage.getItem('ecrf_session');
+        if (sess) {
+            try {
+                const s = JSON.parse(sess);
+                if (OLD_NAMES.includes(s.name)) localStorage.removeItem('ecrf_session');
+            } catch { localStorage.removeItem('ecrf_session'); }
+        }
+        return clean;
     }
     return stored;
 }
