@@ -83,6 +83,11 @@
             <h2 class="text-2xl font-bold text-slate-900 mb-1">Sign in</h2>
             <p class="text-sm text-slate-500 mb-7">Enter your credentials to access the platform</p>
 
+            <div id="no-users-notice" class="hidden mb-5 p-3 bg-blue-50 border border-blue-200 rounded-md flex items-start gap-2.5">
+                <i data-lucide="info" class="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5"></i>
+                <span class="text-sm text-blue-700">No accounts registered yet. <a href="register.html" class="font-semibold underline">Create the first account</a> to get started.</span>
+            </div>
+
             <div id="login-error" class="hidden mb-5 p-3 bg-red-50 border border-red-200 rounded-md flex items-start gap-2.5">
                 <i data-lucide="alert-circle" class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5"></i>
                 <span id="login-error-msg" class="text-sm text-red-700"></span>
@@ -120,7 +125,12 @@
                 </button>
             </form>
 
-            <p class="mt-6 text-center text-xs text-slate-400">
+            <p class="mt-6 text-center text-sm text-slate-500">
+                Don't have an account?
+                <a href="register.html" class="text-blue-600 font-semibold hover:underline">Register</a>
+            </p>
+
+            <p class="mt-4 text-center text-xs text-slate-400">
                 FDA 21 CFR Part 11 &middot; ICH GCP E6 (R2) &middot; Secure &amp; Encrypted
             </p>
         </div>
@@ -129,6 +139,7 @@
     <script>
         lucide.createIcons();
 
+        // ── Password visibility toggle ──────────────────────────
         document.getElementById('toggle-password').addEventListener('click', function () {
             const input = document.getElementById('password');
             const icon  = document.getElementById('eye-icon');
@@ -142,12 +153,24 @@
             lucide.createIcons();
         });
 
-        const DEMO_USERS = {
-            'admin@ecrf.com':        { password: 'Admin@2026',   role: 'admin',        name: 'Administrator', id: 1 },
-            'investigator@ecrf.com': { password: 'Invest@2026',  role: 'investigator', name: 'Investigator',  id: 2 },
-            'cra@ecrf.com':          { password: 'Monitor@2026', role: 'cra',          name: 'CRA',           id: 3 },
-        };
+        // ── Helpers ─────────────────────────────────────────────
+        function getUsers() {
+            try { return JSON.parse(localStorage.getItem('ecrf_users') || '[]'); } catch { return []; }
+        }
 
+        async function hashPassword(email, password) {
+            const encoder = new TextEncoder();
+            const input   = `${email.toLowerCase()}:${password}:ecrf-salt-2026`;
+            const buffer  = await crypto.subtle.digest('SHA-256', encoder.encode(input));
+            return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        // ── Show notice if no users registered ──────────────────
+        if (getUsers().length === 0) {
+            document.getElementById('no-users-notice').classList.remove('hidden');
+        }
+
+        // ── Login form submit ────────────────────────────────────
         document.getElementById('login-form').addEventListener('submit', async function (e) {
             e.preventDefault();
             const btn     = document.getElementById('login-btn');
@@ -156,8 +179,14 @@
             const errDiv  = document.getElementById('login-error');
             const errMsg  = document.getElementById('login-error-msg');
 
-            const email    = document.getElementById('email').value.trim();
+            const email    = document.getElementById('email').value.trim().toLowerCase();
             const password = document.getElementById('password').value;
+
+            if (!email || !password) {
+                errMsg.textContent = 'Please enter your email and password.';
+                errDiv.classList.remove('hidden');
+                return;
+            }
 
             btn.disabled = true;
             btnText.textContent = 'Signing in…';
@@ -165,18 +194,25 @@
             lucide.createIcons();
             errDiv.classList.add('hidden');
 
-            await new Promise(r => setTimeout(r, 700));
+            const passwordHash = await hashPassword(email, password);
+            const users        = getUsers();
+            const user         = users.find(u => u.email === email && u.passwordHash === passwordHash);
 
-            const u = DEMO_USERS[email];
-            if (u && u.password === password) {
+            await new Promise(r => setTimeout(r, 600));
+
+            if (user && user.active !== false) {
                 localStorage.setItem('ecrf_session', JSON.stringify({
-                    id: u.id, email, name: u.name, role: u.role,
-                    loginAt: new Date().toISOString()
+                    id:       user.id,
+                    email:    user.email,
+                    name:     user.name,
+                    role:     user.role,
+                    loginAt:  new Date().toISOString(),
                 }));
-                // REDIRECT KE INDEX SUDAH BENAR
                 window.location.href = 'index.html';
             } else {
-                errMsg.textContent = 'Invalid email or password. Please check your credentials and try again.';
+                errMsg.textContent = user
+                    ? 'Your account is inactive. Contact the system administrator.'
+                    : 'Invalid email or password. Please check your credentials and try again.';
                 errDiv.classList.remove('hidden');
                 btn.disabled = false;
                 btnText.textContent = 'Sign In';
@@ -185,8 +221,8 @@
             }
         });
 
+        // Redirect if already logged in
         if (localStorage.getItem('ecrf_session')) {
-            // REDIRECT KE INDEX SUDAH BENAR
             window.location.href = 'index.html';
         }
     </script>
