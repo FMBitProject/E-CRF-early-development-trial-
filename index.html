@@ -67,16 +67,17 @@
     <script>
     (function () {
         try {
-            var d = JSON.parse(localStorage.getItem('ecrf_data') || '{}');
-            if ((d._version || 0) < 4) {
-                localStorage.removeItem('ecrf_data');
-                localStorage.removeItem('ecrf_session');
-                window.location.replace('login.html'); 
+            var raw = localStorage.getItem('ecrf_data');
+            if (raw) {
+                var d = JSON.parse(raw);
+                if ((d._version || 0) < 4) {
+                    localStorage.removeItem('ecrf_data');
+                    localStorage.removeItem('ecrf_session');
+                    window.location.replace('login.html');
+                }
             }
         } catch (e) {
             localStorage.removeItem('ecrf_data');
-            localStorage.removeItem('ecrf_session');
-            window.location.replace('login.html'); 
         }
     })();
     </script>
