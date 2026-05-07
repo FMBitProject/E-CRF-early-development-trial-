@@ -27,14 +27,13 @@ app.use(cors({
     credentials: true,
 }));
 
-// In dev: spoof Origin so Better Auth accepts requests from any public URL
-if (process.env.NODE_ENV !== 'production') {
-    const _trustedOrigin = process.env.BETTER_AUTH_URL || 'http://localhost:3000';
-    app.all('/api/auth/*', (req, _res, next) => {
-        req.headers['origin'] = _trustedOrigin;
-        next();
-    });
-}
+// Spoof Origin so Better Auth accepts requests from any deployment URL
+const _trustedOrigin = process.env.BETTER_AUTH_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+app.all('/api/auth/*', (req, _res, next) => {
+    req.headers['origin'] = _trustedOrigin;
+    next();
+});
 
 // Better Auth handles all /api/auth/* routes (sign-in, sign-out, session, etc.)
 app.all('/api/auth/*', toNodeHandler(auth));
