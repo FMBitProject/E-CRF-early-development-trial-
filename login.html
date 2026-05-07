@@ -80,50 +80,83 @@
         </div>
 
         <div class="w-full max-w-sm">
-            <h2 class="text-2xl font-bold text-slate-900 mb-1">Sign in</h2>
-            <p class="text-sm text-slate-500 mb-7">Enter your credentials to access the platform</p>
 
-<div id="login-error" class="hidden mb-5 p-3 bg-red-50 border border-red-200 rounded-md flex items-start gap-2.5">
+            <!-- Error banner -->
+            <div id="login-error" class="hidden mb-5 p-3 bg-red-50 border border-red-200 rounded-md flex items-start gap-2.5">
                 <i data-lucide="alert-circle" class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5"></i>
                 <span id="login-error-msg" class="text-sm text-red-700"></span>
             </div>
 
-            <form id="login-form" novalidate class="space-y-4">
-                <div>
-                    <label for="email" class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Email Address</label>
-                    <div class="relative">
-                        <i data-lucide="mail" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
-                        <input type="email" id="email" name="email" autocomplete="email" required
-                            placeholder="name@institution.com"
-                            class="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input focus:border-blue-400 outline-none transition placeholder-slate-300">
+            <!-- ── STEP 1: Email + Password ── -->
+            <div id="step-password">
+                <h2 class="text-2xl font-bold text-slate-900 mb-1">Sign in</h2>
+                <p class="text-sm text-slate-500 mb-7">Enter your credentials to access the platform</p>
+
+                <form id="login-form" novalidate class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Email Address</label>
+                        <div class="relative">
+                            <i data-lucide="mail" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                            <input type="email" id="email" autocomplete="email" placeholder="name@institution.com"
+                                class="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input focus:border-blue-400 outline-none transition placeholder-slate-300">
+                        </div>
                     </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Password</label>
+                        <div class="relative">
+                            <i data-lucide="lock" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                            <input type="password" id="password" autocomplete="current-password" placeholder="••••••••"
+                                class="w-full pl-10 pr-10 py-2.5 border border-slate-300 rounded-md text-sm ph-input focus:border-blue-400 outline-none transition placeholder-slate-300">
+                            <button type="button" id="toggle-password" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition">
+                                <i data-lucide="eye" class="w-4 h-4" id="eye-icon"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <button type="submit" id="login-btn"
+                        class="w-full flex items-center justify-center gap-2 btn-primary py-2.5 px-4 text-sm rounded-md mt-2 disabled:opacity-60 disabled:cursor-not-allowed">
+                        <i data-lucide="log-in" class="w-4 h-4" id="btn-icon"></i>
+                        <span id="btn-text">Sign In</span>
+                    </button>
+                </form>
+
+                <p class="mt-6 text-center text-sm text-slate-500">
+                    Don't have an account?
+                    <a href="register.html" class="text-blue-600 font-semibold hover:underline">Register</a>
+                </p>
+            </div>
+
+            <!-- ── STEP 2: OTP Verification ── -->
+            <div id="step-otp" class="hidden">
+                <div class="mb-6 text-center">
+                    <div class="w-14 h-14 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i data-lucide="mail-check" class="w-7 h-7 text-blue-700"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold text-slate-900 mb-1">Check your email</h2>
+                    <p class="text-sm text-slate-500">We sent a 6-digit verification code to</p>
+                    <p class="text-sm font-semibold text-slate-700 mt-0.5" id="otp-email-display"></p>
                 </div>
 
-                <div>
-                    <label for="password" class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Password</label>
-                    <div class="relative">
-                        <i data-lucide="lock" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
-                        <input type="password" id="password" name="password" autocomplete="current-password" required
-                            placeholder="••••••••"
-                            class="w-full pl-10 pr-10 py-2.5 border border-slate-300 rounded-md text-sm ph-input focus:border-blue-400 outline-none transition placeholder-slate-300">
-                        <button type="button" id="toggle-password"
-                            class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition">
-                            <i data-lucide="eye" class="w-4 h-4" id="eye-icon"></i>
-                        </button>
+                <form id="otp-form" novalidate class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Verification Code</label>
+                        <input type="text" id="otp-input" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+                            autocomplete="one-time-code" placeholder="000000"
+                            class="w-full px-4 py-3 border border-slate-300 rounded-md text-2xl font-bold tracking-[0.5em] text-center ph-input focus:border-blue-400 outline-none transition placeholder-slate-300 placeholder:text-lg placeholder:tracking-normal">
+                        <p id="otp-timer" class="mt-1.5 text-xs text-slate-400 text-center"></p>
                     </div>
-                </div>
 
-                <button type="submit" id="login-btn"
-                    class="w-full flex items-center justify-center gap-2 btn-primary py-2.5 px-4 text-sm rounded-md mt-2 disabled:opacity-60 disabled:cursor-not-allowed">
-                    <i data-lucide="log-in" class="w-4 h-4" id="btn-icon"></i>
-                    <span id="btn-text">Sign In</span>
-                </button>
-            </form>
+                    <button type="submit" id="otp-btn"
+                        class="w-full flex items-center justify-center gap-2 btn-primary py-2.5 px-4 text-sm rounded-md disabled:opacity-60 disabled:cursor-not-allowed">
+                        <i data-lucide="shield-check" class="w-4 h-4" id="otp-btn-icon"></i>
+                        <span id="otp-btn-text">Verify Code</span>
+                    </button>
+                </form>
 
-            <p class="mt-6 text-center text-sm text-slate-500">
-                Don't have an account?
-                <a href="register.html" class="text-blue-600 font-semibold hover:underline">Register</a>
-            </p>
+                <p class="mt-5 text-center text-sm text-slate-500">
+                    Didn't receive the code?
+                    <button id="back-btn" class="text-blue-600 font-semibold hover:underline">Go back & try again</button>
+                </p>
+            </div>
 
             <p class="mt-4 text-center text-xs text-slate-400">
                 FDA 21 CFR Part 11 &middot; ICH GCP E6 (R2) &middot; Secure &amp; Encrypted
@@ -134,56 +167,73 @@
     <script>
         lucide.createIcons();
 
-        // ── Password visibility toggle ──────────────────────────
+        let _tempToken   = null;
+        let _timerHandle = null;
+
+        // ── Password visibility toggle ─────────────────────────
         document.getElementById('toggle-password').addEventListener('click', function () {
             const input = document.getElementById('password');
             const icon  = document.getElementById('eye-icon');
-            if (input.type === 'password') {
-                input.type = 'text';
-                icon.setAttribute('data-lucide', 'eye-off');
-            } else {
-                input.type = 'password';
-                icon.setAttribute('data-lucide', 'eye');
-            }
+            input.type  = input.type === 'password' ? 'text' : 'password';
+            icon.setAttribute('data-lucide', input.type === 'text' ? 'eye-off' : 'eye');
             lucide.createIcons();
         });
 
-        // ── Login form submit ────────────────────────────────────
+        function showError(msg) {
+            const div = document.getElementById('login-error');
+            document.getElementById('login-error-msg').textContent = msg;
+            div.classList.remove('hidden');
+        }
+        function hideError() {
+            document.getElementById('login-error').classList.add('hidden');
+        }
+
+        // ── OTP countdown timer ────────────────────────────────
+        function startTimer(seconds) {
+            const el = document.getElementById('otp-timer');
+            clearInterval(_timerHandle);
+            _timerHandle = setInterval(() => {
+                if (seconds <= 0) {
+                    clearInterval(_timerHandle);
+                    el.textContent = 'Code expired. Go back and sign in again.';
+                    el.classList.add('text-red-500');
+                    return;
+                }
+                const m = Math.floor(seconds / 60);
+                const s = seconds % 60;
+                el.textContent = `Code expires in ${m}:${String(s).padStart(2,'0')}`;
+                seconds--;
+            }, 1000);
+        }
+
+        // ── STEP 1: Submit email + password ───────────────────
         document.getElementById('login-form').addEventListener('submit', async function (e) {
             e.preventDefault();
+            hideError();
+
             const btn     = document.getElementById('login-btn');
             const btnText = document.getElementById('btn-text');
             const btnIcon = document.getElementById('btn-icon');
-            const errDiv  = document.getElementById('login-error');
-            const errMsg  = document.getElementById('login-error-msg');
-
             const email    = document.getElementById('email').value.trim().toLowerCase();
             const password = document.getElementById('password').value;
 
-            if (!email || !password) {
-                errMsg.textContent = 'Please enter your email and password.';
-                errDiv.classList.remove('hidden');
-                return;
-            }
+            if (!email || !password) { showError('Please enter your email and password.'); return; }
 
             btn.disabled = true;
-            btnText.textContent = 'Signing in…';
+            btnText.textContent = 'Sending code…';
             btnIcon.setAttribute('data-lucide', 'loader-2');
             lucide.createIcons();
-            errDiv.classList.add('hidden');
 
             try {
-                const res  = await fetch('/api/auth/sign-in/email', {
-                    method:      'POST',
-                    headers:     { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body:        JSON.stringify({ email, password }),
+                const res  = await fetch('/api/mfa/initiate', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify({ email, password }),
                 });
                 const data = await res.json();
 
                 if (!res.ok) {
-                    errMsg.textContent = data.message || 'Invalid email or password. Please try again.';
-                    errDiv.classList.remove('hidden');
+                    showError(data.error || 'Invalid email or password.');
                     btn.disabled = false;
                     btnText.textContent = 'Sign In';
                     btnIcon.setAttribute('data-lucide', 'log-in');
@@ -191,24 +241,93 @@
                     return;
                 }
 
-                // Store session info for frontend SPA
-                localStorage.setItem('ecrf_session', JSON.stringify({
-                    id:      data.user.id,
-                    email:   data.user.email,
-                    name:    data.user.name,
-                    role:    data.user.role,
-                    loginAt: new Date().toISOString(),
-                }));
-                window.location.href = 'index.html';
+                _tempToken = data.tempToken;
+                document.getElementById('otp-email-display').textContent = data.maskedEmail;
+                document.getElementById('step-password').classList.add('hidden');
+                document.getElementById('step-otp').classList.remove('hidden');
+                lucide.createIcons();
+                document.getElementById('otp-input').focus();
+                startTimer(600);
 
             } catch (err) {
-                errMsg.textContent = 'Could not connect to server. Make sure the backend is running.';
-                errDiv.classList.remove('hidden');
+                showError('Could not connect to server. Make sure the backend is running.');
                 btn.disabled = false;
                 btnText.textContent = 'Sign In';
                 btnIcon.setAttribute('data-lucide', 'log-in');
                 lucide.createIcons();
             }
+        });
+
+        // ── STEP 2: Submit OTP ─────────────────────────────────
+        document.getElementById('otp-form').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            hideError();
+
+            const btn     = document.getElementById('otp-btn');
+            const btnText = document.getElementById('otp-btn-text');
+            const btnIcon = document.getElementById('otp-btn-icon');
+            const otp     = document.getElementById('otp-input').value.trim();
+
+            if (!otp || otp.length !== 6) { showError('Please enter the 6-digit code.'); return; }
+
+            btn.disabled = true;
+            btnText.textContent = 'Verifying…';
+            btnIcon.setAttribute('data-lucide', 'loader-2');
+            lucide.createIcons();
+
+            try {
+                const res  = await fetch('/api/mfa/verify', {
+                    method:      'POST',
+                    headers:     { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body:        JSON.stringify({ tempToken: _tempToken, otp }),
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    showError(data.error || 'Invalid verification code.');
+                    btn.disabled = false;
+                    btnText.textContent = 'Verify Code';
+                    btnIcon.setAttribute('data-lucide', 'shield-check');
+                    lucide.createIcons();
+                    return;
+                }
+
+                clearInterval(_timerHandle);
+                localStorage.setItem('ecrf_session', JSON.stringify({
+                    id:      data.user.id,
+                    email:   document.getElementById('email').value.trim().toLowerCase(),
+                    name:    data.user.name,
+                    role:    data.user.role || 'investigator',
+                    loginAt: new Date().toISOString(),
+                }));
+                window.location.href = 'index.html';
+
+            } catch (err) {
+                showError('Could not connect to server.');
+                btn.disabled = false;
+                btnText.textContent = 'Verify Code';
+                btnIcon.setAttribute('data-lucide', 'shield-check');
+                lucide.createIcons();
+            }
+        });
+
+        // ── Back button ────────────────────────────────────────
+        document.getElementById('back-btn').addEventListener('click', function () {
+            clearInterval(_timerHandle);
+            hideError();
+            document.getElementById('otp-input').value = '';
+            document.getElementById('step-otp').classList.add('hidden');
+            document.getElementById('step-password').classList.remove('hidden');
+            document.getElementById('login-btn').disabled = false;
+            document.getElementById('btn-text').textContent = 'Sign In';
+            document.getElementById('btn-icon').setAttribute('data-lucide', 'log-in');
+            lucide.createIcons();
+        });
+
+        // ── Only allow digits in OTP input ────────────────────
+        document.getElementById('otp-input').addEventListener('input', function () {
+            this.value = this.value.replace(/\D/g, '').slice(0, 6);
         });
 
         // Redirect if already logged in

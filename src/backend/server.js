@@ -15,6 +15,7 @@ import formsRouter    from './routes/forms.js';
 import entriesRouter  from './routes/entries.js';
 import auditRouter    from './routes/audit.js';
 import queriesRouter  from './routes/queries.js';
+import mfaRouter      from './routes/mfa.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir   = path.resolve(__dirname, '../../');
@@ -48,6 +49,7 @@ app.use('/api/entries',              requireAuth, entriesRouter);
 app.use('/api/audit',                requireAuth, auditRouter);
 app.use('/api/queries',              requireAuth, queriesRouter);
 
+app.use('/api/mfa', mfaRouter);
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
 // Serve all static frontend files from project root
