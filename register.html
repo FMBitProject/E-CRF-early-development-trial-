@@ -223,22 +223,6 @@
             lbl.className   = 'text-xs ' + (lblColors[score - 1] || 'text-slate-400');
         });
 
-        // ── Password hashing (SHA-256 via Web Crypto) ───────────
-        async function hashPassword(email, password) {
-            const encoder = new TextEncoder();
-            const input   = `${email.toLowerCase()}:${password}:ecrf-salt-2026`;
-            const buffer  = await crypto.subtle.digest('SHA-256', encoder.encode(input));
-            return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
-
-        // ── User storage helpers ────────────────────────────────
-        function getUsers() {
-            try { return JSON.parse(localStorage.getItem('ecrf_users') || '[]'); } catch { return []; }
-        }
-        function saveUsers(users) {
-            localStorage.setItem('ecrf_users', JSON.stringify(users));
-        }
-
         // ── Register form submit ────────────────────────────────
         document.getElementById('reg-form').addEventListener('submit', async function (e) {
             e.preventDefault();
@@ -257,7 +241,6 @@
 
             errDiv.classList.add('hidden');
 
-            // Validation
             if (!name || !email || !role || !password || !confirm) {
                 errMsg.textContent = 'All fields are required.';
                 errDiv.classList.remove('hidden');
@@ -279,38 +262,42 @@
                 return;
             }
 
-            const users = getUsers();
-            if (users.find(u => u.email === email)) {
-                errMsg.textContent = 'An account with this email address already exists.';
-                errDiv.classList.remove('hidden');
-                return;
-            }
-
-            // Submit
             btn.disabled = true;
             btnText.textContent = 'Creating account…';
             btnIcon.setAttribute('data-lucide', 'loader-2');
             lucide.createIcons();
 
-            const passwordHash = await hashPassword(email, password);
+            try {
+                const res  = await fetch('/api/auth/sign-up/email', {
+                    method:      'POST',
+                    headers:     { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body:        JSON.stringify({ email, password, name, role }),
+                });
+                const data = await res.json();
 
-            const newUser = {
-                id:           crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36),
-                name,
-                email,
-                passwordHash,
-                role,
-                createdAt:    new Date().toISOString(),
-                active:       true,
-            };
+                if (!res.ok) {
+                    errMsg.textContent = data.message || 'Registration failed. Please try again.';
+                    errDiv.classList.remove('hidden');
+                    btn.disabled = false;
+                    btnText.textContent = 'Create Account';
+                    btnIcon.setAttribute('data-lucide', 'user-plus');
+                    lucide.createIcons();
+                    return;
+                }
 
-            users.push(newUser);
-            saveUsers(users);
+                document.getElementById('reg-success').classList.remove('hidden');
+                document.getElementById('reg-form').classList.add('opacity-50', 'pointer-events-none');
+                setTimeout(() => { window.location.href = 'login.html'; }, 1800);
 
-            document.getElementById('reg-success').classList.remove('hidden');
-            document.getElementById('reg-form').classList.add('opacity-50', 'pointer-events-none');
-
-            setTimeout(() => { window.location.href = 'login.html'; }, 1800);
+            } catch (err) {
+                errMsg.textContent = 'Could not connect to server. Make sure the backend is running.';
+                errDiv.classList.remove('hidden');
+                btn.disabled = false;
+                btnText.textContent = 'Create Account';
+                btnIcon.setAttribute('data-lucide', 'user-plus');
+                lucide.createIcons();
+            }
         });
 
         // Redirect if already logged in
