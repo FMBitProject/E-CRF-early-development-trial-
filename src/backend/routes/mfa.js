@@ -25,9 +25,13 @@ router.post('/initiate', async (req, res) => {
 
     try {
         // Verify credentials via Better Auth internal API
-        const signIn = await auth.api.signInEmail({
-            body: { email, password },
-        });
+        let signIn;
+        try {
+            signIn = await auth.api.signInEmail({ body: { email, password } });
+        } catch (authErr) {
+            console.error('MFA auth error:', authErr.message);
+            return res.status(401).json({ error: 'Invalid email or password.' });
+        }
 
         if (!signIn || !signIn.token) {
             return res.status(401).json({ error: 'Invalid email or password.' });
@@ -56,14 +60,19 @@ router.post('/initiate', async (req, res) => {
         });
 
         // Send OTP email
-        await sendOTPEmail(email, user.name, otp);
+        try {
+            await sendOTPEmail(email, user.name, otp);
+        } catch (mailErr) {
+            console.error('MFA email error:', mailErr.message);
+            return res.status(500).json({ error: `Email failed: ${mailErr.message}` });
+        }
 
         const masked = email.replace(/(.{2})(.*)(@.*)/, (_, a, b, c) => a + '*'.repeat(b.length) + c);
         res.json({ status: 'otp_sent', tempToken, maskedEmail: masked });
 
     } catch (err) {
         console.error('MFA initiate error:', err.message);
-        res.status(500).json({ error: 'Failed to send verification code. Check SMTP configuration.' });
+        res.status(500).json({ error: `Server error: ${err.message}` });
     }
 });
 
