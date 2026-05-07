@@ -64,24 +64,6 @@
 
     <div id="toast-container" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 pointer-events-none"></div>
 
-    <script>
-    (function () {
-        try {
-            var raw = localStorage.getItem('ecrf_data');
-            if (raw) {
-                var d = JSON.parse(raw);
-                if ((d._version || 0) < 4) {
-                    localStorage.removeItem('ecrf_data');
-                    localStorage.removeItem('ecrf_session');
-                    window.location.replace('login.html');
-                }
-            }
-        } catch (e) {
-            localStorage.removeItem('ecrf_data');
-        }
-    })();
-    </script>
-
 <script type="module" src="src/frontend/js/app.js"></script>
 </body>
 </html>
