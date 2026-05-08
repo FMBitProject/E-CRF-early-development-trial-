@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { eq, ilike, and } from 'drizzle-orm';
 import { db } from '../db/connection.js';
-import { subjects, sites, user } from '../db/schemas/schema.js';
+import { subjects, sites, visits, user } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 
@@ -21,6 +21,7 @@ router.get('/', async (req, res) => {
                 subjectCode: subjects.subjectCode,
                 initials:    subjects.initials,
                 sex:         subjects.sex,
+                dateOfBirth: subjects.dateOfBirth,
                 status:      subjects.status,
                 enrolledAt:  subjects.enrolledAt,
                 siteCode:    sites.code,
@@ -37,7 +38,7 @@ router.get('/', async (req, res) => {
     }
 });
 
-// GET /api/subjects/:id — detail
+// GET /api/subjects/:id — detail with visits
 router.get('/:id', async (req, res) => {
     try {
         const [row] = await db
@@ -61,7 +62,12 @@ router.get('/:id', async (req, res) => {
             .where(eq(subjects.id, parseInt(req.params.id)));
 
         if (!row) return res.status(404).json({ error: 'Subject not found' });
-        res.json(row);
+
+        const visitRows = await db.select().from(visits)
+            .where(eq(visits.subjectId, parseInt(req.params.id)))
+            .orderBy(visits.visitOrder, visits.createdAt);
+
+        res.json({ ...row, visits: visitRows });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -70,7 +76,7 @@ router.get('/:id', async (req, res) => {
 // POST /api/subjects — enroll new subject (investigator, admin)
 router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
     try {
-        const { subjectCode, siteId, initials, dateOfBirth, sex } = req.body;
+        const { subjectCode, siteId, initials, dateOfBirth, sex, enrolledAt } = req.body;
         if (!subjectCode) return res.status(400).json({ error: 'subjectCode is required' });
 
         const [created] = await db.insert(subjects).values({
@@ -79,6 +85,7 @@ router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
             initials:    initials ?? null,
             dateOfBirth: dateOfBirth ?? null,
             sex:         sex ?? null,
+            enrolledAt:  enrolledAt ? new Date(enrolledAt) : new Date(),
             enrolledBy:  req.user.id,
         }).returning();
 

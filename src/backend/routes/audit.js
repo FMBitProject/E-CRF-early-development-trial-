@@ -2,12 +2,11 @@ import { Router } from 'express';
 import { eq, and, ilike, desc } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { auditTrails } from '../db/schemas/schema.js';
-import { requireRole } from '../middleware/rbac.js';
 
 const router = Router();
 
-// GET /api/audit — immutable audit trail (CRA and admin only)
-router.get('/', requireRole('cra', 'admin'), async (req, res) => {
+// GET /api/audit — immutable audit trail (all authenticated users)
+router.get('/', async (req, res) => {
     try {
         const { action, tableName, userId, search } = req.query;
         const conditions = [];

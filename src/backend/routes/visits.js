@@ -7,12 +7,31 @@ import { writeAudit } from '../lib/audit.js';
 
 const router = Router({ mergeParams: true });
 
+function calcStudyDay(enrollmentDate, actualDate) {
+    if (!enrollmentDate || !actualDate) return null;
+    const d1 = new Date(enrollmentDate); d1.setHours(0, 0, 0, 0);
+    const d2 = new Date(actualDate);     d2.setHours(0, 0, 0, 0);
+    return Math.round((d2 - d1) / 86400000) + 1;
+}
+
+function calcWindowCompliance(plannedDate, actualDate, windowDays) {
+    if (!plannedDate || !actualDate) return null;
+    const p = new Date(plannedDate); p.setHours(0, 0, 0, 0);
+    const a = new Date(actualDate);  a.setHours(0, 0, 0, 0);
+    const diff = Math.round((a - p) / 86400000);
+    const win  = windowDays ?? 0;
+    if (diff === 0)            return 'On Schedule';
+    if (Math.abs(diff) <= win) return diff < 0 ? `Early (${Math.abs(diff)}d)` : `Late (+${diff}d)`;
+    if (diff < 0)              return `Early (${Math.abs(diff)}d) — Out of Window`;
+    return `Late (+${diff}d) — Out of Window`;
+}
+
 // GET /api/subjects/:subjectId/visits
 router.get('/', async (req, res) => {
     try {
         const rows = await db.select().from(visits)
             .where(eq(visits.subjectId, parseInt(req.params.subjectId)))
-            .orderBy(visits.createdAt);
+            .orderBy(visits.visitOrder, visits.createdAt);
         res.json(rows);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -23,16 +42,33 @@ router.get('/', async (req, res) => {
 router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
     try {
         const subjectId = parseInt(req.params.subjectId);
-        const { visitName, visitDate } = req.body;
+        const {
+            visitName, visitOrder, visitType, plannedDate, actualDate,
+            windowDays, status, missedReason, notes,
+        } = req.body;
         if (!visitName) return res.status(400).json({ error: 'visitName is required' });
 
         const [subject] = await db.select().from(subjects).where(eq(subjects.id, subjectId));
         if (!subject) return res.status(404).json({ error: 'Subject not found' });
 
+        const enrollmentDate = subject.enrolledAt ? subject.enrolledAt.toISOString().split('T')[0] : null;
+        const studyDay        = calcStudyDay(enrollmentDate, actualDate);
+        const windowCompliance = calcWindowCompliance(plannedDate, actualDate, windowDays);
+
         const [created] = await db.insert(visits).values({
             subjectId,
             visitName,
-            visitDate: visitDate ?? null,
+            visitOrder:      visitOrder ?? null,
+            visitType:       visitType  ?? 'Scheduled',
+            plannedDate:     plannedDate ?? null,
+            actualDate:      actualDate  ?? null,
+            windowDays:      windowDays  ?? null,
+            studyDay,
+            windowCompliance,
+            missedReason:    missedReason ?? null,
+            notes:           notes        ?? null,
+            createdByName:   req.user.name,
+            status:          status ?? 'Scheduled',
         }).returning();
 
         await writeAudit(db, {
@@ -42,6 +78,60 @@ router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
         });
 
         res.status(201).json(created);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PATCH /api/subjects/:subjectId/visits/:id — full update
+router.patch('/:id', requireRole('investigator', 'cra', 'admin'), async (req, res) => {
+    try {
+        const {
+            visitName, visitOrder, visitType, plannedDate, actualDate,
+            windowDays, status, missedReason, notes, reason,
+        } = req.body;
+
+        const [existing] = await db.select().from(visits)
+            .where(eq(visits.id, parseInt(req.params.id)));
+        if (!existing) return res.status(404).json({ error: 'Visit not found' });
+
+        const [subject] = await db.select().from(subjects)
+            .where(eq(subjects.id, existing.subjectId));
+        const enrollmentDate = subject?.enrolledAt ? subject.enrolledAt.toISOString().split('T')[0] : null;
+
+        const newActualDate  = actualDate  !== undefined ? actualDate  : existing.actualDate;
+        const newPlannedDate = plannedDate !== undefined ? plannedDate : existing.plannedDate;
+        const newWindowDays  = windowDays  !== undefined ? windowDays  : existing.windowDays;
+
+        const studyDay        = calcStudyDay(enrollmentDate, newActualDate);
+        const windowCompliance = calcWindowCompliance(newPlannedDate, newActualDate, newWindowDays);
+
+        const [updated] = await db.update(visits)
+            .set({
+                visitName:       visitName       ?? existing.visitName,
+                visitOrder:      visitOrder      ?? existing.visitOrder,
+                visitType:       visitType       ?? existing.visitType,
+                plannedDate:     newPlannedDate,
+                actualDate:      newActualDate,
+                windowDays:      newWindowDays,
+                studyDay,
+                windowCompliance,
+                missedReason:    missedReason    ?? existing.missedReason,
+                notes:           notes           ?? existing.notes,
+                status:          status          ?? existing.status,
+                updatedAt:       new Date(),
+            })
+            .where(eq(visits.id, parseInt(req.params.id)))
+            .returning();
+
+        await writeAudit(db, {
+            tableName: 'visits', recordId: updated.id, action: 'UPDATE',
+            fieldName: 'status', oldValue: existing.status, newValue: updated.status,
+            reason: reason ?? 'Visit updated',
+            user: req.user, ipAddress: req.ip,
+        });
+
+        res.json(updated);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

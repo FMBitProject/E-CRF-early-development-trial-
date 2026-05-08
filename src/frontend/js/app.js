@@ -83,13 +83,27 @@ function renderSidebar(currentRoute) {
 }
 
 function getOpenQueryBadge() {
-    try {
-        const data = JSON.parse(localStorage.getItem('ecrf_data') || '{}');
-        const open = (data.queries || []).filter(q => q.status === 'Open').length;
-        if (!open) return '';
-        return `<span class="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">${open}</span>`;
-    } catch { return ''; }
+    const open = window._openQueryCount || 0;
+    if (!open) return '';
+    return `<span class="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">${open}</span>`;
 }
+
+// Refresh open query count in background and update sidebar badge
+function refreshQueryCount() {
+    fetch('/api/queries?status=Open', { credentials: 'include' })
+        .then(r => r.ok ? r.json() : [])
+        .then(qs => {
+            const count = Array.isArray(qs) ? qs.length : 0;
+            if (count !== window._openQueryCount) {
+                window._openQueryCount = count;
+                const basePath = parseRoute(window.location.hash).key.split('/')[0] || 'dashboard';
+                renderSidebar(basePath);
+            }
+        })
+        .catch(() => {});
+}
+
+window._openQueryCount = 0;
 
 // ---- Breadcrumb ----
 function renderBreadcrumb(segments) {
@@ -208,3 +222,4 @@ window.appLogout = () => { api.logout(); };
 
 window.addEventListener('hashchange', () => navigate(window.location.hash));
 navigate(window.location.hash || '#dashboard');
+refreshQueryCount();

@@ -44,7 +44,8 @@ router.get('/', async (req, res) => {
 // POST /api/entries — upsert (create or update) a data entry
 router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
     try {
-        const { subjectId, visitId, formId, dataJson, reason } = req.body;
+        const body = req.body;
+        const { subjectId, visitId, formId, dataJson, reason } = body;
         if (!subjectId || !visitId || !formId) {
             return res.status(400).json({ error: 'subjectId, visitId, formId are required' });
         }
@@ -91,7 +92,7 @@ router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
         const [created] = await db.insert(crfDataEntries).values({
             subjectId, visitId, formId,
             dataJson: dataJson ?? {},
-            status: 'Saved',
+            status: (body.status === 'Draft') ? 'Draft' : 'Saved',
             createdBy: req.user.id,
             updatedBy: req.user.id,
         }).returning();

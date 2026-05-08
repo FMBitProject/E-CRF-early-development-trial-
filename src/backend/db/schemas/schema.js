@@ -85,13 +85,23 @@ export const subjects = pgTable('subjects', {
 export const visitStatusEnum = pgEnum('visit_status', ['Scheduled', 'In Progress', 'Completed', 'Missed']);
 
 export const visits = pgTable('visits', {
-    id:        integer('id').primaryKey().generatedAlwaysAsIdentity(),
-    subjectId: integer('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
-    visitName: text('visit_name').notNull(),
-    visitDate: text('visit_date'),
-    status:    visitStatusEnum('status').notNull().default('Scheduled'),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
-    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+    id:               integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    subjectId:        integer('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
+    visitName:        text('visit_name').notNull(),
+    visitOrder:       integer('visit_order'),
+    visitType:        text('visit_type').default('Scheduled'),
+    plannedDate:      text('planned_date'),
+    actualDate:       text('actual_date'),
+    visitDate:        text('visit_date'),
+    windowDays:       integer('window_days'),
+    studyDay:         integer('study_day'),
+    windowCompliance: text('window_compliance'),
+    missedReason:     text('missed_reason'),
+    notes:            text('notes'),
+    createdByName:    text('created_by_name'),
+    status:           visitStatusEnum('status').notNull().default('Scheduled'),
+    createdAt:        timestamp('created_at').notNull().defaultNow(),
+    updatedAt:        timestamp('updated_at').notNull().defaultNow(),
 });
 
 export const crfForms = pgTable('crf_forms', {

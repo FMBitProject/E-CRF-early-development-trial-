@@ -1,0 +1,39 @@
+import { Router } from 'express';
+import { eq, desc, count } from 'drizzle-orm';
+import { db } from '../db/connection.js';
+import { subjects, visits, crfDataEntries, queries, auditTrails } from '../db/schemas/schema.js';
+
+const router = Router();
+
+// GET /api/dashboard/stats
+router.get('/stats', async (req, res) => {
+    try {
+        const [[{ total: totalSubjects }], [{ active: activeSubjects }]] = await Promise.all([
+            db.select({ total: count() }).from(subjects),
+            db.select({ active: count() }).from(subjects).where(eq(subjects.status, 'Active')),
+        ]);
+
+        const [[{ pending: pendingForms }], [{ open: openQueries }], [{ total: totalVisits }]] = await Promise.all([
+            db.select({ pending: count() }).from(crfDataEntries).where(eq(crfDataEntries.status, 'Draft')),
+            db.select({ open: count() }).from(queries).where(eq(queries.status, 'Open')),
+            db.select({ total: count() }).from(visits),
+        ]);
+
+        const recentAudit = await db.select().from(auditTrails)
+            .orderBy(desc(auditTrails.createdAt))
+            .limit(8);
+
+        res.json({
+            activeSubjects:  Number(activeSubjects),
+            totalSubjects:   Number(totalSubjects),
+            pendingForms:    Number(pendingForms),
+            openQueries:     Number(openQueries),
+            totalVisits:     Number(totalVisits),
+            recentAudit,
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+export default router;
