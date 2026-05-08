@@ -16,6 +16,7 @@ import entriesRouter   from './routes/entries.js';
 import auditRouter     from './routes/audit.js';
 import queriesRouter   from './routes/queries.js';
 import mfaRouter       from './routes/mfa.js';
+import registerRouter  from './routes/register.js';
 import sitesRouter     from './routes/sites.js';
 import dashboardRouter from './routes/dashboard.js';
 
@@ -70,7 +71,8 @@ app.use('/api/entries',              requireAuth, entriesRouter);
 app.use('/api/audit',                requireAuth, auditRouter);
 app.use('/api/queries',              requireAuth, queriesRouter);
 
-app.use('/api/mfa', mfaRouter);
+app.use('/api/mfa',      mfaRouter);
+app.use('/api/register', registerRouter);
 app.use('/api/sites',      requireAuth, sitesRouter);
 app.use('/api/dashboard',  requireAuth, dashboardRouter);
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));

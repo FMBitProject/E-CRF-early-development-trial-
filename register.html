@@ -51,11 +51,11 @@
                 </div>
                 <div class="flex items-start gap-3 text-sm">
                     <div class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <i data-lucide="shield" class="w-3.5 h-3.5"></i>
+                        <i data-lucide="clipboard" class="w-3.5 h-3.5"></i>
                     </div>
                     <div>
-                        <p class="text-white font-semibold">Administrator</p>
-                        <p class="text-blue-300 text-xs">Full system access including user and site management</p>
+                        <p class="text-white font-semibold">CRC</p>
+                        <p class="text-blue-300 text-xs">Clinical Research Coordinator — assist with subject management</p>
                     </div>
                 </div>
             </div>
@@ -124,7 +124,7 @@
                             <option value="">— Select your role —</option>
                             <option value="investigator">Investigator</option>
                             <option value="cra">CRA / Monitor</option>
-                            <option value="admin">Administrator</option>
+                            <option value="crc">CRC</option>
                         </select>
                     </div>
                 </div>
@@ -268,7 +268,7 @@
             lucide.createIcons();
 
             try {
-                const res  = await fetch('/api/auth/sign-up/email', {
+                const res  = await fetch('/api/register', {
                     method:      'POST',
                     headers:     { 'Content-Type': 'application/json' },
                     credentials: 'include',
