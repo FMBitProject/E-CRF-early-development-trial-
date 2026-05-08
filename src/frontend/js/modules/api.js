@@ -243,7 +243,7 @@ export const api = {
 
     async updateVisit(visitId, payload) {
         // Need subjectId — read it from the visit (visit has subject_id after mapVisit)
-        // We use a PATCH /api/subjects/:sid/visits/:id route
+        // We use a PATCH /api/subjects/:subjectId/visits/:id route
         // subjectId comes from window._currentSubject set by subjects.js
         const subjectId = window._subjectId || window._currentSubject?.id;
         const status = payload.status === 'Complete' ? 'Completed' : payload.status;

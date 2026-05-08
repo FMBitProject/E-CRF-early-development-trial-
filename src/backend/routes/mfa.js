@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import { db } from '../db/connection.js';
-import { verification, user as userTable } from '../db/schemas/schema.js';
+import { verification } from '../db/schemas/schema.js';
 import { eq, gt } from 'drizzle-orm';
 import { sendOTPEmail } from '../lib/email.js';
 import { auth } from '../auth/better-auth.js';
@@ -12,7 +12,7 @@ const SESSION_COOKIE   = 'better-auth.session_token';
 const SESSION_MAX_AGE  = 60 * 60 * 24 * 7; // 7 days in seconds
 
 function generateOTP() {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return crypto.randomInt(100000, 1000000).toString();
 }
 
 function hashOTP(otp) {

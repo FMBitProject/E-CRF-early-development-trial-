@@ -6,8 +6,7 @@ import { fileURLToPath } from 'url';
 import { toNodeHandler } from 'better-auth/node';
 import { auth } from './auth/better-auth.js';
 import { requireAuth } from './middleware/auth.js';
-import { writeAudit } from './lib/audit.js';
-import { db, client } from './db/connection.js';
+import { client } from './db/connection.js';
 
 import subjectsRouter  from './routes/subjects.js';
 import visitsRouter    from './routes/visits.js';
@@ -65,7 +64,7 @@ app.use(express.json());
 
 // Auth-required API routes
 app.use('/api/subjects',             requireAuth, subjectsRouter);
-app.use('/api/subjects/:sid/visits', requireAuth, visitsRouter);
+app.use('/api/subjects/:subjectId/visits', requireAuth, visitsRouter);
 app.use('/api/forms',                requireAuth, formsRouter);
 app.use('/api/entries',              requireAuth, entriesRouter);
 app.use('/api/audit',                requireAuth, auditRouter);
