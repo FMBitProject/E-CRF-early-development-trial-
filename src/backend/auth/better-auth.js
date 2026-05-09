@@ -28,6 +28,11 @@ export const auth = betterAuth({
                 defaultValue: 'investigator',
                 input:        true,
             },
+            siteId: {
+                type:     'number',
+                required: false,
+                input:    true,
+            },
         },
     },
     trustedOrigins: [

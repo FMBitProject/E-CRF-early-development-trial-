@@ -8,16 +8,17 @@ import { auth } from './auth/better-auth.js';
 import { requireAuth } from './middleware/auth.js';
 import { client } from './db/connection.js';
 
-import subjectsRouter  from './routes/subjects.js';
-import visitsRouter    from './routes/visits.js';
-import formsRouter     from './routes/forms.js';
-import entriesRouter   from './routes/entries.js';
-import auditRouter     from './routes/audit.js';
-import queriesRouter   from './routes/queries.js';
-import mfaRouter       from './routes/mfa.js';
-import registerRouter  from './routes/register.js';
-import sitesRouter     from './routes/sites.js';
-import dashboardRouter from './routes/dashboard.js';
+import subjectsRouter   from './routes/subjects.js';
+import visitsRouter     from './routes/visits.js';
+import formsRouter      from './routes/forms.js';
+import entriesRouter    from './routes/entries.js';
+import auditRouter      from './routes/audit.js';
+import queriesRouter    from './routes/queries.js';
+import mfaRouter        from './routes/mfa.js';
+import registerRouter   from './routes/register.js';
+import sitesRouter      from './routes/sites.js';
+import dashboardRouter  from './routes/dashboard.js';
+import signaturesRouter from './routes/signatures.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir   = path.resolve(__dirname, '../../');
@@ -25,6 +26,7 @@ const rootDir   = path.resolve(__dirname, '../../');
 // ── Startup migration: add extended visit columns if missing ──
 async function runMigrations() {
     const stmts = [
+        // Visit extended columns
         `ALTER TABLE visits ADD COLUMN IF NOT EXISTS visit_order integer`,
         `ALTER TABLE visits ADD COLUMN IF NOT EXISTS visit_type text DEFAULT 'Scheduled'`,
         `ALTER TABLE visits ADD COLUMN IF NOT EXISTS planned_date text`,
@@ -35,6 +37,31 @@ async function runMigrations() {
         `ALTER TABLE visits ADD COLUMN IF NOT EXISTS missed_reason text`,
         `ALTER TABLE visits ADD COLUMN IF NOT EXISTS notes text`,
         `ALTER TABLE visits ADD COLUMN IF NOT EXISTS created_by_name text`,
+        // Feature: site-scoped user access
+        `ALTER TABLE "user" ADD COLUMN IF NOT EXISTS site_id integer`,
+        // Feature: electronic signature — add 'Signed' enum value
+        `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel='Signed' AND enumtypid=(SELECT oid FROM pg_type WHERE typname='entry_status')) THEN ALTER TYPE entry_status ADD VALUE 'Signed'; END IF; END $$`,
+        // Feature: electronic signatures table
+        `CREATE TABLE IF NOT EXISTS esignatures (
+            id         SERIAL PRIMARY KEY,
+            entry_id   INTEGER REFERENCES crf_data_entries(id) ON DELETE CASCADE,
+            user_id    TEXT REFERENCES "user"(id),
+            user_name  TEXT,
+            user_role  TEXT,
+            meaning    TEXT NOT NULL,
+            ip_address TEXT,
+            signed_at  TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        // Feature: inclusion/exclusion assessments table
+        `CREATE TABLE IF NOT EXISTS ie_assessments (
+            id               SERIAL PRIMARY KEY,
+            subject_id       INTEGER REFERENCES subjects(id) ON DELETE CASCADE,
+            criteria_json    JSONB NOT NULL DEFAULT '[]',
+            passed           BOOLEAN NOT NULL,
+            assessed_by      TEXT REFERENCES "user"(id),
+            assessed_by_name TEXT,
+            assessed_at      TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
     ];
     for (const stmt of stmts) {
         await client.unsafe(stmt);
@@ -72,8 +99,9 @@ app.use('/api/queries',              requireAuth, queriesRouter);
 
 app.use('/api/mfa',      mfaRouter);
 app.use('/api/register', registerRouter);
-app.use('/api/sites',      requireAuth, sitesRouter);
-app.use('/api/dashboard',  requireAuth, dashboardRouter);
+app.use('/api/sites',       requireAuth, sitesRouter);
+app.use('/api/dashboard',   requireAuth, dashboardRouter);
+app.use('/api/signatures',  requireAuth, signaturesRouter);
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
 // Serve all static frontend files from project root

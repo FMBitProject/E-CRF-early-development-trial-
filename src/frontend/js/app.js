@@ -60,6 +60,11 @@ function renderSidebar(currentRoute) {
 
     const initials = user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
     const rc = ROLE_CONFIG[user.role] || { label: user.role, cls: 'bg-slate-500' };
+    const siteLine = window._userSiteName
+        ? `<p class="text-blue-400 text-xs leading-none mt-0.5 truncate flex items-center gap-1">
+               <i data-lucide="building-2" class="w-2.5 h-2.5 inline flex-shrink-0"></i>${window._userSiteName}
+           </p>`
+        : '';
 
     userArea.innerHTML = `
     <div class="px-2 pt-2">
@@ -70,6 +75,7 @@ function renderSidebar(currentRoute) {
             <div class="min-w-0 flex-1">
                 <p class="text-white text-xs font-semibold truncate leading-tight">${user.name}</p>
                 <p class="text-blue-300 text-xs leading-none mt-0.5">${rc.label}</p>
+                ${siteLine}
             </div>
             <button onclick="window.appLogout()" title="Sign Out"
                 class="p-1.5 text-blue-300 hover:text-white hover:bg-white/10 rounded-md transition flex-shrink-0">
@@ -104,6 +110,21 @@ function refreshQueryCount() {
 }
 
 window._openQueryCount = 0;
+window._userSiteName   = null;
+
+// Resolve user's assigned site name for sidebar display
+if (user.siteId) {
+    api.getSites()
+        .then(sites => {
+            const site = sites.find(s => s.id === user.siteId);
+            if (site) {
+                window._userSiteName = site.site_code ? `${site.site_code} – ${site.site_name}` : site.site_name;
+                const basePath = parseRoute(window.location.hash).key.split('/')[0] || 'dashboard';
+                renderSidebar(basePath);
+            }
+        })
+        .catch(() => {});
+}
 
 // ---- Breadcrumb ----
 function renderBreadcrumb(segments) {

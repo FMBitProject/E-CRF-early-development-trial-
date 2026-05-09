@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { eq, ilike, and } from 'drizzle-orm';
 import { db } from '../db/connection.js';
-import { subjects, sites, visits, user } from '../db/schemas/schema.js';
+import { subjects, sites, visits, ieAssessments } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 
@@ -14,6 +14,10 @@ router.get('/', async (req, res) => {
         const conditions = [];
         if (status) conditions.push(eq(subjects.status, status));
         if (search) conditions.push(ilike(subjects.subjectCode, `%${search}%`));
+        // Site-scoped: investigator and crc only see subjects at their assigned site
+        if (['investigator', 'crc'].includes(req.user.role) && req.user.siteId) {
+            conditions.push(eq(subjects.siteId, req.user.siteId));
+        }
 
         const rows = await db
             .select({
@@ -136,6 +140,57 @@ router.patch('/:id/status', requireRole('investigator', 'admin'), async (req, re
         });
 
         res.json(updated);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/subjects/:id/ie-assessment — record I/E criteria assessment
+router.post('/:id/ie-assessment', requireRole('investigator', 'admin'), async (req, res) => {
+    try {
+        const subjectId = parseInt(req.params.id);
+        const { criteriaJson, passed } = req.body;
+        if (!Array.isArray(criteriaJson) || typeof passed !== 'boolean') {
+            return res.status(400).json({ error: 'criteriaJson (array) and passed (boolean) are required' });
+        }
+
+        const [subject] = await db.select().from(subjects).where(eq(subjects.id, subjectId));
+        if (!subject) return res.status(404).json({ error: 'Subject not found' });
+
+        const [assessment] = await db.insert(ieAssessments).values({
+            subjectId,
+            criteriaJson,
+            passed,
+            assessedBy:     req.user.id,
+            assessedByName: req.user.name,
+        }).returning();
+
+        if (!passed) {
+            await db.update(subjects)
+                .set({ status: 'Screen Failed', updatedAt: new Date() })
+                .where(eq(subjects.id, subjectId));
+
+            await writeAudit(db, {
+                tableName: 'subjects', recordId: subjectId, action: 'UPDATE',
+                fieldName: 'status', oldValue: subject.status, newValue: 'Screen Failed',
+                reason: 'Failed Inclusion/Exclusion criteria assessment',
+                user: req.user, ipAddress: req.ip,
+            });
+        }
+
+        res.status(201).json(assessment);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/subjects/:id/ie-assessment — fetch I/E assessment history
+router.get('/:id/ie-assessment', async (req, res) => {
+    try {
+        const rows = await db.select().from(ieAssessments)
+            .where(eq(ieAssessments.subjectId, parseInt(req.params.id)))
+            .orderBy(ieAssessments.assessedAt);
+        res.json(rows);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

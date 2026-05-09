@@ -320,6 +320,24 @@ export const api = {
         return mapEntry(result);
     },
 
+    async signDataEntry(entryId, password, meaning) {
+        return apiFetch('/api/signatures', {
+            method: 'POST',
+            body: JSON.stringify({ entryId, password, meaning }),
+        });
+    },
+
+    async getSignatures(entryId) {
+        return apiFetch(`/api/signatures?entryId=${entryId}`);
+    },
+
+    async submitIEAssessment(subjectId, criteriaJson, passed) {
+        return apiFetch(`/api/subjects/${subjectId}/ie-assessment`, {
+            method: 'POST',
+            body: JSON.stringify({ criteriaJson, passed }),
+        });
+    },
+
     // ── Audit Trail ────────────────────────────────────────
     async getAuditTrail(filters = {}) {
         const params = new URLSearchParams();

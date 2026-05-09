@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { eq, and, desc } from 'drizzle-orm';
 import { db } from '../db/connection.js';
-import { queries, subjects, visits, crfForms } from '../db/schemas/schema.js';
+import { queries, subjects, visits, crfForms, user } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
+import { sendQueryRaisedEmail, sendQueryResolvedEmail } from '../lib/email.js';
 
 const router = Router();
 
@@ -76,6 +77,33 @@ router.post('/', requireRole('cra', 'admin'), async (req, res) => {
             user: req.user, ipAddress: req.ip,
         });
 
+        // Email notification: find investigators at this subject's site
+        const [subjectRow] = await db
+            .select({ siteId: subjects.siteId, subjectCode: subjects.subjectCode })
+            .from(subjects)
+            .where(eq(subjects.id, subjectId));
+
+        if (subjectRow?.siteId) {
+            const investigators = await db
+                .select({ email: user.email, name: user.name })
+                .from(user)
+                .where(and(eq(user.role, 'investigator'), eq(user.siteId, subjectRow.siteId)));
+
+            const [visitRow] = visitId
+                ? await db.select({ visitName: visits.visitName }).from(visits).where(eq(visits.id, visitId))
+                : [null];
+
+            for (const inv of investigators) {
+                sendQueryRaisedEmail(inv.email, inv.name, {
+                    subjectCode: subjectRow.subjectCode || String(subjectId),
+                    queryText,
+                    raisedByName: req.user.name,
+                    visitName: visitRow?.visitName ?? null,
+                    fieldLabel: fieldLabel ?? null,
+                }).catch(() => {});
+            }
+        }
+
         res.status(201).json(created);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -108,6 +136,22 @@ router.patch('/:id/resolve', requireRole('investigator', 'admin'), async (req, r
             fieldName: 'status', oldValue: 'Open', newValue: 'Resolved',
             reason: resolutionText, user: req.user, ipAddress: req.ip,
         });
+
+        // Email notification: CRA who raised the query
+        if (q.raisedBy) {
+            const [craUser] = await db.select({ email: user.email, name: user.name })
+                .from(user).where(eq(user.id, q.raisedBy));
+            const [subjectRow] = await db.select({ subjectCode: subjects.subjectCode })
+                .from(subjects).where(eq(subjects.id, q.subjectId));
+            if (craUser) {
+                sendQueryResolvedEmail(craUser.email, craUser.name, {
+                    subjectCode:    subjectRow?.subjectCode ?? String(q.subjectId),
+                    queryText:      q.queryText,
+                    resolutionText,
+                    resolvedByName: req.user.name,
+                }).catch(() => {});
+            }
+        }
 
         res.json(updated);
     } catch (err) {

@@ -27,6 +27,7 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
     const entries       = await api.getDataEntries(subjectId, visitId);
     const existingEntry = entries.find(e => e.form_id === Number(formId));
     const isLocked      = existingEntry?.status === 'Locked';
+    const isSigned      = existingEntry?.status === 'Signed';
     const isEdit        = !!existingEntry;
     const visit         = subject.visits.find(v => v.id === Number(visitId));
     const visitName     = visit?.visit_name || `Visit #${visitId}`;
@@ -34,9 +35,11 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
 
     const entryBadge = isLocked
         ? `<span class="badge badge-locked"><i data-lucide="lock" class="w-3 h-3 inline mr-1"></i>Locked</span>`
-        : isEdit
-            ? `<span class="badge badge-saved">${existingEntry.status}</span>`
-            : `<span class="badge badge-draft">New Entry</span>`;
+        : isSigned
+            ? `<span class="badge" style="background:#EDE9FE;color:#5B21B6;border:1px solid #C4B5FD"><i data-lucide="pen-line" class="w-3 h-3 inline mr-1"></i>Signed</span>`
+            : isEdit
+                ? `<span class="badge badge-saved">${existingEntry.status}</span>`
+                : `<span class="badge badge-draft">New Entry</span>`;
 
     content.innerHTML = `
     <div class="p-5 space-y-4 max-w-4xl mx-auto">
@@ -60,6 +63,10 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
             <div class="mt-4 flex items-start gap-2.5 p-3 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-800">
                 <i data-lucide="shield-alert" class="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-600"></i>
                 <span>This data entry is <strong>locked</strong>. Modifications require Admin authorization per FDA 21 CFR Part 11.</span>
+            </div>` : isSigned ? `
+            <div class="mt-4 flex items-start gap-2.5 p-3 border rounded-md text-sm" style="background:#EDE9FE;border-color:#C4B5FD;color:#4C1D95">
+                <i data-lucide="pen-line" class="w-4 h-4 flex-shrink-0 mt-0.5" style="color:#7C3AED"></i>
+                <span>This entry has been <strong>electronically signed</strong> per FDA 21 CFR Part 11. CRA may lock it for archiving.</span>
             </div>` : ''}
         </div>
 
@@ -88,12 +95,12 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
             </div>
             <form id="crf-form" class="p-6" novalidate>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
-                    ${fields.map(f => renderField(f, existingEntry?.data, isLocked)).join('')}
+                    ${fields.map(f => renderField(f, existingEntry?.data, isLocked || isSigned)).join('')}
                 </div>
             </form>
         </div>
 
-        ${!isLocked ? `
+        ${(!isLocked && !isSigned) ? `
         <!-- Reason for Change -->
         <div class="ph-card p-5">
             <div class="flex items-start gap-3 mb-4 p-3 rounded-md border" style="background:#EBF2FD;border-color:#BFD7F5">
@@ -117,7 +124,7 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
             <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
                 <p class="text-xs text-slate-400 flex items-center gap-1.5">
                     <i data-lucide="info" class="w-3.5 h-3.5"></i>
-                    Save as Draft to continue later; Submit when data is verified.
+                    Save Draft to continue later · Sign &amp; Submit applies your electronic signature (FDA 21 CFR Part 11).
                 </p>
                 <div class="flex gap-2.5">
                     <a href="#subjects/${subjectId}"
@@ -128,19 +135,30 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
                         class="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md transition">
                         <i data-lucide="save" class="w-4 h-4"></i> Save Draft
                     </button>
-                    <button type="button" id="submit-btn" onclick="saveForm('Submitted')"
-                        class="flex items-center gap-2 px-4 py-2 text-sm btn-primary rounded-md">
-                        <i data-lucide="send" class="w-4 h-4"></i> Submit
+                    <button type="button" id="submit-btn" onclick="saveForm('Saved')"
+                        class="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md transition">
+                        <i data-lucide="send" class="w-4 h-4"></i> Save
+                    </button>
+                    <button type="button" id="sign-btn" onclick="openESignModal()"
+                        class="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-md text-white transition"
+                        style="background:#7C3AED;hover:background:#6D28D9">
+                        <i data-lucide="pen-line" class="w-4 h-4"></i> Sign &amp; Submit
                     </button>
                 </div>
             </div>
         </div>` : `
-        ${api.getCurrentUser()?.role === 'admin' ? `
+        ${isLocked && api.getCurrentUser()?.role === 'admin' ? `
         <div class="flex justify-end">
             <button onclick="unlockEntry(${existingEntry.id})"
                 class="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-md transition border border-amber-200">
                 <i data-lucide="unlock" class="w-4 h-4"></i> Unlock Entry (Admin)
             </button>
+        </div>` : isSigned ? `
+        <div class="flex justify-end">
+            <p class="text-xs text-slate-400 flex items-center gap-1.5">
+                <i data-lucide="info" class="w-3.5 h-3.5"></i>
+                Entry is signed. CRA may lock it from the Subject Detail page.
+            </p>
         </div>` : ''}`}
     </div>`;
 
@@ -148,7 +166,7 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
 
     // Live validation on numeric fields
     fields.forEach(field => {
-        if (field.type === 'number' && field.validation && !isLocked) {
+        if (field.type === 'number' && field.validation && !isLocked && !isSigned) {
             const inputEl = document.getElementById(`field-${field.key}`);
             const errorEl = document.getElementById(`error-${field.key}`);
             if (inputEl) {
@@ -159,7 +177,7 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
         }
     });
 
-    window.saveForm = async function (status) {
+    async function collectAndValidateForm() {
         const formData = {};
         fields.forEach(field => {
             if (field.type === 'radio') {
@@ -172,7 +190,6 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
         });
 
         const { valid, errors, warnings } = validateForm(formData, fields);
-
         const summaryEl = document.getElementById('validation-summary');
         const errorList = document.getElementById('validation-error-list');
 
@@ -186,14 +203,13 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
                 if (el) applyFieldValidation(el, errEl, { level: 'hard', message: errors[key] });
             });
             showToast('Please correct validation errors before saving.', 'error');
-            return;
+            return null;
         }
         summaryEl.classList.add('hidden');
 
-        if (Object.keys(warnings).length > 0 && status === 'Submitted') {
+        if (Object.keys(warnings).length > 0) {
             document.getElementById('soft-warning-list').innerHTML = Object.values(warnings).map(w => `<li>${w}</li>`).join('');
             document.getElementById('soft-warning-summary').classList.remove('hidden');
-
             const proceed = await new Promise(resolve => {
                 showModal({
                     title: 'Plausibility Warnings',
@@ -207,18 +223,24 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
                                 <span class="text-sm text-amber-800">${w}</span>
                             </div>`).join('')}
                         </div>
-                        <p class="text-sm font-semibold text-slate-700">Confirm these values are correct and submit?</p>
+                        <p class="text-sm font-semibold text-slate-700">Confirm these values are correct?</p>
                     </div>`,
                     footer: `
                     <button onclick="closeModal(); window._warningResolve(false)" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition">Review Data</button>
-                    <button onclick="closeModal(); window._warningResolve(true)" class="px-4 py-2 text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-md transition">Confirm & Submit</button>`,
+                    <button onclick="closeModal(); window._warningResolve(true)" class="px-4 py-2 text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-md transition">Confirmed</button>`,
                 });
                 window._warningResolve = resolve;
             });
-            if (!proceed) return;
+            if (!proceed) return null;
         } else {
             document.getElementById('soft-warning-summary').classList.add('hidden');
         }
+        return formData;
+    }
+
+    window.saveForm = async function (status) {
+        const formData = await collectAndValidateForm();
+        if (!formData) return;
 
         const reasonEl = document.getElementById('reason-for-change');
         const reason   = reasonEl?.value.trim() || '';
@@ -228,19 +250,115 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
             return;
         }
 
-        const submitBtn = document.getElementById('submit-btn');
-        if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Saving…'; }
+        const btn = document.getElementById('submit-btn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<div class="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin inline-block"></div> Saving…'; }
 
         try {
             await api.saveDataEntry({
                 subject_id: subjectId, visit_id: visitId, form_id: formId,
                 data: formData, reason_for_change: reason || 'Initial data entry', status,
             });
-            showToast(status === 'Submitted' ? 'Form submitted successfully.' : 'Draft saved.', 'success');
+            showToast('Data saved successfully.', 'success');
             window.navigate(`subjects/${subjectId}`);
         } catch (err) {
             showToast(err.message, 'error');
-            if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i data-lucide="send" class="w-4 h-4"></i> Submit'; lucide.createIcons(); }
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="send" class="w-4 h-4"></i> Save'; lucide.createIcons(); }
+        }
+    };
+
+    window.openESignModal = async function () {
+        const formData = await collectAndValidateForm();
+        if (!formData) return;
+
+        const reasonEl = document.getElementById('reason-for-change');
+        const reason   = reasonEl?.value.trim() || '';
+        if (isEdit && !reason) {
+            showToast('Reason for change is required when editing existing data.', 'error');
+            reasonEl?.focus();
+            return;
+        }
+
+        const user = api.getCurrentUser();
+        showModal({
+            title: 'Electronic Signature — FDA 21 CFR Part 11',
+            size: 'md',
+            body: `
+            <div class="space-y-4">
+                <div class="flex items-start gap-3 p-4 rounded-md border" style="background:#EDE9FE;border-color:#C4B5FD">
+                    <i data-lucide="shield-check" class="w-5 h-5 flex-shrink-0 mt-0.5" style="color:#7C3AED"></i>
+                    <div>
+                        <p class="text-sm font-semibold" style="color:#4C1D95">Electronic Signature</p>
+                        <p class="text-xs mt-1" style="color:#6D28D9">By entering your password, you are applying a legally binding electronic signature to this data entry per FDA 21 CFR Part 11 §11.200. This action is permanently recorded in the audit trail.</p>
+                    </div>
+                </div>
+                <div class="p-3 bg-slate-50 rounded-md border border-slate-200 text-xs text-slate-600 space-y-1">
+                    <p><span class="font-semibold">Signer:</span> ${user?.name} (${user?.role})</p>
+                    <p><span class="font-semibold">Form:</span> ${form.form_name} v${form.version}</p>
+                    <p><span class="font-semibold">Subject:</span> ${subject.subject_code} · ${visitName}</p>
+                    <p><span class="font-semibold">Date/Time:</span> ${new Date().toLocaleString('en-GB')}</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Signature Meaning <span class="text-red-500">*</span></label>
+                    <select id="esign-meaning" class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
+                        <option value="I certify that the data entered in this CRF is accurate, complete, and consistent with the source documents.">I certify the data is accurate, complete, and consistent with source documents.</option>
+                        <option value="I have reviewed and approve this CRF data entry as Investigator of Record.">I have reviewed and approve this CRF data entry as Investigator of Record.</option>
+                        <option value="I certify that I entered this data in accordance with the study protocol and GCP guidelines.">I entered this data per study protocol and ICH GCP E6(R2) guidelines.</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Your Password <span class="text-red-500">*</span></label>
+                    <input type="password" id="esign-password" placeholder="Enter your login password to sign"
+                        class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none"
+                        autocomplete="current-password">
+                    <p class="text-xs text-slate-400 mt-1">This serves as your electronic signature credential.</p>
+                </div>
+                <div id="esign-error" class="hidden p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700"></div>
+            </div>`,
+            footer: `
+            <button onclick="closeModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition">Cancel</button>
+            <button onclick="confirmESign()" class="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-md transition" style="background:#7C3AED">
+                <i data-lucide="pen-line" class="w-4 h-4"></i> Apply Signature
+            </button>`,
+        });
+
+        window._pendingSignFormData = formData;
+        window._pendingSignReason   = reason;
+    };
+
+    window.confirmESign = async function () {
+        const password = document.getElementById('esign-password')?.value;
+        const meaning  = document.getElementById('esign-meaning')?.value;
+        const errEl    = document.getElementById('esign-error');
+        errEl.classList.add('hidden');
+
+        if (!password) {
+            errEl.textContent = 'Password is required to apply your electronic signature.';
+            errEl.classList.remove('hidden');
+            return;
+        }
+
+        const applyBtn = document.querySelector('#modal-backdrop button[onclick="confirmESign()"]');
+        if (applyBtn) { applyBtn.disabled = true; applyBtn.innerHTML = '<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Signing…'; }
+
+        try {
+            // Save data first, then sign
+            const savedResult = await api.saveDataEntry({
+                subject_id: subjectId, visit_id: visitId, form_id: formId,
+                data: window._pendingSignFormData,
+                reason_for_change: window._pendingSignReason || 'Data saved prior to electronic signature',
+                status: 'Saved',
+            });
+
+            const entryId = savedResult.id ?? existingEntry?.id;
+            await api.signDataEntry(entryId, password, meaning);
+
+            closeModal();
+            showToast('Electronic signature applied. Audit trail recorded.', 'success');
+            window.navigate(`subjects/${subjectId}`);
+        } catch (err) {
+            if (applyBtn) { applyBtn.disabled = false; applyBtn.innerHTML = '<i data-lucide="pen-line" class="w-4 h-4"></i> Apply Signature'; lucide.createIcons(); }
+            errEl.textContent = err.message;
+            errEl.classList.remove('hidden');
         }
     };
 

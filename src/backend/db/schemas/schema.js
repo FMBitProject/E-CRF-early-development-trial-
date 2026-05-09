@@ -13,6 +13,7 @@ export const user = pgTable('user', {
     createdAt:     timestamp('created_at').notNull().defaultNow(),
     updatedAt:     timestamp('updated_at').notNull().defaultNow(),
     role:          varchar('role', { length: 20 }).notNull().default('investigator'),
+    siteId:        integer('site_id'),
 });
 
 export const session = pgTable('session', {
@@ -114,7 +115,7 @@ export const crfForms = pgTable('crf_forms', {
     createdAt:   timestamp('created_at').notNull().defaultNow(),
 });
 
-export const entryStatusEnum = pgEnum('entry_status', ['Draft', 'Saved', 'Locked']);
+export const entryStatusEnum = pgEnum('entry_status', ['Draft', 'Saved', 'Signed', 'Locked']);
 
 export const crfDataEntries = pgTable('crf_data_entries', {
     id:           integer('id').primaryKey().generatedAlwaysAsIdentity(),
@@ -151,6 +152,31 @@ export const auditTrails = pgTable('audit_trails', {
     userRole:  text('user_role'),
     ipAddress: text('ip_address'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+// ─── Electronic Signatures (FDA 21 CFR Part 11) ─────────────────────────────
+
+export const esignatures = pgTable('esignatures', {
+    id:        integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    entryId:   integer('entry_id').references(() => crfDataEntries.id, { onDelete: 'cascade' }),
+    userId:    text('user_id').references(() => user.id),
+    userName:  text('user_name'),
+    userRole:  text('user_role'),
+    meaning:   text('meaning').notNull(),
+    ipAddress: text('ip_address'),
+    signedAt:  timestamp('signed_at').notNull().defaultNow(),
+});
+
+// ─── Inclusion / Exclusion Assessments ──────────────────────────────────────
+
+export const ieAssessments = pgTable('ie_assessments', {
+    id:              integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    subjectId:       integer('subject_id').references(() => subjects.id, { onDelete: 'cascade' }),
+    criteriaJson:    jsonb('criteria_json').notNull().default('[]'),
+    passed:          boolean('passed').notNull(),
+    assessedBy:      text('assessed_by').references(() => user.id),
+    assessedByName:  text('assessed_by_name'),
+    assessedAt:      timestamp('assessed_at').notNull().defaultNow(),
 });
 
 export const queryStatusEnum = pgEnum('query_status', ['Open', 'Resolved', 'Closed']);

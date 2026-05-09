@@ -192,18 +192,132 @@ function renderSubjectRows(subjects) {
 // ============================================================
 // New Subject Modal
 // ============================================================
+// ── Standard I/E Criteria (ICH E6 R2 compliant) ───────────────────────────
+const IE_CRITERIA = {
+    inclusion: [
+        { key: 'inc_age',       label: 'Age 18–65 years at time of screening' },
+        { key: 'inc_consent',   label: 'Written informed consent obtained prior to any study procedure' },
+        { key: 'inc_capable',   label: 'Subject is capable of understanding and complying with protocol requirements' },
+        { key: 'inc_health',    label: 'Medically stable as determined by the Investigator' },
+    ],
+    exclusion: [
+        { key: 'exc_pregnant',  label: 'Pregnant, breastfeeding, or planning pregnancy during the study period' },
+        { key: 'exc_allergy',   label: 'Known hypersensitivity or contraindication to the study drug or excipients' },
+        { key: 'exc_renal',     label: 'Significant renal impairment (eGFR < 30 mL/min/1.73m²)' },
+        { key: 'exc_hepatic',   label: 'Significant hepatic impairment (Child-Pugh B or C)' },
+        { key: 'exc_trial',     label: 'Participation in another interventional clinical trial within 30 days' },
+        { key: 'exc_infection', label: 'Active systemic infection or serious illness at time of screening' },
+    ],
+};
+
 window.openNewSubjectModal = async function () {
     const user = api.getCurrentUser();
     if (!['admin', 'investigator'].includes(user.role)) {
         showToast('Only Investigators and Admins can enroll subjects.', 'error');
         return;
     }
-    const sites = await api.getSites();
+    openIECriteriaModal();
+};
+
+window.openIECriteriaModal = function openIECriteriaModal() {
+    const inclusionHtml = IE_CRITERIA.inclusion.map(c => `
+    <label class="flex items-start gap-3 p-3 rounded-md border border-slate-200 cursor-pointer hover:bg-green-50 hover:border-green-300 transition">
+        <input type="checkbox" id="${c.key}" class="mt-0.5 w-4 h-4 accent-green-600 flex-shrink-0">
+        <span class="text-sm text-slate-700">${esc(c.label)}</span>
+    </label>`).join('');
+
+    const exclusionHtml = IE_CRITERIA.exclusion.map(c => `
+    <label class="flex items-start gap-3 p-3 rounded-md border border-slate-200 cursor-pointer hover:bg-red-50 hover:border-red-300 transition">
+        <input type="checkbox" id="${c.key}" class="mt-0.5 w-4 h-4 accent-red-600 flex-shrink-0">
+        <span class="text-sm text-slate-700">${esc(c.label)}</span>
+    </label>`).join('');
+
     showModal({
-        title: 'Enroll New Subject',
+        title: 'Step 1 of 2 — Inclusion / Exclusion Criteria',
+        size: 'lg',
+        body: `
+        <div class="space-y-5">
+            <div class="flex items-start gap-2.5 p-3 rounded-md border text-xs" style="background:#EBF2FD;border-color:#BFD7F5;color:#1554A0">
+                <i data-lucide="info" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
+                Verify all criteria before enrolling the subject. Failed criteria will automatically set status to <strong>Screen Failed</strong> per ICH GCP E6(R2) §4.3.
+            </div>
+            <div>
+                <p class="text-xs font-bold text-emerald-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                    <i data-lucide="check-circle" class="w-3.5 h-3.5"></i> Inclusion Criteria — all must be met
+                </p>
+                <div class="space-y-2">${inclusionHtml}</div>
+            </div>
+            <div>
+                <p class="text-xs font-bold text-red-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                    <i data-lucide="x-circle" class="w-3.5 h-3.5"></i> Exclusion Criteria — none must apply
+                </p>
+                <div class="space-y-2">${exclusionHtml}</div>
+            </div>
+            <div id="ie-error" class="hidden p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700"></div>
+        </div>`,
+        footer: `
+        <button onclick="closeModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition">Cancel</button>
+        <button onclick="proceedFromIE()" class="flex items-center gap-2 px-4 py-2 text-sm btn-primary rounded-md">
+            Next: Subject Demographics <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </button>`,
+    });
+}
+
+window.proceedFromIE = async function () {
+    const errEl = document.getElementById('ie-error');
+    errEl.classList.add('hidden');
+
+    const results = {};
+    let allInclusionMet = true;
+    let anyExclusionMet = false;
+
+    IE_CRITERIA.inclusion.forEach(c => {
+        const checked = document.getElementById(c.key)?.checked;
+        results[c.key] = { label: c.label, type: 'inclusion', met: !!checked };
+        if (!checked) allInclusionMet = false;
+    });
+    IE_CRITERIA.exclusion.forEach(c => {
+        const checked = document.getElementById(c.key)?.checked;
+        results[c.key] = { label: c.label, type: 'exclusion', met: !!checked };
+        if (checked) anyExclusionMet = true;
+    });
+
+    const passes = allInclusionMet && !anyExclusionMet;
+
+    if (!passes) {
+        const reasons = [];
+        if (!allInclusionMet) reasons.push('Not all inclusion criteria are met');
+        if (anyExclusionMet)  reasons.push('One or more exclusion criteria apply');
+        errEl.innerHTML = `<strong>Subject does not qualify for enrollment:</strong><br>${reasons.join('<br>')}.<br><br>Proceeding will enroll with <strong>Screen Failed</strong> status.`;
+        errEl.classList.remove('hidden');
+    }
+
+    window._ieCriteriaResults = Object.values(results);
+    window._iePasses = passes;
+    openSubjectDemographicsModal(passes);
+};
+
+async function openSubjectDemographicsModal(iePasses) {
+    const sites = await api.getSites();
+    const user  = api.getCurrentUser();
+    const today = new Date().toISOString().split('T')[0];
+
+    const failWarning = !iePasses ? `
+    <div class="flex items-start gap-2.5 p-3 rounded-md border text-xs" style="background:#FEF2F2;border-color:#FECACA;color:#991B1B">
+        <i data-lucide="alert-triangle" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
+        <strong>Screen Failure:</strong>&nbsp;Subject failed I/E criteria. They will be enrolled with status <strong>Screen Failed</strong> for documentation purposes per ICH GCP E6(R2) §8.3.
+    </div>` : `
+    <div class="flex items-start gap-2.5 p-3 rounded-md border text-xs" style="background:#F0FDF4;border-color:#A7F3D0;color:#065F46">
+        <i data-lucide="check-circle" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
+        All I/E criteria satisfied. Subject qualifies for enrollment.
+    </div>`;
+
+    showModal({
+        title: 'Step 2 of 2 — Subject Demographics',
         size: 'md',
         body: `
         <form id="new-subject-form" class="space-y-4" novalidate>
+            ${failWarning}
             <div class="grid grid-cols-2 gap-4">
                 <div class="col-span-2">
                     <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Subject Code <span class="text-red-500">*</span></label>
@@ -229,13 +343,12 @@ window.openNewSubjectModal = async function () {
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Date of Birth <span class="text-red-500">*</span></label>
-                    <input type="date" id="ns-dob" max="${new Date().toISOString().split('T')[0]}"
+                    <input type="date" id="ns-dob" max="${today}"
                         class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none">
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Enrollment Date (Day 1) <span class="text-red-500">*</span></label>
-                    <input type="date" id="ns-enroll" value="${new Date().toISOString().split('T')[0]}"
-                        max="${new Date().toISOString().split('T')[0]}"
+                    <input type="date" id="ns-enroll" value="${today}" max="${today}"
                         class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none">
                 </div>
                 <div class="col-span-2">
@@ -243,17 +356,19 @@ window.openNewSubjectModal = async function () {
                     <select id="ns-site"
                         class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
                         <option value="">— Select Site —</option>
-                        ${sites.map(s => `<option value="${s.id}">${esc(s.site_code)} – ${esc(s.site_name)}</option>`).join('')}
+                        ${sites.map(s => `<option value="${s.id}" ${user.siteId === s.id ? 'selected' : ''}>${esc(s.site_code)} – ${esc(s.site_name)}</option>`).join('')}
                     </select>
                 </div>
             </div>
             <div id="ns-error" class="hidden p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700"></div>
         </form>`,
         footer: `
-        <button onclick="closeModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition">Cancel</button>
-        <button onclick="submitNewSubject()" class="px-4 py-2 text-sm btn-primary rounded-md">Enroll Subject</button>`,
+        <button onclick="openIECriteriaModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition flex items-center gap-1.5">
+            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Back
+        </button>
+        <button onclick="submitNewSubject()" class="px-4 py-2 text-sm btn-primary rounded-md">${iePasses ? 'Enroll Subject' : 'Record Screen Failure'}</button>`,
     });
-};
+}
 
 window.submitNewSubject = async function () {
     const codeRaw = document.getElementById('ns-code').value.trim();
@@ -271,10 +386,23 @@ window.submitNewSubject = async function () {
         return;
     }
     const subject_code = codeRaw.startsWith('S-') ? codeRaw : `S-${codeRaw}`;
+    const iePasses = window._iePasses !== false;
+
     try {
-        await api.createSubject({ subject_code, initial, gender, dob, enrollment_date: enroll, site_id });
+        const created = await api.createSubject({ subject_code, initial, gender, dob, enrollment_date: enroll, site_id });
+
+        // Record I/E assessment if criteria were collected
+        if (window._ieCriteriaResults?.length) {
+            await api.submitIEAssessment(created.id, window._ieCriteriaResults, iePasses);
+        }
+
         closeModal();
-        showToast(`Subject ${subject_code} enrolled successfully.`, 'success');
+        window._ieCriteriaResults = null;
+        window._iePasses = null;
+        const msg = iePasses
+            ? `Subject ${subject_code} enrolled successfully.`
+            : `Subject ${subject_code} recorded as Screen Failed.`;
+        showToast(msg, iePasses ? 'success' : 'warning');
         await renderSubjects();
     } catch (err) {
         errEl.textContent = err.message;
@@ -296,7 +424,6 @@ export async function renderSubjectDetail(id) {
     const allEntries    = await api.getDataEntries(id);
     const user          = api.getCurrentUser();
     const canManageVisit = user.role === 'investigator' || user.role === 'admin';
-    const today         = new Date().toISOString().split('T')[0];
 
     content.innerHTML = `
     <div class="p-5 space-y-4">
@@ -440,6 +567,7 @@ export async function renderSubjectDetail(id) {
 
         const ENTRY_BADGE = {
             Locked:        'badge badge-locked',
+            Signed:        'badge bg-violet-100 text-violet-700 border border-violet-300',
             Submitted:     'badge badge-saved',
             Draft:         'badge badge-draft',
             'Not Started': 'badge bg-slate-100 text-slate-500',
@@ -458,8 +586,8 @@ export async function renderSubjectDetail(id) {
             ${fms.map(form => {
                 const entry       = entries.find(e => e.form_id === form.id);
                 const entryStatus = entry?.status || 'Not Started';
-                const canEdit     = entryStatus !== 'Locked' && (u.role === 'investigator' || u.role === 'admin');
-                const canLock     = entryStatus === 'Submitted' && (u.role === 'cra' || u.role === 'admin');
+                const canEdit     = entryStatus !== 'Locked' && entryStatus !== 'Signed' && (u.role === 'investigator' || u.role === 'admin');
+                const canLock     = (entryStatus === 'Submitted' || entryStatus === 'Signed') && (u.role === 'cra' || u.role === 'admin');
                 return `<tr>
                     <td>
                         <div class="flex items-center gap-2.5">
