@@ -10,10 +10,22 @@ async function apiFetch(path, options = {}) {
         headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     });
     if (res.status === 401) {
-        // Session expired — clear local state and redirect to login
-        localStorage.removeItem('ecrf_session');
-        window.location.href = 'login.html';
-        throw new Error('Session expired. Please log in again.');
+        const sessionStr = localStorage.getItem('ecrf_session');
+        if (sessionStr) {
+            try {
+                const s = JSON.parse(sessionStr);
+                const ageMs = Date.now() - new Date(s.loginAt || 0).getTime();
+                if (ageMs > 60000) {
+                    localStorage.removeItem('ecrf_session');
+                    window.location.href = 'login.html';
+                    throw new Error('Session expired. Please log in again.');
+                }
+            } catch (e) {
+                if (e.message === 'Session expired. Please log in again.') throw e;
+            }
+        }
+        const err = await res.json().catch(() => ({ error: 'Unauthorized' }));
+        throw new Error(err.error || 'Unauthorized');
     }
     if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
