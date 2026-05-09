@@ -8,27 +8,40 @@ const router = Router();
 // GET /api/dashboard/stats
 router.get('/stats', async (req, res) => {
     try {
-        const [[{ total: totalSubjects }], [{ active: activeSubjects }]] = await Promise.all([
+        // Run all 6 queries in parallel — single round-trip batch
+        const [
+            [{ total: totalSubjects }],
+            [{ active: activeSubjects }],
+            [{ pending: pendingForms }],
+            [{ open: openQueries }],
+            [{ total: totalVisits }],
+            recentAudit,
+        ] = await Promise.all([
             db.select({ total: count() }).from(subjects),
             db.select({ active: count() }).from(subjects).where(eq(subjects.status, 'Active')),
-        ]);
-
-        const [[{ pending: pendingForms }], [{ open: openQueries }], [{ total: totalVisits }]] = await Promise.all([
             db.select({ pending: count() }).from(crfDataEntries).where(eq(crfDataEntries.status, 'Draft')),
             db.select({ open: count() }).from(queries).where(eq(queries.status, 'Open')),
             db.select({ total: count() }).from(visits),
+            db.select({
+                id:        auditTrails.id,
+                action:    auditTrails.action,
+                tableName: auditTrails.tableName,
+                recordId:  auditTrails.recordId,
+                reason:    auditTrails.reason,
+                userName:  auditTrails.userName,
+                userRole:  auditTrails.userRole,
+                createdAt: auditTrails.createdAt,
+            }).from(auditTrails)
+              .orderBy(desc(auditTrails.createdAt))
+              .limit(8),
         ]);
 
-        const recentAudit = await db.select().from(auditTrails)
-            .orderBy(desc(auditTrails.createdAt))
-            .limit(8);
-
         res.json({
-            activeSubjects:  Number(activeSubjects),
-            totalSubjects:   Number(totalSubjects),
-            pendingForms:    Number(pendingForms),
-            openQueries:     Number(openQueries),
-            totalVisits:     Number(totalVisits),
+            activeSubjects: Number(activeSubjects),
+            totalSubjects:  Number(totalSubjects),
+            pendingForms:   Number(pendingForms),
+            openQueries:    Number(openQueries),
+            totalVisits:    Number(totalVisits),
             recentAudit,
         });
     } catch (err) {

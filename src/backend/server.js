@@ -62,6 +62,12 @@ async function runMigrations() {
             assessed_by_name TEXT,
             assessed_at      TIMESTAMP NOT NULL DEFAULT NOW()
         )`,
+        // Performance: index for audit trail ORDER BY created_at DESC
+        `CREATE INDEX IF NOT EXISTS idx_audit_trails_created_at ON audit_trails (created_at DESC)`,
+        // Performance: index for queries by status (dashboard open count)
+        `CREATE INDEX IF NOT EXISTS idx_queries_status ON queries (status)`,
+        // Performance: index for subjects by status (dashboard active count)
+        `CREATE INDEX IF NOT EXISTS idx_subjects_status ON subjects (status)`,
     ];
     for (const stmt of stmts) {
         await client.unsafe(stmt);
