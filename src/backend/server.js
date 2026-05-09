@@ -73,6 +73,9 @@ async function runMigrations() {
         await client.unsafe(stmt);
     }
 }
+// Run migrations async — server starts immediately, migrations complete before first real request
+runMigrations().catch(err => console.warn('Migration warning:', err.message));
+
 const app = express();
 
 app.use(cors({
@@ -113,11 +116,7 @@ app.use(express.static(rootDir));
 app.get('/', (_req, res) => res.sendFile(path.join(rootDir, 'login.html')));
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
-runMigrations()
-    .catch(err => console.warn('Migration warning:', err.message))
-    .finally(() => {
-        app.listen(PORT, () => {
-            console.log(`E-CRF Server running on http://localhost:${PORT}`);
-            console.log(`Better Auth endpoint: http://localhost:${PORT}/api/auth`);
-        });
-    });
+app.listen(PORT, () => {
+    console.log(`E-CRF Server running on http://localhost:${PORT}`);
+    console.log(`Better Auth endpoint: http://localhost:${PORT}/api/auth`);
+});
