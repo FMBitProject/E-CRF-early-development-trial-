@@ -8,17 +8,22 @@ import { auth } from './auth/better-auth.js';
 import { requireAuth } from './middleware/auth.js';
 import { client } from './db/connection.js';
 
-import subjectsRouter   from './routes/subjects.js';
-import visitsRouter     from './routes/visits.js';
-import formsRouter      from './routes/forms.js';
-import entriesRouter    from './routes/entries.js';
-import auditRouter      from './routes/audit.js';
-import queriesRouter    from './routes/queries.js';
-import mfaRouter        from './routes/mfa.js';
-import registerRouter   from './routes/register.js';
-import sitesRouter      from './routes/sites.js';
-import dashboardRouter  from './routes/dashboard.js';
-import signaturesRouter from './routes/signatures.js';
+import subjectsRouter      from './routes/subjects.js';
+import visitsRouter        from './routes/visits.js';
+import formsRouter         from './routes/forms.js';
+import entriesRouter       from './routes/entries.js';
+import auditRouter         from './routes/audit.js';
+import queriesRouter       from './routes/queries.js';
+import mfaRouter           from './routes/mfa.js';
+import registerRouter      from './routes/register.js';
+import sitesRouter         from './routes/sites.js';
+import dashboardRouter     from './routes/dashboard.js';
+import signaturesRouter    from './routes/signatures.js';
+import adverseEventsRouter from './routes/adverseevents.js';
+import deviationsRouter    from './routes/deviations.js';
+import consentsRouter      from './routes/consents.js';
+import randomizationRouter from './routes/randomization.js';
+import exportRouter        from './routes/export.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir   = path.resolve(__dirname, '../../');
@@ -68,6 +73,100 @@ async function runMigrations() {
         `CREATE INDEX IF NOT EXISTS idx_queries_status ON queries (status)`,
         // Performance: index for subjects by status (dashboard active count)
         `CREATE INDEX IF NOT EXISTS idx_subjects_status ON subjects (status)`,
+        // Tier 1 — Adverse Events / SAE
+        `CREATE TABLE IF NOT EXISTS adverse_events (
+            id                        SERIAL PRIMARY KEY,
+            subject_id                INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+            ae_term                   TEXT NOT NULL,
+            meddra_pt                 TEXT,
+            meddra_soc                TEXT,
+            onset_date                TEXT,
+            resolution_date           TEXT,
+            outcome                   TEXT,
+            severity                  TEXT NOT NULL,
+            is_serious                BOOLEAN NOT NULL DEFAULT FALSE,
+            serious_criteria          JSONB NOT NULL DEFAULT '[]',
+            causality                 TEXT,
+            action_taken              TEXT,
+            narrative                 TEXT,
+            report_status             TEXT NOT NULL DEFAULT 'Draft',
+            reported_to_sponsor_at    TIMESTAMP,
+            reported_to_irb_at        TIMESTAMP,
+            requires_expedited_report BOOLEAN NOT NULL DEFAULT FALSE,
+            expedited_deadline        TIMESTAMP,
+            created_by                TEXT REFERENCES "user"(id),
+            created_by_name           TEXT,
+            created_at                TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_by                TEXT REFERENCES "user"(id),
+            updated_at                TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_ae_subject ON adverse_events (subject_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_ae_is_serious ON adverse_events (is_serious)`,
+        // Tier 1 — Protocol Deviations
+        `CREATE TABLE IF NOT EXISTS protocol_deviations (
+            id                 SERIAL PRIMARY KEY,
+            subject_id         INTEGER REFERENCES subjects(id) ON DELETE CASCADE,
+            deviation_type     TEXT NOT NULL,
+            category           TEXT,
+            description        TEXT NOT NULL,
+            deviation_date     TEXT,
+            discovery_date     TEXT,
+            root_cause         TEXT,
+            impact_on_subject  TEXT,
+            capa               TEXT,
+            reported_to_irb    BOOLEAN NOT NULL DEFAULT FALSE,
+            reported_to_irb_at TIMESTAMP,
+            status             TEXT NOT NULL DEFAULT 'Open',
+            created_by         TEXT REFERENCES "user"(id),
+            created_by_name    TEXT,
+            created_at         TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_by         TEXT REFERENCES "user"(id),
+            updated_at         TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_deviations_status ON protocol_deviations (status)`,
+        // Tier 1 — Informed Consent (UU PDP)
+        `CREATE TABLE IF NOT EXISTS informed_consents (
+            id               SERIAL PRIMARY KEY,
+            subject_id       INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+            consent_version  TEXT NOT NULL,
+            consent_date     TEXT NOT NULL,
+            consent_type     TEXT NOT NULL DEFAULT 'Initial',
+            language         TEXT NOT NULL DEFAULT 'Indonesian',
+            witness_name     TEXT,
+            notes            TEXT,
+            is_withdrawn     BOOLEAN NOT NULL DEFAULT FALSE,
+            withdrawn_at     TIMESTAMP,
+            withdrawn_reason TEXT,
+            created_by       TEXT REFERENCES "user"(id),
+            created_by_name  TEXT,
+            created_at       TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_consents_subject ON informed_consents (subject_id)`,
+        // Tier 1 — Randomization List
+        `CREATE TABLE IF NOT EXISTS randomization_list (
+            id            SERIAL PRIMARY KEY,
+            rand_code     TEXT NOT NULL UNIQUE,
+            treatment_arm TEXT NOT NULL,
+            stratum       TEXT,
+            is_used       BOOLEAN NOT NULL DEFAULT FALSE,
+            uploaded_by   TEXT REFERENCES "user"(id),
+            uploaded_at   TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        // Tier 1 — Subject Randomization Assignments
+        `CREATE TABLE IF NOT EXISTS subject_randomization (
+            id                SERIAL PRIMARY KEY,
+            subject_id        INTEGER NOT NULL UNIQUE REFERENCES subjects(id),
+            rand_code         TEXT NOT NULL UNIQUE,
+            treatment_arm     TEXT NOT NULL,
+            stratum           TEXT,
+            is_blinded        BOOLEAN NOT NULL DEFAULT TRUE,
+            unblinded_at      TIMESTAMP,
+            unblinded_by      TEXT REFERENCES "user"(id),
+            unblind_reason    TEXT,
+            randomized_at     TIMESTAMP NOT NULL DEFAULT NOW(),
+            randomized_by     TEXT REFERENCES "user"(id),
+            randomized_by_name TEXT
+        )`,
     ];
     for (const stmt of stmts) {
         await client.unsafe(stmt);
@@ -106,9 +205,14 @@ app.use('/api/queries',              requireAuth, queriesRouter);
 
 app.use('/api/mfa',      mfaRouter);
 app.use('/api/register', registerRouter);
-app.use('/api/sites',       requireAuth, sitesRouter);
-app.use('/api/dashboard',   requireAuth, dashboardRouter);
-app.use('/api/signatures',  requireAuth, signaturesRouter);
+app.use('/api/sites',          requireAuth, sitesRouter);
+app.use('/api/dashboard',      requireAuth, dashboardRouter);
+app.use('/api/signatures',     requireAuth, signaturesRouter);
+app.use('/api/ae',             requireAuth, adverseEventsRouter);
+app.use('/api/deviations',     requireAuth, deviationsRouter);
+app.use('/api/consents',       requireAuth, consentsRouter);
+app.use('/api/randomization',  requireAuth, randomizationRouter);
+app.use('/api/export',         requireAuth, exportRouter);
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
 // Serve all static frontend files from project root

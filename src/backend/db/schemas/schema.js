@@ -179,6 +179,104 @@ export const ieAssessments = pgTable('ie_assessments', {
     assessedAt:      timestamp('assessed_at').notNull().defaultNow(),
 });
 
+// ─── Adverse Events / SAE ────────────────────────────────────────────────────
+
+export const adverseEvents = pgTable('adverse_events', {
+    id:                      integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    subjectId:               integer('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
+    aeTerm:                  text('ae_term').notNull(),
+    meddraPt:                text('meddra_pt'),
+    meddraSoc:               text('meddra_soc'),
+    onsetDate:               text('onset_date'),
+    resolutionDate:          text('resolution_date'),
+    outcome:                 text('outcome'),
+    severity:                text('severity').notNull(),
+    isSerious:               boolean('is_serious').notNull().default(false),
+    seriousCriteria:         jsonb('serious_criteria').default('[]'),
+    causality:               text('causality'),
+    actionTaken:             text('action_taken'),
+    narrative:               text('narrative'),
+    reportStatus:            text('report_status').notNull().default('Draft'),
+    reportedToSponsorAt:     timestamp('reported_to_sponsor_at'),
+    reportedToIrbAt:         timestamp('reported_to_irb_at'),
+    requiresExpeditedReport: boolean('requires_expedited_report').notNull().default(false),
+    expeditedDeadline:       timestamp('expedited_deadline'),
+    createdBy:               text('created_by').references(() => user.id),
+    createdByName:           text('created_by_name'),
+    createdAt:               timestamp('created_at').notNull().defaultNow(),
+    updatedBy:               text('updated_by').references(() => user.id),
+    updatedAt:               timestamp('updated_at').notNull().defaultNow(),
+});
+
+// ─── Protocol Deviations ─────────────────────────────────────────────────────
+
+export const protocolDeviations = pgTable('protocol_deviations', {
+    id:               integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    subjectId:        integer('subject_id').references(() => subjects.id, { onDelete: 'cascade' }),
+    deviationType:    text('deviation_type').notNull(),
+    category:         text('category'),
+    description:      text('description').notNull(),
+    deviationDate:    text('deviation_date'),
+    discoveryDate:    text('discovery_date'),
+    rootCause:        text('root_cause'),
+    impactOnSubject:  text('impact_on_subject'),
+    capa:             text('capa'),
+    reportedToIrb:    boolean('reported_to_irb').notNull().default(false),
+    reportedToIrbAt:  timestamp('reported_to_irb_at'),
+    status:           text('status').notNull().default('Open'),
+    createdBy:        text('created_by').references(() => user.id),
+    createdByName:    text('created_by_name'),
+    createdAt:        timestamp('created_at').notNull().defaultNow(),
+    updatedBy:        text('updated_by').references(() => user.id),
+    updatedAt:        timestamp('updated_at').notNull().defaultNow(),
+});
+
+// ─── Informed Consent (UU PDP / ICH GCP) ────────────────────────────────────
+
+export const informedConsents = pgTable('informed_consents', {
+    id:              integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    subjectId:       integer('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
+    consentVersion:  text('consent_version').notNull(),
+    consentDate:     text('consent_date').notNull(),
+    consentType:     text('consent_type').notNull().default('Initial'),
+    language:        text('language').notNull().default('Indonesian'),
+    witnessName:     text('witness_name'),
+    notes:           text('notes'),
+    isWithdrawn:     boolean('is_withdrawn').notNull().default(false),
+    withdrawnAt:     timestamp('withdrawn_at'),
+    withdrawnReason: text('withdrawn_reason'),
+    createdBy:       text('created_by').references(() => user.id),
+    createdByName:   text('created_by_name'),
+    createdAt:       timestamp('created_at').notNull().defaultNow(),
+});
+
+// ─── Randomization ───────────────────────────────────────────────────────────
+
+export const randomizationList = pgTable('randomization_list', {
+    id:                integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    randCode:          text('rand_code').notNull().unique(),
+    treatmentArm:      text('treatment_arm').notNull(),
+    stratum:           text('stratum'),
+    isUsed:            boolean('is_used').notNull().default(false),
+    uploadedBy:        text('uploaded_by').references(() => user.id),
+    uploadedAt:        timestamp('uploaded_at').notNull().defaultNow(),
+});
+
+export const subjectRandomization = pgTable('subject_randomization', {
+    id:               integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    subjectId:        integer('subject_id').notNull().unique().references(() => subjects.id),
+    randCode:         text('rand_code').notNull().unique(),
+    treatmentArm:     text('treatment_arm').notNull(),
+    stratum:          text('stratum'),
+    isBlinded:        boolean('is_blinded').notNull().default(true),
+    unblindedAt:      timestamp('unblinded_at'),
+    unblindedBy:      text('unblinded_by').references(() => user.id),
+    unblindReason:    text('unblind_reason'),
+    randomizedAt:     timestamp('randomized_at').notNull().defaultNow(),
+    randomizedBy:     text('randomized_by').references(() => user.id),
+    randomizedByName: text('randomized_by_name'),
+});
+
 export const queryStatusEnum = pgEnum('query_status', ['Open', 'Resolved', 'Closed']);
 
 export const queries = pgTable('queries', {

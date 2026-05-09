@@ -9,6 +9,10 @@ import { renderSubjects, renderSubjectDetail } from './modules/subjects.js';
 import { renderDataEntry } from './modules/forms.js';
 import { renderAuditTrail } from './modules/audit.js';
 import { renderQueries } from './modules/queries.js';
+import { renderAdverseEvents } from './modules/adverseevents.js';
+import { renderDeviations } from './modules/deviations.js';
+import { renderConsents } from './modules/consents.js';
+import { renderRandomization } from './modules/randomization.js';
 
 export { showToast, showModal, closeModal };
 
@@ -21,10 +25,14 @@ if (!user) {
 
 // ---- Navigation Config ----
 const NAV_ITEMS = [
-    { id: 'dashboard', label: 'Dashboard',   icon: 'layout-dashboard', roles: ['admin', 'investigator', 'cra', 'crc'] },
-    { id: 'subjects',  label: 'Subjects',    icon: 'users',            roles: ['admin', 'investigator', 'cra', 'crc'] },
-    { id: 'queries',   label: 'Queries',     icon: 'message-square',   roles: ['admin', 'cra', 'investigator'] },
-    { id: 'audit',     label: 'Audit Trail', icon: 'shield-check',     roles: ['admin', 'cra'] },
+    { id: 'dashboard',      label: 'Dashboard',     icon: 'layout-dashboard', roles: ['admin', 'investigator', 'cra', 'crc'] },
+    { id: 'subjects',       label: 'Subjects',      icon: 'users',            roles: ['admin', 'investigator', 'cra', 'crc'] },
+    { id: 'ae',             label: 'Adverse Events',icon: 'activity',         roles: ['admin', 'investigator', 'cra'] },
+    { id: 'deviations',     label: 'Deviations',    icon: 'alert-triangle',   roles: ['admin', 'investigator', 'cra'] },
+    { id: 'consents',       label: 'Consent',       icon: 'file-check',       roles: ['admin', 'investigator', 'cra'] },
+    { id: 'randomization',  label: 'Randomization', icon: 'shuffle',          roles: ['admin'] },
+    { id: 'queries',        label: 'Queries',       icon: 'message-square',   roles: ['admin', 'cra', 'investigator'] },
+    { id: 'audit',          label: 'Audit Trail',   icon: 'shield-check',     roles: ['admin', 'cra'] },
 ];
 
 const ROLE_CONFIG = {
@@ -182,6 +190,22 @@ const routes = {
         renderBreadcrumb([{ label: 'Data Queries', route: 'queries' }]);
         await renderQueries();
     },
+    'ae': async () => {
+        renderBreadcrumb([{ label: 'Adverse Events', route: 'ae' }]);
+        await renderAdverseEvents();
+    },
+    'deviations': async () => {
+        renderBreadcrumb([{ label: 'Protocol Deviations', route: 'deviations' }]);
+        await renderDeviations();
+    },
+    'consents': async () => {
+        renderBreadcrumb([{ label: 'Informed Consent', route: 'consents' }]);
+        await renderConsents();
+    },
+    'randomization': async () => {
+        renderBreadcrumb([{ label: 'Randomization', route: 'randomization' }]);
+        await renderRandomization();
+    },
 };
 
 // ---- Router ----
@@ -200,6 +224,8 @@ function parseRoute(hash) {
     if (m) return { key: 'subjects/:id', params: [m[1]] };
 
     if (routes[path]) return { key: path, params: [] };
+    // Alias /adverse-events → ae for external links
+    if (path === 'adverse-events') return { key: 'ae', params: [] };
     return { key: 'dashboard', params: [] };
 }
 

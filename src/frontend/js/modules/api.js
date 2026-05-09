@@ -413,6 +413,152 @@ export const api = {
         const rows = await apiFetch('/api/sites');
         return rows.map(mapSite);
     },
+
+    // ── Adverse Events / SAE ───────────────────────────────
+    async getAdverseEvents(filters = {}) {
+        const params = new URLSearchParams();
+        if (filters.subjectId) params.set('subjectId', filters.subjectId);
+        if (filters.serious)   params.set('serious', filters.serious);
+        if (filters.status)    params.set('status', filters.status);
+        return apiFetch(`/api/ae?${params}`);
+    },
+
+    async getAEStats() {
+        return apiFetch('/api/ae/stats');
+    },
+
+    async createAdverseEvent(payload) {
+        return apiFetch('/api/ae', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+    },
+
+    async updateAdverseEvent(id, payload) {
+        return apiFetch(`/api/ae/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+        });
+    },
+
+    async reportAdverseEvent(id, { reportedToSponsor, reportedToIrb }) {
+        return apiFetch(`/api/ae/${id}/report`, {
+            method: 'PATCH',
+            body: JSON.stringify({ reportedToSponsor, reportedToIrb }),
+        });
+    },
+
+    async closeAdverseEvent(id) {
+        return apiFetch(`/api/ae/${id}/close`, { method: 'PATCH', body: JSON.stringify({}) });
+    },
+
+    // ── Protocol Deviations ────────────────────────────────
+    async getDeviations(filters = {}) {
+        const params = new URLSearchParams();
+        if (filters.subjectId) params.set('subjectId', filters.subjectId);
+        if (filters.status)    params.set('status', filters.status);
+        if (filters.type)      params.set('type', filters.type);
+        return apiFetch(`/api/deviations?${params}`);
+    },
+
+    async getDeviationStats() {
+        return apiFetch('/api/deviations/stats');
+    },
+
+    async createDeviation(payload) {
+        return apiFetch('/api/deviations', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+    },
+
+    async updateDeviation(id, payload) {
+        return apiFetch(`/api/deviations/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+        });
+    },
+
+    async reportDeviationToIrb(id) {
+        return apiFetch(`/api/deviations/${id}/report-irb`, { method: 'PATCH', body: JSON.stringify({}) });
+    },
+
+    async advanceDeviationStatus(id, status) {
+        return apiFetch(`/api/deviations/${id}/status`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status }),
+        });
+    },
+
+    // ── Informed Consents ──────────────────────────────────
+    async getConsents(filters = {}) {
+        const params = new URLSearchParams();
+        if (filters.subjectId) params.set('subjectId', filters.subjectId);
+        return apiFetch(`/api/consents?${params}`);
+    },
+
+    async getConsentStats() {
+        return apiFetch('/api/consents/stats');
+    },
+
+    async createConsent(payload) {
+        return apiFetch('/api/consents', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+    },
+
+    async withdrawConsent(id, reason) {
+        return apiFetch(`/api/consents/${id}/withdraw`, {
+            method: 'PATCH',
+            body: JSON.stringify({ reason }),
+        });
+    },
+
+    // ── Randomization ──────────────────────────────────────
+    async getRandomizationList() {
+        return apiFetch('/api/randomization/list');
+    },
+
+    async uploadRandomizationList(entries) {
+        return apiFetch('/api/randomization/list', {
+            method: 'POST',
+            body: JSON.stringify({ entries }),
+        });
+    },
+
+    async getRandomization(filters = {}) {
+        const params = new URLSearchParams();
+        if (filters.subjectId) params.set('subjectId', filters.subjectId);
+        return apiFetch(`/api/randomization?${params}`);
+    },
+
+    async getRandomizationStats() {
+        return apiFetch('/api/randomization/stats');
+    },
+
+    async randomizeSubject(subjectId, stratum) {
+        return apiFetch('/api/randomization', {
+            method: 'POST',
+            body: JSON.stringify({ subjectId, stratum }),
+        });
+    },
+
+    async unblindSubject(id, reason) {
+        return apiFetch(`/api/randomization/${id}/unblind`, {
+            method: 'PATCH',
+            body: JSON.stringify({ reason }),
+        });
+    },
+
+    // ── Export ─────────────────────────────────────────────
+    downloadODM() {
+        window.open('/api/export/odm', '_blank');
+    },
+
+    downloadCSV(domain) {
+        window.open(`/api/export/csv?domain=${domain}`, '_blank');
+    },
 };
 
 window.api = api;
