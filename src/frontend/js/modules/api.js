@@ -9,6 +9,12 @@ async function apiFetch(path, options = {}) {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     });
+    if (res.status === 401) {
+        // Session expired — clear local state and redirect to login
+        localStorage.removeItem('ecrf_session');
+        window.location.href = 'login.html';
+        throw new Error('Session expired. Please log in again.');
+    }
     if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error(err.error || 'Request failed');
