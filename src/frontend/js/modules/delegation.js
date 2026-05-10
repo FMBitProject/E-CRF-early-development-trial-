@@ -29,18 +29,12 @@ export async function renderDelegation(container) {
         return;
     }
 
-    let [delegations, trainings, expiring, users] = [[], [], [], []];
-    try {
-        [delegations, trainings, expiring, users] = await Promise.all([
-            api.getDelegations(),
-            api.getTrainingRecords(),
-            api.getExpiringTrainings(30),
-            api.getSecurityUsers(),
-        ]);
-    } catch (err) {
-        container.innerHTML = `<div style="padding:2rem;color:#dc2626;">Failed to load: ${err.message}</div>`;
-        return;
-    }
+    const [delegations, trainings, expiring, users] = await Promise.all([
+        api.getDelegations().catch(() => []),
+        api.getTrainingRecords().catch(() => []),
+        api.getExpiringTrainings(30).catch(() => []),
+        api.getSecurityUsers().catch(() => []),
+    ]);
 
     container.innerHTML = renderDelegationPage(delegations, trainings, expiring, users, role);
     attachDelegationEvents(container, delegations, trainings, users, role);

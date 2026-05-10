@@ -14,6 +14,10 @@ const router = Router();
 // DELEGATION LOG
 // ---------------------------------------------------------------------------
 
+function isMissingTable(err) {
+    return err.message?.includes('does not exist') || err.code === '42P01';
+}
+
 // GET /api/delegation — list all delegation entries
 router.get('/', requireRole('admin', 'cra'), async (req, res) => {
     try {
@@ -28,6 +32,7 @@ router.get('/', requireRole('admin', 'cra'), async (req, res) => {
             .orderBy(desc(delegationLog.createdAt));
         res.json(rows);
     } catch (err) {
+        if (isMissingTable(err)) return res.json([]);
         res.status(500).json({ error: err.message });
     }
 });
@@ -50,6 +55,7 @@ router.get('/training/records', requireRole('admin', 'cra'), async (req, res) =>
             .orderBy(desc(trainingRecords.trainingDate));
         res.json(rows);
     } catch (err) {
+        if (isMissingTable(err)) return res.json([]);
         res.status(500).json({ error: err.message });
     }
 });
@@ -104,6 +110,7 @@ router.get('/training/expiring', requireRole('admin', 'cra'), async (req, res) =
             .orderBy(trainingRecords.expiryDate);
         res.json(rows);
     } catch (err) {
+        if (isMissingTable(err)) return res.json([]);
         res.status(500).json({ error: err.message });
     }
 });
