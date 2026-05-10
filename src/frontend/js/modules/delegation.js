@@ -1,7 +1,7 @@
 // Delegation Log & Training Records — ICH GCP E6(R3) §4.1.5 + §8.3
 
 import { api } from './api.js';
-import { showToast } from './toast.js';
+import { showToast } from './utils.js';
 
 const TASK_OPTIONS = [
     'Data Entry', 'Query Resolution', 'Source Data Verification',

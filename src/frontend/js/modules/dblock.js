@@ -2,7 +2,7 @@
 // Dual-signature workflow: CRA initiates + signs → Admin signs → Locked
 
 import { api } from './api.js';
-import { showToast } from './toast.js';
+import { showToast } from './utils.js';
 
 export async function renderDblock(container) {
     container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;padding:3rem;">
