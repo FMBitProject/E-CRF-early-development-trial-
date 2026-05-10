@@ -20,8 +20,8 @@ export async function renderDelegation(container) {
     container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;padding:3rem;">
         <span style="color:#6b7280;">Loading delegation log…</span></div>`;
 
-    const user = JSON.parse(sessionStorage.getItem('ecrf_user') || '{}');
-    const role = user.role ?? '';
+    const user = api.getCurrentUser();
+    const role = user?.role ?? '';
 
     if (!['admin', 'cra'].includes(role)) {
         container.innerHTML = `<div style="padding:2rem;color:#dc2626;text-align:center;">

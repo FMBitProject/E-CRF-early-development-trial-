@@ -16,8 +16,8 @@ export async function renderDblock(container) {
         return;
     }
 
-    const user = JSON.parse(sessionStorage.getItem('ecrf_user') || '{}');
-    const role = user.role ?? '';
+    const user = api.getCurrentUser();
+    const role = user?.role ?? '';
 
     container.innerHTML = renderDblockPage(statusData, role);
     attachDblockEvents(container, statusData, role);
