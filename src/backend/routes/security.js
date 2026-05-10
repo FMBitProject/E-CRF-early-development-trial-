@@ -15,12 +15,20 @@ const router = Router();
 // GET /api/security/password-status — check expiry for current user
 router.get('/password-status', async (req, res) => {
     try {
-        const [meta] = await db.select().from(passwordMeta)
+        let [meta] = await db.select().from(passwordMeta)
             .where(eq(passwordMeta.userId, req.user.id));
-        const expiry = checkPasswordExpiry(meta?.lastChangedAt ?? null);
+        // Auto-initialize for accounts created before password_meta existed
+        if (!meta) {
+            const now = new Date();
+            await db.insert(passwordMeta)
+                .values({ userId: req.user.id, lastChangedAt: now, mustChange: false })
+                .onConflictDoNothing();
+            meta = { lastChangedAt: now, mustChange: false };
+        }
+        const expiry = checkPasswordExpiry(meta.lastChangedAt);
         res.json({
-            lastChangedAt: meta?.lastChangedAt ?? null,
-            mustChange:    meta?.mustChange    ?? false,
+            lastChangedAt: meta.lastChangedAt,
+            mustChange:    meta.mustChange,
             ...expiry,
             policy: {
                 minLength:   POLICY.minLength,

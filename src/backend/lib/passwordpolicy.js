@@ -67,7 +67,7 @@ export function passwordStrength(password) {
  * Returns { expired, daysLeft, warningSoon }.
  */
 export function checkPasswordExpiry(lastChangedAt) {
-    if (!lastChangedAt) return { expired: true, daysLeft: 0, warningSoon: true };
+    if (!lastChangedAt) return { expired: false, daysLeft: POLICY.expiryDays, warningSoon: false };
     const msSince = Date.now() - new Date(lastChangedAt).getTime();
     const daysSince = msSince / 86400000;
     const daysLeft = Math.floor(POLICY.expiryDays - daysSince);
