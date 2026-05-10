@@ -120,6 +120,43 @@ function renderDelegationPage(delegations, trainings, expiring, users, role) {
             </div>
         </div>
 
+            <!-- User Management -->
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:2rem;">
+                <div style="padding:0.75rem 1rem;background:#f9fafb;display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-weight:600;font-size:0.95rem;">User Management</span>
+                    <span style="font-size:0.8rem;color:#6b7280;">${users.length} accounts</span>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table style="width:100%;border-collapse:collapse;">
+                        <thead><tr style="background:#f9fafb;">
+                            <th style="padding:0.6rem 0.75rem;text-align:left;font-size:0.8rem;color:#6b7280;">Name</th>
+                            <th style="padding:0.6rem 0.75rem;text-align:left;font-size:0.8rem;color:#6b7280;">Email</th>
+                            <th style="padding:0.6rem 0.75rem;text-align:left;font-size:0.8rem;color:#6b7280;">Role</th>
+                            <th style="padding:0.6rem 0.75rem;text-align:left;font-size:0.8rem;color:#6b7280;">Joined</th>
+                            <th style="padding:0.6rem 0.75rem;text-align:left;font-size:0.8rem;color:#6b7280;"></th>
+                        </tr></thead>
+                        <tbody>
+                            ${users.map(u => `
+                            <tr>
+                                <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-weight:500;">${u.name}</td>
+                                <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;color:#6b7280;font-size:0.88rem;">${u.email}</td>
+                                <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;text-transform:capitalize;font-size:0.88rem;">${u.role}</td>
+                                <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-size:0.85rem;color:#9ca3af;">${u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}</td>
+                                <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;text-align:right;">
+                                    <button class="btn-delete-user" data-id="${u.id}" data-name="${u.name}"
+                                        style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;
+                                               padding:0.3rem 0.75rem;cursor:pointer;font-size:0.8rem;font-weight:500;">
+                                        Delete
+                                    </button>
+                                </td>
+                            </tr>`).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        ${renderDeleteUserModal()}
         ${renderDelegationModal(users)}
         ${renderTrainingModal(users)}
     `;
@@ -169,6 +206,39 @@ function renderTrainingRow(t) {
             </td>
             <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-size:0.85rem;color:#6b7280;">${t.certificateRef ?? '—'}</td>
         </tr>
+    `;
+}
+
+function renderDeleteUserModal() {
+    return `
+        <div id="delete-user-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);
+             z-index:10000;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:12px;padding:2rem;max-width:440px;width:90%;
+                        box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+                <h2 style="margin:0 0 0.5rem;font-size:1.1rem;color:#dc2626;">Delete User Account</h2>
+                <p style="margin:0 0 1rem;color:#6b7280;font-size:0.9rem;">
+                    Deleting <strong id="delete-user-name"></strong> is permanent and cannot be undone.
+                    All sessions will be invalidated immediately.
+                </p>
+                <div style="margin-bottom:1rem;">
+                    <label style="display:block;margin-bottom:0.3rem;font-size:0.9rem;font-weight:500;">Reason for deletion *</label>
+                    <input id="delete-user-reason" type="text"
+                           style="width:100%;padding:0.6rem;border:1px solid #d1d5db;border-radius:8px;box-sizing:border-box;font-size:0.9rem;"
+                           placeholder="e.g. Test account — not a real study participant">
+                </div>
+                <div id="delete-user-error" style="color:#dc2626;font-size:0.88rem;margin-bottom:0.75rem;display:none;"></div>
+                <div style="display:flex;gap:0.75rem;">
+                    <button id="delete-user-cancel"
+                            style="flex:1;border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:0.65rem;cursor:pointer;">
+                        Cancel
+                    </button>
+                    <button id="delete-user-confirm"
+                            style="flex:2;background:#dc2626;color:#fff;border:none;border-radius:8px;padding:0.65rem;cursor:pointer;font-weight:600;">
+                        Delete Permanently
+                    </button>
+                </div>
+            </div>
+        </div>
     `;
 }
 
@@ -361,6 +431,42 @@ function attachDelegationEvents(container, _delegations, _trainings, _users, _ro
             await api.createTrainingRecord({ userId, trainingType, trainingDate, expiryDate: expiryDate || null, certificateRef: certificateRef || null, notes: notes || null });
             showToast('Training record saved', 'success');
             document.getElementById('training-modal').style.display = 'none';
+            renderDelegation(container);
+        } catch (err) {
+            errEl.textContent = err.message;
+            errEl.style.display = 'block';
+        }
+    });
+
+    // Delete user buttons
+    let pendingDeleteId = null;
+    container.querySelectorAll('.btn-delete-user').forEach(btn => {
+        btn.addEventListener('click', () => {
+            pendingDeleteId = btn.dataset.id;
+            document.getElementById('delete-user-name').textContent = btn.dataset.name;
+            document.getElementById('delete-user-reason').value = '';
+            document.getElementById('delete-user-error').style.display = 'none';
+            document.getElementById('delete-user-modal').style.display = 'flex';
+        });
+    });
+    document.getElementById('delete-user-cancel')?.addEventListener('click', () => {
+        document.getElementById('delete-user-modal').style.display = 'none';
+        pendingDeleteId = null;
+    });
+    document.getElementById('delete-user-confirm')?.addEventListener('click', async () => {
+        const reason = document.getElementById('delete-user-reason').value.trim();
+        const errEl = document.getElementById('delete-user-error');
+        errEl.style.display = 'none';
+        if (!reason) {
+            errEl.textContent = 'Reason is required.';
+            errEl.style.display = 'block';
+            return;
+        }
+        try {
+            await api.deleteUser(pendingDeleteId, reason);
+            showToast('User deleted successfully', 'success');
+            document.getElementById('delete-user-modal').style.display = 'none';
+            pendingDeleteId = null;
             renderDelegation(container);
         } catch (err) {
             errEl.textContent = err.message;

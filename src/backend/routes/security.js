@@ -240,6 +240,32 @@ router.get('/users', requireRole('admin'), async (req, res) => {
     }
 });
 
+// DELETE /api/security/users/:userId — admin deletes a user account
+router.delete('/users/:userId', requireRole('admin'), async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { reason } = req.body;
+        if (!reason) return res.status(400).json({ error: 'Reason is required for audit trail' });
+        if (userId === req.user.id) return res.status(400).json({ error: 'Cannot delete your own account' });
+
+        const [target] = await db.select({ name: user.name, email: user.email, role: user.role })
+            .from(user).where(eq(user.id, userId));
+        if (!target) return res.status(404).json({ error: 'User not found' });
+
+        await writeAudit(db, {
+            tableName: 'user', recordId: userId, action: 'DELETE',
+            oldValue: `${target.name} (${target.email}) — ${target.role}`,
+            reason,
+            user: req.user, ipAddress: req.ip,
+        });
+
+        await db.delete(user).where(eq(user.id, userId));
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // GET /api/security/login-activity?email= — recent login attempts (admin only)
 router.get('/login-activity', requireRole('admin'), async (req, res) => {
     try {

@@ -591,6 +591,13 @@ export const api = {
         return apiFetch('/api/security/users');
     },
 
+    async deleteUser(userId, reason) {
+        return apiFetch(`/api/security/users/${userId}`, {
+            method: 'DELETE',
+            body: JSON.stringify({ reason }),
+        });
+    },
+
     async getLoginActivity(email) {
         const params = new URLSearchParams();
         if (email) params.set('email', email);
