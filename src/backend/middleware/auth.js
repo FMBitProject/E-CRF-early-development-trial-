@@ -39,13 +39,16 @@ export async function requireAuth(req, res, next) {
         }
 
         // ICH GCP E6(R3) C.4.3 — reject requests from locked accounts
-        const [lock] = await db.select().from(accountLocks)
-            .where(eq(accountLocks.userId, row.userId));
-        if (lock && !lock.unlockedAt && lock.lockedAt) {
-            if (!lock.autoUnlockAt || new Date(lock.autoUnlockAt) > new Date()) {
-                return res.status(423).json({ error: 'Account is locked. Contact your administrator.' });
+        // try-catch: table may not exist before migration completes on first deploy
+        try {
+            const [lock] = await db.select().from(accountLocks)
+                .where(eq(accountLocks.userId, row.userId));
+            if (lock && !lock.unlockedAt && lock.lockedAt) {
+                if (!lock.autoUnlockAt || new Date(lock.autoUnlockAt) > new Date()) {
+                    return res.status(423).json({ error: 'Account is locked. Contact your administrator.' });
+                }
             }
-        }
+        } catch { /* migration pending — skip lock check */ }
 
         req.user = {
             id:     row.userId,

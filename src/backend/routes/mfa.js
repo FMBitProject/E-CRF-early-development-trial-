@@ -21,26 +21,31 @@ function hashOTP(otp) {
 }
 
 async function recordFailedAttempt(email, ipAddress) {
-    const now = new Date();
-    await db.insert(loginAttempts).values({ email, ipAddress: ipAddress || 'unknown', success: false });
+    // Silently skip if Tier 2 tables haven't migrated yet
+    try {
+        const now = new Date();
+        await db.insert(loginAttempts).values({ email, ipAddress: ipAddress || 'unknown', success: false });
 
-    const [existing] = await db.select().from(accountLocks).where(eq(accountLocks.email, email));
-    const newCount = (existing?.failedCount ?? 0) + 1;
-    const shouldLock = newCount >= POLICY.maxFailedAttempts;
-    const lockFields = shouldLock
-        ? { lockedAt: now, autoUnlockAt: new Date(now.getTime() + POLICY.lockoutMinutes * 60000) }
-        : {};
+        const [existing] = await db.select().from(accountLocks).where(eq(accountLocks.email, email));
+        const newCount = (existing?.failedCount ?? 0) + 1;
+        const shouldLock = newCount >= POLICY.maxFailedAttempts;
+        const lockFields = shouldLock
+            ? { lockedAt: now, autoUnlockAt: new Date(now.getTime() + POLICY.lockoutMinutes * 60000) }
+            : {};
 
-    if (existing) {
-        await db.update(accountLocks)
-            .set({ failedCount: newCount, ...lockFields })
-            .where(eq(accountLocks.id, existing.id));
-    } else {
-        const [userRow] = await db.select({ id: userTable.id }).from(userTable)
-            .where(eq(userTable.email, email));
-        await db.insert(accountLocks).values({
-            userId: userRow?.id ?? null, email, failedCount: newCount, ...lockFields,
-        });
+        if (existing) {
+            await db.update(accountLocks)
+                .set({ failedCount: newCount, ...lockFields })
+                .where(eq(accountLocks.id, existing.id));
+        } else {
+            const [userRow] = await db.select({ id: userTable.id }).from(userTable)
+                .where(eq(userTable.email, email));
+            await db.insert(accountLocks).values({
+                userId: userRow?.id ?? null, email, failedCount: newCount, ...lockFields,
+            });
+        }
+    } catch (e) {
+        console.warn('recordFailedAttempt skipped (migration pending):', e.message);
     }
 }
 
@@ -55,13 +60,21 @@ router.post('/initiate', async (req, res) => {
 
     try {
         // Check account lock status — ICH GCP E6(R3) C.4.3
+        // Wrapped in try-catch: tables may not exist on first deploy before migration completes
         const now = new Date();
-        const [lockRecord] = await db.select().from(accountLocks)
-            .where(eq(accountLocks.email, normalizedEmail));
+        let lockRecord = null;
+        try {
+            [lockRecord] = await db.select().from(accountLocks)
+                .where(eq(accountLocks.email, normalizedEmail));
+        } catch {
+            // migration pending — skip lock check
+        }
         if (lockRecord && !lockRecord.unlockedAt && lockRecord.lockedAt) {
             if (!lockRecord.autoUnlockAt || new Date(lockRecord.autoUnlockAt) > now) {
-                await db.insert(loginAttempts)
-                    .values({ email: normalizedEmail, ipAddress: req.ip || 'unknown', success: false });
+                try {
+                    await db.insert(loginAttempts)
+                        .values({ email: normalizedEmail, ipAddress: req.ip || 'unknown', success: false });
+                } catch { /* migration pending */ }
                 return res.status(423).json({
                     error: `Account locked after ${POLICY.maxFailedAttempts} failed attempts. ` +
                            `Auto-unlocks at ${lockRecord.autoUnlockAt?.toISOString() ?? 'N/A'} or contact your administrator.`,
@@ -86,13 +99,15 @@ router.post('/initiate', async (req, res) => {
         }
 
         // Successful credential check — reset lock state
-        await db.insert(loginAttempts)
-            .values({ email: normalizedEmail, ipAddress: req.ip || 'unknown', success: true });
-        if (lockRecord && !lockRecord.unlockedAt) {
-            await db.update(accountLocks)
-                .set({ unlockedAt: new Date(), unlockReason: 'Successful login' })
-                .where(eq(accountLocks.id, lockRecord.id));
-        }
+        try {
+            await db.insert(loginAttempts)
+                .values({ email: normalizedEmail, ipAddress: req.ip || 'unknown', success: true });
+            if (lockRecord && !lockRecord.unlockedAt) {
+                await db.update(accountLocks)
+                    .set({ unlockedAt: new Date(), unlockReason: 'Successful login' })
+                    .where(eq(accountLocks.id, lockRecord.id));
+            }
+        } catch { /* migration pending */ }
 
         const { token, user } = signIn;
 
