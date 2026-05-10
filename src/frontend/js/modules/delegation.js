@@ -37,7 +37,7 @@ export async function renderDelegation(container) {
     ]);
 
     container.innerHTML = renderDelegationPage(delegations, trainings, expiring, users, role);
-    attachDelegationEvents(container, delegations, trainings, users, role);
+    attachDelegationEvents(container);
 }
 
 function renderDelegationPage(delegations, trainings, expiring, users, role) {
@@ -60,6 +60,7 @@ function renderDelegationPage(delegations, trainings, expiring, users, role) {
                     <h1 style="margin:0 0 0.25rem;font-size:1.5rem;">Delegation Log &amp; Training</h1>
                     <p style="margin:0;color:#6b7280;font-size:0.9rem;">ICH GCP E6(R3) §4.1.5 — Site staff task delegation &amp; §8.3 — Training documentation</p>
                 </div>
+                ${role === 'admin' ? `
                 <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
                     <button id="btn-add-training" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:0.6rem 1.25rem;cursor:pointer;font-size:0.9rem;">
                         + Add Training Record
@@ -67,7 +68,7 @@ function renderDelegationPage(delegations, trainings, expiring, users, role) {
                     <button id="btn-add-delegation" style="background:#059669;color:#fff;border:none;border-radius:8px;padding:0.6rem 1.25rem;cursor:pointer;font-size:0.9rem;">
                         + Add Delegation Entry
                     </button>
-                </div>
+                </div>` : `<span style="font-size:0.82rem;color:#6b7280;border:1px solid #e5e7eb;border-radius:6px;padding:0.4rem 0.75rem;">Read-only — CRA monitor view</span>`}
             </div>
 
             ${expiringAlert}
@@ -143,11 +144,12 @@ function renderDelegationPage(delegations, trainings, expiring, users, role) {
                                 <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;text-transform:capitalize;font-size:0.88rem;">${u.role}</td>
                                 <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-size:0.85rem;color:#9ca3af;">${u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}</td>
                                 <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;text-align:right;">
+                                    ${role === 'admin' ? `
                                     <button class="btn-delete-user" data-id="${u.id}" data-name="${u.name}"
                                         style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;
                                                padding:0.3rem 0.75rem;cursor:pointer;font-size:0.8rem;font-weight:500;">
                                         Delete
-                                    </button>
+                                    </button>` : '—'}
                                 </td>
                             </tr>`).join('')}
                         </tbody>
@@ -372,7 +374,7 @@ function renderTrainingModal(users) {
     `;
 }
 
-function attachDelegationEvents(container, _delegations, _trainings, _users, _role) {
+function attachDelegationEvents(container) {
     // Delegation modal
     document.getElementById('btn-add-delegation')?.addEventListener('click', () => {
         document.getElementById('delegation-modal').style.display = 'flex';

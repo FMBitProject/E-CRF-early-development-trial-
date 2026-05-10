@@ -60,8 +60,8 @@ router.get('/training/records', requireRole('admin', 'cra'), async (req, res) =>
     }
 });
 
-// POST /api/delegation/training/records — add training record (admin/CRA)
-router.post('/training/records', requireRole('admin', 'cra'), async (req, res) => {
+// POST /api/delegation/training/records — add training record (admin only)
+router.post('/training/records', requireRole('admin'), async (req, res) => {
     try {
         const { userId: traineeId, trainingType, trainingDate, expiryDate, certificateRef, notes } = req.body;
 
@@ -153,8 +153,8 @@ router.get('/:id', requireRole('admin', 'cra'), async (req, res) => {
     }
 });
 
-// POST /api/delegation — create delegation entry (admin/CRA)
-router.post('/', requireRole('admin', 'cra'), async (req, res) => {
+// POST /api/delegation — create delegation entry (admin only)
+router.post('/', requireRole('admin'), async (req, res) => {
     try {
         const {
             userId: delegatedUserId, siteId, delegatedTasks,
@@ -197,8 +197,8 @@ router.post('/', requireRole('admin', 'cra'), async (req, res) => {
     }
 });
 
-// PATCH /api/delegation/:id — update (admin/CRA)
-router.patch('/:id', requireRole('admin', 'cra'), async (req, res) => {
+// PATCH /api/delegation/:id — update (admin only)
+router.patch('/:id', requireRole('admin'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const { delegatedTasks, delegationStart, delegationEnd, status, notes } = req.body;
