@@ -277,6 +277,98 @@ export const subjectRandomization = pgTable('subject_randomization', {
     randomizedByName: text('randomized_by_name'),
 });
 
+// ─── Account Security (ICH GCP E6(R3) Appendix C.4.3) ───────────────────────
+
+export const loginAttempts = pgTable('login_attempts', {
+    id:          integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    email:       text('email').notNull(),
+    ipAddress:   text('ip_address'),
+    success:     boolean('success').notNull().default(false),
+    attemptedAt: timestamp('attempted_at').notNull().defaultNow(),
+});
+
+export const accountLocks = pgTable('account_locks', {
+    id:            integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    userId:        text('user_id').references(() => user.id, { onDelete: 'cascade' }),
+    email:         text('email').notNull().unique(),
+    failedCount:   integer('failed_count').notNull().default(0),
+    lockedAt:      timestamp('locked_at').notNull().defaultNow(),
+    autoUnlockAt:  timestamp('auto_unlock_at'),
+    unlockedAt:    timestamp('unlocked_at'),
+    unlockedBy:    text('unlocked_by').references(() => user.id),
+    unlockReason:  text('unlock_reason'),
+});
+
+export const passwordHistory = pgTable('password_history', {
+    id:           integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    userId:       text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    passwordHash: text('password_hash').notNull(),
+    createdAt:    timestamp('created_at').notNull().defaultNow(),
+});
+
+export const passwordMeta = pgTable('password_meta', {
+    userId:       text('user_id').primaryKey().references(() => user.id, { onDelete: 'cascade' }),
+    lastChangedAt: timestamp('last_changed_at').notNull().defaultNow(),
+    mustChange:   boolean('must_change').notNull().default(false),
+});
+
+// ─── Study Database Lock (ICH GCP E6(R3) §5.5.7) ────────────────────────────
+
+export const studyDbLock = pgTable('study_db_lock', {
+    id:               integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    status:           text('status').notNull().default('Unlocked'),
+    preCheckJson:     jsonb('pre_check_json').default('{}'),
+    initiatedBy:      text('initiated_by').references(() => user.id),
+    initiatedByName:  text('initiated_by_name'),
+    initiatedAt:      timestamp('initiated_at'),
+    craSigned:        boolean('cra_signed').notNull().default(false),
+    craSignedAt:      timestamp('cra_signed_at'),
+    craSignedBy:      text('cra_signed_by').references(() => user.id),
+    craSignedByName:  text('cra_signed_by_name'),
+    adminSigned:      boolean('admin_signed').notNull().default(false),
+    adminSignedAt:    timestamp('admin_signed_at'),
+    adminSignedBy:    text('admin_signed_by').references(() => user.id),
+    adminSignedByName: text('admin_signed_by_name'),
+    lockedAt:         timestamp('locked_at'),
+    notes:            text('notes'),
+    createdAt:        timestamp('created_at').notNull().defaultNow(),
+});
+
+// ─── Delegation Log & Training (ICH GCP E6(R3) §4.1.5, §8.3) ───────────────
+
+export const delegationLog = pgTable('delegation_log', {
+    id:                integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    userId:            text('user_id').notNull().references(() => user.id),
+    userName:          text('user_name').notNull(),
+    userRole:          text('user_role').notNull(),
+    siteId:            integer('site_id').references(() => sites.id),
+    delegatedTasks:    jsonb('delegated_tasks').notNull().default('[]'),
+    delegationStart:   text('delegation_start').notNull(),
+    delegationEnd:     text('delegation_end'),
+    status:            text('status').notNull().default('Active'),
+    signedAt:          timestamp('signed_at'),
+    signedByName:      text('signed_by_name'),
+    notes:             text('notes'),
+    createdBy:         text('created_by').references(() => user.id),
+    createdByName:     text('created_by_name'),
+    createdAt:         timestamp('created_at').notNull().defaultNow(),
+    updatedAt:         timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const trainingRecords = pgTable('training_records', {
+    id:             integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    userId:         text('user_id').notNull().references(() => user.id),
+    userName:       text('user_name').notNull(),
+    trainingType:   text('training_type').notNull(),
+    trainingDate:   text('training_date').notNull(),
+    expiryDate:     text('expiry_date'),
+    certificateRef: text('certificate_ref'),
+    notes:          text('notes'),
+    recordedBy:     text('recorded_by').references(() => user.id),
+    recordedByName: text('recorded_by_name'),
+    recordedAt:     timestamp('recorded_at').notNull().defaultNow(),
+});
+
 export const queryStatusEnum = pgEnum('query_status', ['Open', 'Resolved', 'Closed']);
 
 export const queries = pgTable('queries', {

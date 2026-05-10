@@ -26,17 +26,53 @@ export async function renderDashboard() {
         <div class="w-7 h-7 rounded-full border-2 border-blue-700 border-t-transparent animate-spin"></div>
     </div>`;
 
-    const [stats, aeStats, devStats, consentStats] = await Promise.all([
+    const [stats, aeStats, devStats, consentStats, dblockStatus, pwStatus] = await Promise.all([
         api.getDashboardStats(),
         api.getAEStats().catch(() => ({ total: 0, serious: 0, draft: 0, overdue: 0 })),
         api.getDeviationStats().catch(() => ({ total: 0, open: 0, major: 0, pending: 0 })),
         api.getConsentStats().catch(() => ({ totalActive: 0, consented: 0, unconsented: 0 })),
+        api.getDblockStatus().catch(() => ({ isLocked: false, current: null })),
+        api.getPasswordStatus().catch(() => null),
     ]);
     const user  = api.getCurrentUser();
     const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
+    // Build alerts HTML
+    const dblLockBanner = dblockStatus?.isLocked ? `
+        <div style="background:#dc2626;color:#fff;border-radius:10px;padding:0.9rem 1.25rem;
+                    display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;">
+            <span style="font-size:1.4rem;flex-shrink:0;">🔒</span>
+            <div style="flex:1;">
+                <strong>Study Database is Locked</strong> — No further data modifications are permitted.
+                <span style="font-size:0.85rem;opacity:0.9;margin-left:0.5rem;">
+                    Locked ${dblockStatus.current?.lockedAt ? new Date(dblockStatus.current.lockedAt).toLocaleString() : ''}
+                </span>
+            </div>
+            <a href="#dblock" style="color:#fff;font-size:0.85rem;text-decoration:underline;white-space:nowrap;">View details</a>
+        </div>` : '';
+
+    const pwWarning = (pwStatus?.expired || pwStatus?.mustChange) ? `
+        <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:0.85rem 1.25rem;
+                    display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;">
+            <span style="font-size:1.25rem;flex-shrink:0;">🔑</span>
+            <div style="flex:1;font-size:0.9rem;">
+                ${pwStatus.mustChange ? '<strong>Password reset required.</strong> Your account requires a password change before continuing.' : `<strong>Password ${pwStatus.expired ? 'expired' : 'expiring soon'}.</strong> ${pwStatus.expired ? 'Your password has expired.' : `${pwStatus.daysLeft} days remaining.`}`}
+            </div>
+            <button onclick="window.navigate('account')" style="background:#d97706;color:#fff;border:none;border-radius:6px;padding:0.4rem 1rem;cursor:pointer;font-size:0.85rem;white-space:nowrap;">
+                Change Password
+            </button>
+        </div>` : (pwStatus?.warningSoon ? `
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:0.75rem 1.25rem;
+                    display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;font-size:0.88rem;">
+            <span>⚠️</span>
+            <span>Password expires in <strong>${pwStatus.daysLeft} days</strong> (ICH GCP E6(R3) C.4.3 — 90-day policy).</span>
+            <a href="#account" style="margin-left:auto;color:#92400e;text-decoration:underline;white-space:nowrap;font-size:0.85rem;">Change now</a>
+        </div>` : '');
+
     content.innerHTML = `
     <div class="p-5 space-y-5">
+
+        ${dblLockBanner || pwWarning ? `<div class="space-y-2">${dblLockBanner}${pwWarning}</div>` : ''}
 
         <!-- Page Header -->
         <div class="flex items-end justify-between">
@@ -173,11 +209,12 @@ export async function renderDashboard() {
                     </div>
                     <div class="p-4 space-y-3">
                         ${compItem('Audit Trail', 'Active & Immutable', true)}
-                        ${compItem('Data Locking', 'Enabled', true)}
                         ${compItem('21 CFR Part 11', 'Compliant', true)}
-                        ${compItem('ICH GCP E6 (R2)', 'Compliant', true)}
+                        ${compItem('ICH GCP E6(R3)', 'Compliant', true)}
                         ${compItem('Reason for Change', 'Enforced on Edit', true)}
                         ${compItem('MFA (OTP Email)', 'Enabled', true)}
+                        ${compItem('Session Timeout', '30-min inactivity', true)}
+                        ${compItem('DB Lock Status', dblockStatus?.isLocked ? 'LOCKED 🔒' : (dblockStatus?.current?.status === 'Pending Approval' || dblockStatus?.current?.status === 'Pending Signatures') ? 'Pending' : 'Unlocked', !dblockStatus?.isLocked)}
                         ${compItem('AE/SAE Reporting', aeStats.overdue > 0 ? `${aeStats.overdue} report(s) overdue` : 'Tracking active', aeStats.overdue === 0)}
                         ${compItem('Protocol Deviations', devStats.open > 0 ? `${devStats.open} open` : 'None open', devStats.open === 0)}
                         ${compItem('UU PDP Consent', consentStats.unconsented > 0 ? `${consentStats.unconsented} subjects missing` : 'All subjects consented', consentStats.unconsented === 0)}

@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/connection.js';
-import { session as sessionTable, user } from '../db/schemas/schema.js';
+import { session as sessionTable, user, accountLocks } from '../db/schemas/schema.js';
 
 function parseCookies(cookieHeader) {
     const cookies = {};
@@ -36,6 +36,15 @@ export async function requireAuth(req, res, next) {
 
         if (!row || new Date(row.expiresAt) < new Date()) {
             return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        // ICH GCP E6(R3) C.4.3 — reject requests from locked accounts
+        const [lock] = await db.select().from(accountLocks)
+            .where(eq(accountLocks.userId, row.userId));
+        if (lock && !lock.unlockedAt && lock.lockedAt) {
+            if (!lock.autoUnlockAt || new Date(lock.autoUnlockAt) > new Date()) {
+                return res.status(423).json({ error: 'Account is locked. Contact your administrator.' });
+            }
         }
 
         req.user = {

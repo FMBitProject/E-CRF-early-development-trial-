@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import { db } from '../db/connection.js';
-import { verification } from '../db/schemas/schema.js';
+import { verification, loginAttempts, accountLocks, user as userTable } from '../db/schemas/schema.js';
 import { eq, gt } from 'drizzle-orm';
 import { sendOTPEmail } from '../lib/email.js';
 import { auth } from '../auth/better-auth.js';
+import { POLICY } from '../lib/passwordpolicy.js';
 
 const router = Router();
 
@@ -19,6 +20,30 @@ function hashOTP(otp) {
     return crypto.createHash('sha256').update(otp.trim()).digest('hex');
 }
 
+async function recordFailedAttempt(email, ipAddress) {
+    const now = new Date();
+    await db.insert(loginAttempts).values({ email, ipAddress: ipAddress || 'unknown', success: false });
+
+    const [existing] = await db.select().from(accountLocks).where(eq(accountLocks.email, email));
+    const newCount = (existing?.failedCount ?? 0) + 1;
+    const shouldLock = newCount >= POLICY.maxFailedAttempts;
+    const lockFields = shouldLock
+        ? { lockedAt: now, autoUnlockAt: new Date(now.getTime() + POLICY.lockoutMinutes * 60000) }
+        : {};
+
+    if (existing) {
+        await db.update(accountLocks)
+            .set({ failedCount: newCount, ...lockFields })
+            .where(eq(accountLocks.id, existing.id));
+    } else {
+        const [userRow] = await db.select({ id: userTable.id }).from(userTable)
+            .where(eq(userTable.email, email));
+        await db.insert(accountLocks).values({
+            userId: userRow?.id ?? null, email, failedCount: newCount, ...lockFields,
+        });
+    }
+}
+
 // POST /api/mfa/initiate — verify password, send OTP
 router.post('/initiate', async (req, res) => {
     const { email, password } = req.body;
@@ -26,17 +51,47 @@ router.post('/initiate', async (req, res) => {
         return res.status(400).json({ error: 'Email and password are required.' });
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+
     try {
+        // Check account lock status — ICH GCP E6(R3) C.4.3
+        const now = new Date();
+        const [lockRecord] = await db.select().from(accountLocks)
+            .where(eq(accountLocks.email, normalizedEmail));
+        if (lockRecord && !lockRecord.unlockedAt && lockRecord.lockedAt) {
+            if (!lockRecord.autoUnlockAt || new Date(lockRecord.autoUnlockAt) > now) {
+                await db.insert(loginAttempts)
+                    .values({ email: normalizedEmail, ipAddress: req.ip || 'unknown', success: false });
+                return res.status(423).json({
+                    error: `Account locked after ${POLICY.maxFailedAttempts} failed attempts. ` +
+                           `Auto-unlocks at ${lockRecord.autoUnlockAt?.toISOString() ?? 'N/A'} or contact your administrator.`,
+                    lockedAt:      lockRecord.lockedAt,
+                    autoUnlockAt:  lockRecord.autoUnlockAt,
+                });
+            }
+        }
+
         let signIn;
         try {
-            signIn = await auth.api.signInEmail({ body: { email, password } });
+            signIn = await auth.api.signInEmail({ body: { email: normalizedEmail, password } });
         } catch (authErr) {
             console.error('MFA auth error:', authErr.message);
+            await recordFailedAttempt(normalizedEmail, req.ip);
             return res.status(401).json({ error: 'Invalid email or password.' });
         }
 
         if (!signIn || !signIn.token) {
+            await recordFailedAttempt(normalizedEmail, req.ip);
             return res.status(401).json({ error: 'Invalid email or password.' });
+        }
+
+        // Successful credential check — reset lock state
+        await db.insert(loginAttempts)
+            .values({ email: normalizedEmail, ipAddress: req.ip || 'unknown', success: true });
+        if (lockRecord && !lockRecord.unlockedAt) {
+            await db.update(accountLocks)
+                .set({ unlockedAt: new Date(), unlockReason: 'Successful login' })
+                .where(eq(accountLocks.id, lockRecord.id));
         }
 
         const { token, user } = signIn;
@@ -46,14 +101,14 @@ router.post('/initiate', async (req, res) => {
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
         const existing = await db.select().from(verification)
-            .where(eq(verification.identifier, `mfa:${email.toLowerCase()}`));
+            .where(eq(verification.identifier, `mfa:${normalizedEmail}`));
         for (const r of existing) {
             await db.delete(verification).where(eq(verification.id, r.id));
         }
 
         await db.insert(verification).values({
             id:         crypto.randomUUID(),
-            identifier: `mfa:${email.toLowerCase()}`,
+            identifier: `mfa:${normalizedEmail}`,
             value:      JSON.stringify({
                 otpHash:   hashOTP(otp),
                 tempToken,
@@ -66,13 +121,13 @@ router.post('/initiate', async (req, res) => {
         });
 
         try {
-            await sendOTPEmail(email, user.name, otp);
+            await sendOTPEmail(normalizedEmail, user.name, otp);
         } catch (mailErr) {
             console.error('MFA email error:', mailErr.message);
             return res.status(500).json({ error: `Email failed: ${mailErr.message}` });
         }
 
-        const masked = email.replace(/(.{2})(.*)(@.*)/, (_, a, b, c) => a + '*'.repeat(b.length) + c);
+        const masked = normalizedEmail.replace(/(.{2})(.*)(@.*)/, (_, a, b, c) => a + '*'.repeat(b.length) + c);
         res.json({ status: 'otp_sent', tempToken, maskedEmail: masked });
 
     } catch (err) {

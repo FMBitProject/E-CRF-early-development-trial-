@@ -1,5 +1,8 @@
 import { Router } from 'express';
 import { auth } from '../auth/better-auth.js';
+import { db } from '../db/connection.js';
+import { passwordMeta } from '../db/schemas/schema.js';
+import { validatePassword } from '../lib/passwordpolicy.js';
 
 const router = Router();
 
@@ -15,6 +18,12 @@ router.post('/', async (req, res) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+
+    // Validate password against ICH GCP E6(R3) C.4.3 policy
+    const policyErrors = validatePassword(password, normalizedEmail);
+    if (policyErrors.length > 0) {
+        return res.status(400).json({ message: 'Password does not meet security requirements.', details: policyErrors });
+    }
 
     let assignedRole;
     if (role === 'admin') {
@@ -35,6 +44,13 @@ router.post('/', async (req, res) => {
 
         if (!result) {
             return res.status(400).json({ message: 'Registration failed. Please try again.' });
+        }
+
+        // Initialize password metadata per ICH GCP E6(R3) C.4.3
+        if (result.user?.id) {
+            await db.insert(passwordMeta)
+                .values({ userId: result.user.id, lastChangedAt: new Date(), mustChange: false })
+                .onConflictDoNothing();
         }
 
         return res.status(200).json({ ok: true });

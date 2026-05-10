@@ -24,6 +24,10 @@ import deviationsRouter    from './routes/deviations.js';
 import consentsRouter      from './routes/consents.js';
 import randomizationRouter from './routes/randomization.js';
 import exportRouter        from './routes/export.js';
+import securityRouter      from './routes/security.js';
+import dblockRouter        from './routes/dblock.js';
+import delegationRouter    from './routes/delegation.js';
+import { rateLimitAuth }   from './middleware/ratelimit.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir   = path.resolve(__dirname, '../../');
@@ -167,6 +171,98 @@ async function runMigrations() {
             randomized_by     TEXT REFERENCES "user"(id),
             randomized_by_name TEXT
         )`,
+        // Tier 2 — Login attempts audit log
+        `CREATE TABLE IF NOT EXISTS login_attempts (
+            id           SERIAL PRIMARY KEY,
+            email        TEXT NOT NULL,
+            ip_address   TEXT,
+            success      BOOLEAN NOT NULL DEFAULT FALSE,
+            attempted_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_login_attempts_email ON login_attempts (email)`,
+        `CREATE INDEX IF NOT EXISTS idx_login_attempts_at ON login_attempts (attempted_at DESC)`,
+        // Tier 2 — Account lockout
+        `CREATE TABLE IF NOT EXISTS account_locks (
+            id             SERIAL PRIMARY KEY,
+            user_id        TEXT REFERENCES "user"(id),
+            email          TEXT NOT NULL UNIQUE,
+            failed_count   INTEGER NOT NULL DEFAULT 0,
+            locked_at      TIMESTAMP,
+            auto_unlock_at TIMESTAMP,
+            unlocked_at    TIMESTAMP,
+            unlocked_by    TEXT REFERENCES "user"(id),
+            unlock_reason  TEXT
+        )`,
+        // Tier 2 — Password history (prevent reuse)
+        `CREATE TABLE IF NOT EXISTS password_history (
+            id            SERIAL PRIMARY KEY,
+            user_id       TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+            password_hash TEXT NOT NULL,
+            created_at    TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_password_history_user ON password_history (user_id)`,
+        // Tier 2 — Password metadata (expiry, must-change)
+        `CREATE TABLE IF NOT EXISTS password_meta (
+            user_id         TEXT PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
+            last_changed_at TIMESTAMP,
+            must_change     BOOLEAN NOT NULL DEFAULT FALSE
+        )`,
+        // Tier 2 — Study Database Lock workflow
+        `CREATE TABLE IF NOT EXISTS study_db_lock (
+            id                   SERIAL PRIMARY KEY,
+            status               TEXT NOT NULL DEFAULT 'Pending Signatures',
+            pre_check_json       JSONB,
+            initiated_by         TEXT REFERENCES "user"(id),
+            initiated_by_name    TEXT,
+            initiated_at         TIMESTAMP,
+            cra_signed           BOOLEAN NOT NULL DEFAULT FALSE,
+            cra_signed_at        TIMESTAMP,
+            cra_signed_by        TEXT REFERENCES "user"(id),
+            cra_signed_by_name   TEXT,
+            admin_signed         BOOLEAN NOT NULL DEFAULT FALSE,
+            admin_signed_at      TIMESTAMP,
+            admin_signed_by      TEXT REFERENCES "user"(id),
+            admin_signed_by_name TEXT,
+            locked_at            TIMESTAMP,
+            notes                TEXT,
+            created_at           TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        // Tier 2 — Delegation Log
+        `CREATE TABLE IF NOT EXISTS delegation_log (
+            id               SERIAL PRIMARY KEY,
+            user_id          TEXT NOT NULL REFERENCES "user"(id),
+            user_name        TEXT NOT NULL,
+            user_role        TEXT,
+            site_id          INTEGER,
+            delegated_tasks  JSONB NOT NULL DEFAULT '[]',
+            delegation_start TIMESTAMP NOT NULL,
+            delegation_end   TIMESTAMP,
+            status           TEXT NOT NULL DEFAULT 'Active',
+            signed_at        TIMESTAMP,
+            signed_by_name   TEXT,
+            notes            TEXT,
+            created_by       TEXT REFERENCES "user"(id),
+            created_by_name  TEXT,
+            created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at       TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_delegation_user ON delegation_log (user_id)`,
+        // Tier 2 — Training Records
+        `CREATE TABLE IF NOT EXISTS training_records (
+            id               SERIAL PRIMARY KEY,
+            user_id          TEXT NOT NULL REFERENCES "user"(id),
+            user_name        TEXT NOT NULL,
+            training_type    TEXT NOT NULL,
+            training_date    TIMESTAMP NOT NULL,
+            expiry_date      TIMESTAMP,
+            certificate_ref  TEXT,
+            notes            TEXT,
+            recorded_by      TEXT REFERENCES "user"(id),
+            recorded_by_name TEXT,
+            recorded_at      TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_training_user ON training_records (user_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_training_expiry ON training_records (expiry_date)`,
     ];
     for (const stmt of stmts) {
         await client.unsafe(stmt);
@@ -203,8 +299,8 @@ app.use('/api/entries',              requireAuth, entriesRouter);
 app.use('/api/audit',                requireAuth, auditRouter);
 app.use('/api/queries',              requireAuth, queriesRouter);
 
-app.use('/api/mfa',      mfaRouter);
-app.use('/api/register', registerRouter);
+app.use('/api/mfa',      rateLimitAuth, mfaRouter);
+app.use('/api/register', rateLimitAuth, registerRouter);
 app.use('/api/sites',          requireAuth, sitesRouter);
 app.use('/api/dashboard',      requireAuth, dashboardRouter);
 app.use('/api/signatures',     requireAuth, signaturesRouter);
@@ -213,6 +309,9 @@ app.use('/api/deviations',     requireAuth, deviationsRouter);
 app.use('/api/consents',       requireAuth, consentsRouter);
 app.use('/api/randomization',  requireAuth, randomizationRouter);
 app.use('/api/export',         requireAuth, exportRouter);
+app.use('/api/security',       requireAuth, securityRouter);
+app.use('/api/dblock',         requireAuth, dblockRouter);
+app.use('/api/delegation',     requireAuth, delegationRouter);
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
 // Serve all static frontend files from project root

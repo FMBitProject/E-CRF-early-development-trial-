@@ -559,6 +559,118 @@ export const api = {
     downloadCSV(domain) {
         window.open(`/api/export/csv?domain=${domain}`, '_blank');
     },
+
+    // ── Security / Password ────────────────────────────────
+    async getPasswordStatus() {
+        return apiFetch('/api/security/password-status');
+    },
+
+    async changePassword(currentPassword, newPassword) {
+        return apiFetch('/api/security/change-password', {
+            method: 'POST',
+            body: JSON.stringify({ currentPassword, newPassword }),
+        });
+    },
+
+    async getLockedAccounts() {
+        return apiFetch('/api/security/locked-accounts');
+    },
+
+    async unlockAccount(userId, reason) {
+        return apiFetch(`/api/security/unlock/${userId}`, {
+            method: 'POST',
+            body: JSON.stringify({ reason }),
+        });
+    },
+
+    async forcePasswordReset(userId) {
+        return apiFetch(`/api/security/force-password-reset/${userId}`, { method: 'POST' });
+    },
+
+    async getSecurityUsers() {
+        return apiFetch('/api/security/users');
+    },
+
+    async getLoginActivity(email) {
+        const params = new URLSearchParams();
+        if (email) params.set('email', email);
+        return apiFetch(`/api/security/login-activity?${params}`);
+    },
+
+    // ── Database Lock ──────────────────────────────────────
+    async getDblockStatus() {
+        return apiFetch('/api/dblock/status');
+    },
+
+    async runDblockChecks() {
+        return apiFetch('/api/dblock/check', { method: 'POST' });
+    },
+
+    async initiateDblock(notes) {
+        return apiFetch('/api/dblock/initiate', {
+            method: 'POST',
+            body: JSON.stringify({ notes }),
+        });
+    },
+
+    async signDblockCRA(id, password) {
+        return apiFetch(`/api/dblock/${id}/sign-cra`, {
+            method: 'POST',
+            body: JSON.stringify({ password }),
+        });
+    },
+
+    async signDblockAdmin(id, password) {
+        return apiFetch(`/api/dblock/${id}/sign-admin`, {
+            method: 'POST',
+            body: JSON.stringify({ password }),
+        });
+    },
+
+    // ── Delegation Log ─────────────────────────────────────
+    async getDelegations(filters = {}) {
+        const params = new URLSearchParams();
+        if (filters.userId) params.set('userId', filters.userId);
+        if (filters.status) params.set('status', filters.status);
+        return apiFetch(`/api/delegation?${params}`);
+    },
+
+    async createDelegation(payload) {
+        return apiFetch('/api/delegation', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+    },
+
+    async updateDelegation(id, payload) {
+        return apiFetch(`/api/delegation/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+        });
+    },
+
+    async signDelegation(id) {
+        return apiFetch(`/api/delegation/${id}/sign`, { method: 'POST' });
+    },
+
+    // ── Training Records ───────────────────────────────────
+    async getTrainingRecords(filters = {}) {
+        const params = new URLSearchParams();
+        if (filters.userId) params.set('userId', filters.userId);
+        if (filters.trainingType) params.set('trainingType', filters.trainingType);
+        return apiFetch(`/api/delegation/training/records?${params}`);
+    },
+
+    async createTrainingRecord(payload) {
+        return apiFetch('/api/delegation/training/records', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+    },
+
+    async getExpiringTrainings(days = 30) {
+        return apiFetch(`/api/delegation/training/expiring?days=${days}`);
+    },
 };
 
 window.api = api;

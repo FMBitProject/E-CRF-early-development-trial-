@@ -13,6 +13,9 @@ import { renderAdverseEvents } from './modules/adverseevents.js';
 import { renderDeviations } from './modules/deviations.js';
 import { renderConsents } from './modules/consents.js';
 import { renderRandomization } from './modules/randomization.js';
+import { renderDblock } from './modules/dblock.js';
+import { renderDelegation } from './modules/delegation.js';
+import { initSessionTimeout } from './modules/session.js';
 
 export { showToast, showModal, closeModal };
 
@@ -33,6 +36,8 @@ const NAV_ITEMS = [
     { id: 'randomization',  label: 'Randomization', icon: 'shuffle',          roles: ['admin'] },
     { id: 'queries',        label: 'Queries',       icon: 'message-square',   roles: ['admin', 'cra', 'investigator'] },
     { id: 'audit',          label: 'Audit Trail',   icon: 'shield-check',     roles: ['admin', 'cra'] },
+    { id: 'dblock',         label: 'DB Lock',       icon: 'lock',             roles: ['admin', 'cra'] },
+    { id: 'delegation',     label: 'Delegation',    icon: 'user-check',       roles: ['admin', 'cra'] },
 ];
 
 const ROLE_CONFIG = {
@@ -206,6 +211,16 @@ const routes = {
         renderBreadcrumb([{ label: 'Randomization', route: 'randomization' }]);
         await renderRandomization();
     },
+    'dblock': async () => {
+        renderBreadcrumb([{ label: 'Database Lock', route: 'dblock' }]);
+        const el = document.getElementById('main-content');
+        if (el) await renderDblock(el);
+    },
+    'delegation': async () => {
+        renderBreadcrumb([{ label: 'Delegation &amp; Training', route: 'delegation' }]);
+        const el = document.getElementById('main-content');
+        if (el) await renderDelegation(el);
+    },
 };
 
 // ---- Router ----
@@ -270,3 +285,6 @@ window.appLogout = () => { api.logout(); };
 window.addEventListener('hashchange', () => navigate(window.location.hash));
 navigate(window.location.hash || '#dashboard');
 refreshQueryCount();
+
+// 21 CFR Part 11 §11.10(d) — 30-minute inactivity session timeout
+initSessionTimeout();
