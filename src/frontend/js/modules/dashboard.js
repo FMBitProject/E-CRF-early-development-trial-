@@ -159,7 +159,7 @@ export async function renderDashboard() {
                             <span class="font-medium text-xs">View All Subjects</span>
                             <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-auto text-slate-300 group-hover:text-slate-500 transition"></i>
                         </a>
-                        ${(user.role === 'investigator' || user.role === 'admin') ? `
+                        ${['investigator', 'pi', 'admin'].includes(user.role) ? `
                         <a href="#subjects/new" class="flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-slate-50 transition group text-sm text-slate-700 border border-transparent hover:border-slate-200">
                             <div class="w-7 h-7 rounded-md bg-emerald-50 flex items-center justify-center flex-shrink-0">
                                 <i data-lucide="user-plus" class="w-3.5 h-3.5 text-emerald-600"></i>
@@ -184,7 +184,7 @@ export async function renderDashboard() {
                             ${stats.openQueries > 0 ? `<span class="text-xs font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">${stats.openQueries}</span>` : ''}
                             <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500 transition"></i>
                         </a>
-                        ${(user.role === 'admin' || user.role === 'cra') ? `
+                        ${['admin', 'pi', 'cra'].includes(user.role) ? `
                         <div class="pt-1.5 border-t border-slate-100">
                             <p class="text-xs text-slate-400 font-medium px-1 py-1 uppercase tracking-wide">CDISC Export</p>
                             <div class="flex gap-1.5">

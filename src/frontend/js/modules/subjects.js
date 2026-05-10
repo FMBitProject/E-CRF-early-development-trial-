@@ -97,7 +97,7 @@ export async function renderSubjects({ showNewForm = false } = {}) {
                 <h2 class="text-xl font-bold text-slate-900">Study Subjects</h2>
                 <p class="text-xs text-slate-500 mt-0.5">${subjects.length} subject${subjects.length !== 1 ? 's' : ''} enrolled across all sites</p>
             </div>
-            ${(user.role === 'investigator' || user.role === 'admin') ? `
+            ${['investigator', 'pi', 'admin'].includes(user.role) ? `
             <button onclick="openNewSubjectModal()"
                 class="flex items-center gap-2 btn-primary px-4 py-2 text-sm rounded-md">
                 <i data-lucide="user-plus" class="w-4 h-4"></i> Enroll Subject
@@ -423,7 +423,7 @@ export async function renderSubjectDetail(id) {
     ]);
     const allEntries    = await api.getDataEntries(id);
     const user          = api.getCurrentUser();
-    const canManageVisit = user.role === 'investigator' || user.role === 'admin';
+    const canManageVisit = ['investigator', 'pi', 'admin'].includes(user.role);
 
     content.innerHTML = `
     <div class="p-5 space-y-4">
@@ -447,7 +447,7 @@ export async function renderSubjectDetail(id) {
                         <span>Enrollment (Day 1): <strong class="text-slate-700">${fmt(subject.enrollment_date)}</strong></span>
                     </div>
                 </div>
-                ${(user.role === 'admin' || user.role === 'cra') && subject.status === 'Active' ? `
+                ${['admin', 'pi', 'cra'].includes(user.role) && subject.status === 'Active' ? `
                 <button onclick="openWithdrawModal(${subject.id})"
                     class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-600 border border-red-200 hover:bg-red-50 rounded-md transition">
                     <i data-lucide="user-x" class="w-3.5 h-3.5"></i> Withdraw
@@ -586,8 +586,8 @@ export async function renderSubjectDetail(id) {
             ${fms.map(form => {
                 const entry       = entries.find(e => e.form_id === form.id);
                 const entryStatus = entry?.status || 'Not Started';
-                const canEdit     = entryStatus !== 'Locked' && entryStatus !== 'Signed' && (u.role === 'investigator' || u.role === 'admin');
-                const canLock     = (entryStatus === 'Submitted' || entryStatus === 'Signed') && (u.role === 'cra' || u.role === 'admin');
+                const canEdit     = entryStatus !== 'Locked' && entryStatus !== 'Signed' && ['investigator', 'pi', 'admin'].includes(u.role);
+                const canLock     = (entryStatus === 'Submitted' || entryStatus === 'Signed') && ['cra', 'pi', 'admin'].includes(u.role);
                 return `<tr>
                     <td>
                         <div class="flex items-center gap-2.5">
