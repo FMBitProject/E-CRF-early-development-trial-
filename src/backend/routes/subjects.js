@@ -78,7 +78,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/subjects — enroll new subject (investigator, admin)
-router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
+router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
     try {
         const { subjectCode, siteId, initials, dateOfBirth, sex, enrolledAt } = req.body;
         if (!subjectCode) return res.status(400).json({ error: 'subjectCode is required' });
@@ -109,7 +109,7 @@ router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
 });
 
 // PATCH /api/subjects/:id/status — withdraw / complete (investigator, admin)
-router.patch('/:id/status', requireRole('investigator', 'admin'), async (req, res) => {
+router.patch('/:id/status', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
     try {
         const { status, reason } = req.body;
         const allowedTransitions = ['Completed', 'Withdrawn', 'Screen Failed'];
@@ -146,7 +146,7 @@ router.patch('/:id/status', requireRole('investigator', 'admin'), async (req, re
 });
 
 // POST /api/subjects/:id/ie-assessment — record I/E criteria assessment
-router.post('/:id/ie-assessment', requireRole('investigator', 'admin'), async (req, res) => {
+router.post('/:id/ie-assessment', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
     try {
         const subjectId = parseInt(req.params.id);
         const { criteriaJson, passed } = req.body;

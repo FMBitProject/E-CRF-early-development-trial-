@@ -80,17 +80,17 @@ function renderCurrentLock(current, role) {
 
     const actions = [];
 
-    if (current.status === 'Pending Signatures' && !current.craSigned && ['cra', 'admin'].includes(role)) {
+    if (current.status === 'Pending Signatures' && !current.craSigned && ['cra', 'admin', 'pi'].includes(role)) {
         actions.push(`<button id="btn-sign-cra" class="dbl-action-btn"
             style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:0.6rem 1.25rem;cursor:pointer;font-size:0.9rem;">
             Sign as CRA (Electronic Signature)
         </button>`);
     }
 
-    if (current.status === 'Pending Approval' && !current.adminSigned && role === 'admin') {
+    if (current.status === 'Pending Approval' && !current.adminSigned && ['admin', 'pi'].includes(role)) {
         actions.push(`<button id="btn-sign-admin" class="dbl-action-btn"
             style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:0.6rem 1.25rem;cursor:pointer;font-size:0.9rem;">
-            Sign as Admin &amp; Lock Database
+            Sign as ${role === 'pi' ? 'Principal Investigator' : 'Admin'} &amp; Lock Database
         </button>`);
     }
 
@@ -130,7 +130,7 @@ function renderDblockPage(statusData, role) {
         </div>
     ` : '';
 
-    const initiateBtn = (!isLocked && current?.status !== 'Pending Signatures' && current?.status !== 'Pending Approval' && ['cra', 'admin'].includes(role))
+    const initiateBtn = (!isLocked && current?.status !== 'Pending Signatures' && current?.status !== 'Pending Approval' && ['cra', 'admin', 'pi'].includes(role))
         ? `<button id="btn-initiate-dbl"
                 style="background:#059669;color:#fff;border:none;border-radius:8px;
                        padding:0.7rem 1.5rem;cursor:pointer;font-size:0.95rem;font-weight:600;">
@@ -138,7 +138,7 @@ function renderDblockPage(statusData, role) {
            </button>`
         : '';
 
-    const checkBtn = ['cra', 'admin'].includes(role) && !isLocked
+    const checkBtn = ['cra', 'admin', 'pi'].includes(role) && !isLocked
         ? `<button id="btn-run-checks"
                 style="background:#f59e0b;color:#fff;border:none;border-radius:8px;
                        padding:0.7rem 1.5rem;cursor:pointer;font-size:0.95rem;">

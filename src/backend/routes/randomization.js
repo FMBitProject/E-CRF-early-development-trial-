@@ -104,7 +104,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/randomization — assign next available slot to a subject (admin, investigator)
-router.post('/', requireRole('admin', 'investigator'), async (req, res) => {
+router.post('/', requireRole('admin', 'investigator', 'pi'), async (req, res) => {
     try {
         const { subjectId, stratum } = req.body;
         if (!subjectId) return res.status(400).json({ error: 'subjectId is required' });

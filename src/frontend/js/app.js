@@ -28,23 +28,24 @@ if (!user) {
 
 // ---- Navigation Config ----
 const NAV_ITEMS = [
-    { id: 'dashboard',      label: 'Dashboard',     icon: 'layout-dashboard', roles: ['admin', 'investigator', 'cra', 'crc'] },
-    { id: 'subjects',       label: 'Subjects',      icon: 'users',            roles: ['admin', 'investigator', 'cra', 'crc'] },
-    { id: 'ae',             label: 'Adverse Events',icon: 'activity',         roles: ['admin', 'investigator', 'cra'] },
-    { id: 'deviations',     label: 'Deviations',    icon: 'alert-triangle',   roles: ['admin', 'investigator', 'cra'] },
-    { id: 'consents',       label: 'Consent',       icon: 'file-check',       roles: ['admin', 'investigator', 'cra'] },
-    { id: 'randomization',  label: 'Randomization', icon: 'shuffle',          roles: ['admin'] },
-    { id: 'queries',        label: 'Queries',       icon: 'message-square',   roles: ['admin', 'cra', 'investigator'] },
-    { id: 'audit',          label: 'Audit Trail',   icon: 'shield-check',     roles: ['admin', 'cra'] },
-    { id: 'dblock',         label: 'DB Lock',       icon: 'lock',             roles: ['admin', 'cra'] },
-    { id: 'delegation',     label: 'Delegation',    icon: 'user-check',       roles: ['admin', 'cra'] },
+    { id: 'dashboard',      label: 'Dashboard',     icon: 'layout-dashboard', roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
+    { id: 'subjects',       label: 'Subjects',      icon: 'users',            roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
+    { id: 'ae',             label: 'Adverse Events',icon: 'activity',         roles: ['admin', 'investigator', 'pi', 'cra'] },
+    { id: 'deviations',     label: 'Deviations',    icon: 'alert-triangle',   roles: ['admin', 'investigator', 'pi', 'cra'] },
+    { id: 'consents',       label: 'Consent',       icon: 'file-check',       roles: ['admin', 'investigator', 'pi', 'cra'] },
+    { id: 'randomization',  label: 'Randomization', icon: 'shuffle',          roles: ['admin', 'investigator', 'pi'] },
+    { id: 'queries',        label: 'Queries',       icon: 'message-square',   roles: ['admin', 'cra', 'investigator', 'pi'] },
+    { id: 'audit',          label: 'Audit Trail',   icon: 'shield-check',     roles: ['admin', 'cra', 'pi'] },
+    { id: 'dblock',         label: 'DB Lock',       icon: 'lock',             roles: ['admin', 'cra', 'pi'] },
+    { id: 'delegation',     label: 'Delegation',    icon: 'user-check',       roles: ['admin', 'cra', 'pi'] },
 ];
 
 const ROLE_CONFIG = {
-    admin:        { label: 'Administrator',  cls: 'bg-indigo-600' },
-    investigator: { label: 'Investigator',   cls: 'bg-blue-600' },
-    cra:          { label: 'CRA / Monitor',  cls: 'bg-amber-600' },
-    crc:          { label: 'CRC',            cls: 'bg-emerald-600' },
+    admin:        { label: 'Administrator',        cls: 'bg-indigo-600' },
+    investigator: { label: 'Investigator',         cls: 'bg-blue-600' },
+    pi:           { label: 'Principal Investigator', cls: 'bg-purple-600' },
+    cra:          { label: 'CRA / Monitor',        cls: 'bg-amber-600' },
+    crc:          { label: 'CRC',                  cls: 'bg-emerald-600' },
 };
 
 // ---- Sidebar ----

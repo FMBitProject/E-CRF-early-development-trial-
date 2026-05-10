@@ -19,7 +19,7 @@ function isMissingTable(err) {
 }
 
 // GET /api/delegation — list all delegation entries
-router.get('/', requireRole('admin', 'cra'), async (req, res) => {
+router.get('/', requireRole('admin', 'cra', 'pi'), async (req, res) => {
     try {
         const { userId, status } = req.query;
         const rows = await db.select().from(delegationLog)
@@ -42,7 +42,7 @@ router.get('/', requireRole('admin', 'cra'), async (req, res) => {
 // ---------------------------------------------------------------------------
 
 // GET /api/delegation/training/records — list training records
-router.get('/training/records', requireRole('admin', 'cra'), async (req, res) => {
+router.get('/training/records', requireRole('admin', 'cra', 'pi'), async (req, res) => {
     try {
         const { userId, trainingType } = req.query;
         const rows = await db.select().from(trainingRecords)
@@ -61,7 +61,7 @@ router.get('/training/records', requireRole('admin', 'cra'), async (req, res) =>
 });
 
 // POST /api/delegation/training/records — add training record (admin only)
-router.post('/training/records', requireRole('admin'), async (req, res) => {
+router.post('/training/records', requireRole('admin', 'pi'), async (req, res) => {
     try {
         const { userId: traineeId, trainingType, trainingDate, expiryDate, certificateRef, notes } = req.body;
 
@@ -98,7 +98,7 @@ router.post('/training/records', requireRole('admin'), async (req, res) => {
 });
 
 // GET /api/delegation/training/expiring — training expiring within N days (default 30)
-router.get('/training/expiring', requireRole('admin', 'cra'), async (req, res) => {
+router.get('/training/expiring', requireRole('admin', 'cra', 'pi'), async (req, res) => {
     try {
         const days = parseInt(req.query.days ?? '30');
         const now = new Date();
@@ -116,7 +116,7 @@ router.get('/training/expiring', requireRole('admin', 'cra'), async (req, res) =
 });
 
 // DELETE /api/delegation/training/records/:id — admin only
-router.delete('/training/records/:id', requireRole('admin'), async (req, res) => {
+router.delete('/training/records/:id', requireRole('admin', 'pi'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const [existing] = await db.select().from(trainingRecords).where(eq(trainingRecords.id, id));
@@ -142,7 +142,7 @@ router.delete('/training/records/:id', requireRole('admin'), async (req, res) =>
 // ---------------------------------------------------------------------------
 
 // GET /api/delegation/:id — single entry
-router.get('/:id', requireRole('admin', 'cra'), async (req, res) => {
+router.get('/:id', requireRole('admin', 'cra', 'pi'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const [row] = await db.select().from(delegationLog).where(eq(delegationLog.id, id));
@@ -154,7 +154,7 @@ router.get('/:id', requireRole('admin', 'cra'), async (req, res) => {
 });
 
 // POST /api/delegation — create delegation entry (admin only)
-router.post('/', requireRole('admin'), async (req, res) => {
+router.post('/', requireRole('admin', 'pi'), async (req, res) => {
     try {
         const {
             userId: delegatedUserId, siteId, delegatedTasks,
@@ -198,7 +198,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
 });
 
 // PATCH /api/delegation/:id — update (admin only)
-router.patch('/:id', requireRole('admin'), async (req, res) => {
+router.patch('/:id', requireRole('admin', 'pi'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const { delegatedTasks, delegationStart, delegationEnd, status, notes } = req.body;

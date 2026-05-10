@@ -120,7 +120,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/ae — create new AE (investigator, admin)
-router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
+router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
     try {
         const {
             subjectId, aeTerm, meddraPt, meddraSoc,
@@ -173,7 +173,7 @@ router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
 });
 
 // PATCH /api/ae/:id — update AE with reason for change (ICH GCP)
-router.patch('/:id', requireRole('investigator', 'admin'), async (req, res) => {
+router.patch('/:id', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const { reason, ...fields } = req.body;
@@ -228,7 +228,7 @@ router.patch('/:id', requireRole('investigator', 'admin'), async (req, res) => {
 });
 
 // PATCH /api/ae/:id/report — mark as reported to sponsor/IRB
-router.patch('/:id/report', requireRole('investigator', 'admin'), async (req, res) => {
+router.patch('/:id/report', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const { reportedToSponsor, reportedToIrb } = req.body;
@@ -264,7 +264,7 @@ router.patch('/:id/report', requireRole('investigator', 'admin'), async (req, re
 });
 
 // PATCH /api/ae/:id/close — close AE (CRA, admin)
-router.patch('/:id/close', requireRole('cra', 'admin'), async (req, res) => {
+router.patch('/:id/close', requireRole('cra', 'pi', 'admin'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const [updated] = await db.update(adverseEvents)

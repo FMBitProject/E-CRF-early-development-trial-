@@ -27,7 +27,7 @@ function isoNow() {
 }
 
 // GET /api/export/odm — CDISC ODM-XML 1.3.2 export (admin, cra)
-router.get('/odm', requireRole('admin', 'cra'), async (_req, res) => {
+router.get('/odm', requireRole('admin', 'cra', 'pi'), async (_req, res) => {
     try {
         const [
             allSubjects,
@@ -262,7 +262,7 @@ router.get('/odm', requireRole('admin', 'cra'), async (_req, res) => {
 // ── Comprehensive CSV Export ─────────────────────────────────────────────────
 
 // GET /api/export/csv?domain=DM|AE|CRF|DEV — domain CSV (admin, cra)
-router.get('/csv', requireRole('admin', 'cra'), async (req, res) => {
+router.get('/csv', requireRole('admin', 'cra', 'pi'), async (req, res) => {
     try {
         const domain = (req.query.domain || 'DM').toUpperCase();
 

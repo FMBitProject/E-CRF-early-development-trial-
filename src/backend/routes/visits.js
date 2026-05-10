@@ -39,7 +39,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/subjects/:subjectId/visits
-router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
+router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
     try {
         const subjectId = parseInt(req.params.subjectId);
         const {
@@ -84,7 +84,7 @@ router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
 });
 
 // PATCH /api/subjects/:subjectId/visits/:id — full update
-router.patch('/:id', requireRole('investigator', 'cra', 'admin'), async (req, res) => {
+router.patch('/:id', requireRole('investigator', 'cra', 'pi', 'admin'), async (req, res) => {
     try {
         const {
             visitName, visitOrder, visitType, plannedDate, actualDate,
@@ -138,7 +138,7 @@ router.patch('/:id', requireRole('investigator', 'cra', 'admin'), async (req, re
 });
 
 // PATCH /api/subjects/:subjectId/visits/:id/status
-router.patch('/:id/status', requireRole('investigator', 'cra', 'admin'), async (req, res) => {
+router.patch('/:id/status', requireRole('investigator', 'cra', 'pi', 'admin'), async (req, res) => {
     try {
         const { status } = req.body;
         const [updated] = await db.update(visits)

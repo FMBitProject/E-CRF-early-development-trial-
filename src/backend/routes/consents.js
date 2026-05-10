@@ -63,7 +63,7 @@ router.get('/stats', async (req, res) => {
 });
 
 // POST /api/consents — record consent (investigator, admin)
-router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
+router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
     try {
         const {
             subjectId, consentVersion, consentDate,
@@ -108,7 +108,7 @@ router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
 });
 
 // PATCH /api/consents/:id/withdraw — record consent withdrawal
-router.patch('/:id/withdraw', requireRole('investigator', 'admin'), async (req, res) => {
+router.patch('/:id/withdraw', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const { reason } = req.body;

@@ -42,7 +42,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/entries — upsert (create or update) a data entry
-router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
+router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
     try {
         const body = req.body;
         const { subjectId, visitId, formId, dataJson, reason } = body;
@@ -110,7 +110,7 @@ router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
 });
 
 // PATCH /api/entries/:id/lock — CRA or admin locks an entry
-router.patch('/:id/lock', requireRole('cra', 'admin'), async (req, res) => {
+router.patch('/:id/lock', requireRole('cra', 'pi', 'admin'), async (req, res) => {
     try {
         const { reason } = req.body;
         if (!reason) return res.status(400).json({ error: 'Lock reason is required' });

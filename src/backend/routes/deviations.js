@@ -80,7 +80,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/deviations — create (investigator, admin)
-router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
+router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
     try {
         const {
             subjectId, deviationType, category, description,
@@ -121,7 +121,7 @@ router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
 });
 
 // PATCH /api/deviations/:id — update with RFC
-router.patch('/:id', requireRole('investigator', 'admin'), async (req, res) => {
+router.patch('/:id', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const { reason, ...fields } = req.body;
@@ -165,7 +165,7 @@ router.patch('/:id', requireRole('investigator', 'admin'), async (req, res) => {
 });
 
 // PATCH /api/deviations/:id/report-irb — mark reported to IRB
-router.patch('/:id/report-irb', requireRole('investigator', 'admin'), async (req, res) => {
+router.patch('/:id/report-irb', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const [updated] = await db.update(protocolDeviations)
@@ -188,7 +188,7 @@ router.patch('/:id/report-irb', requireRole('investigator', 'admin'), async (req
 });
 
 // PATCH /api/deviations/:id/status — advance status (CAPA Implemented / Closed)
-router.patch('/:id/status', requireRole('cra', 'admin'), async (req, res) => {
+router.patch('/:id/status', requireRole('cra', 'pi', 'admin'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const { status } = req.body;

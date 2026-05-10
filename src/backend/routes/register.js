@@ -7,7 +7,7 @@ import { validatePassword } from '../lib/passwordpolicy.js';
 const router = Router();
 
 const ADMIN_EMAIL  = 'renfael6@gmail.com';
-const ALLOWED_ROLES = ['investigator', 'cra', 'crc'];
+const ALLOWED_ROLES = ['investigator', 'pi', 'cra', 'crc'];
 
 // POST /api/register — validated signup (blocks admin self-registration)
 router.post('/', async (req, res) => {

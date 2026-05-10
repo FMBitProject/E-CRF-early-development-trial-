@@ -18,7 +18,7 @@ async function checkPassword(userId, password) {
 }
 
 // POST /api/signatures — e-sign a saved data entry (investigator / admin)
-router.post('/', requireRole('investigator', 'admin'), async (req, res) => {
+router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
     try {
         const { entryId, password, meaning } = req.body;
         if (!entryId || !password || !meaning) {

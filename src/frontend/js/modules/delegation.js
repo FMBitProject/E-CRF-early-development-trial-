@@ -23,9 +23,9 @@ export async function renderDelegation(container) {
     const user = api.getCurrentUser();
     const role = user?.role ?? '';
 
-    if (!['admin', 'cra'].includes(role)) {
+    if (!['admin', 'pi', 'cra'].includes(role)) {
         container.innerHTML = `<div style="padding:2rem;color:#dc2626;text-align:center;">
-            Access restricted to administrators and CRA monitors.</div>`;
+            Access restricted to administrators, principal investigators, and CRA monitors.</div>`;
         return;
     }
 
@@ -60,7 +60,7 @@ function renderDelegationPage(delegations, trainings, expiring, users, role) {
                     <h1 style="margin:0 0 0.25rem;font-size:1.5rem;">Delegation Log &amp; Training</h1>
                     <p style="margin:0;color:#6b7280;font-size:0.9rem;">ICH GCP E6(R3) §4.1.5 — Site staff task delegation &amp; §8.3 — Training documentation</p>
                 </div>
-                ${role === 'admin' ? `
+                ${['admin', 'pi'].includes(role) ? `
                 <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
                     <button id="btn-add-training" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:0.6rem 1.25rem;cursor:pointer;font-size:0.9rem;">
                         + Add Training Record
@@ -144,7 +144,7 @@ function renderDelegationPage(delegations, trainings, expiring, users, role) {
                                 <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;text-transform:capitalize;font-size:0.88rem;">${u.role}</td>
                                 <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-size:0.85rem;color:#9ca3af;">${u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}</td>
                                 <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;text-align:right;">
-                                    ${role === 'admin' ? `
+                                    ${['admin', 'pi'].includes(role) ? `
                                     <button class="btn-delete-user" data-id="${u.id}" data-name="${u.name}"
                                         style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;
                                                padding:0.3rem 0.75rem;cursor:pointer;font-size:0.8rem;font-weight:500;">
