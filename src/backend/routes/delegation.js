@@ -32,6 +32,108 @@ router.get('/', requireRole('admin', 'cra'), async (req, res) => {
     }
 });
 
+// ---------------------------------------------------------------------------
+// TRAINING RECORDS  (must be before /:id to avoid route shadowing)
+// ---------------------------------------------------------------------------
+
+// GET /api/delegation/training/records — list training records
+router.get('/training/records', requireRole('admin', 'cra'), async (req, res) => {
+    try {
+        const { userId, trainingType } = req.query;
+        const rows = await db.select().from(trainingRecords)
+            .where(
+                userId && trainingType ? and(eq(trainingRecords.userId, userId), eq(trainingRecords.trainingType, trainingType))
+                : userId ? eq(trainingRecords.userId, userId)
+                : trainingType ? eq(trainingRecords.trainingType, trainingType)
+                : undefined
+            )
+            .orderBy(desc(trainingRecords.trainingDate));
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/delegation/training/records — add training record (admin/CRA)
+router.post('/training/records', requireRole('admin', 'cra'), async (req, res) => {
+    try {
+        const { userId: traineeId, trainingType, trainingDate, expiryDate, certificateRef, notes } = req.body;
+
+        if (!traineeId || !trainingType || !trainingDate) {
+            return res.status(400).json({ error: 'userId, trainingType, and trainingDate are required' });
+        }
+
+        const [targetUser] = await db.select({ name: user.name }).from(user).where(eq(user.id, traineeId));
+        if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+        const [record] = await db.insert(trainingRecords).values({
+            userId:          traineeId,
+            userName:        targetUser.name,
+            trainingType,
+            trainingDate:    new Date(trainingDate),
+            expiryDate:      expiryDate ? new Date(expiryDate) : null,
+            certificateRef:  certificateRef ?? null,
+            notes:           notes ?? null,
+            recordedBy:      req.user.id,
+            recordedByName:  req.user.name,
+        }).returning();
+
+        await writeAudit(db, {
+            tableName: 'training_records', recordId: record.id, action: 'INSERT',
+            newValue: `${trainingType} training recorded for ${targetUser.name}`,
+            reason: 'Training record per ICH E6(R3) §8.3',
+            user: req.user, ipAddress: req.ip,
+        });
+
+        res.status(201).json(record);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/delegation/training/expiring — training expiring within N days (default 30)
+router.get('/training/expiring', requireRole('admin', 'cra'), async (req, res) => {
+    try {
+        const days = parseInt(req.query.days ?? '30');
+        const now = new Date();
+        const future = new Date();
+        future.setDate(future.getDate() + days);
+
+        const rows = await db.select().from(trainingRecords)
+            .where(and(gte(trainingRecords.expiryDate, now), lte(trainingRecords.expiryDate, future)))
+            .orderBy(trainingRecords.expiryDate);
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE /api/delegation/training/records/:id — admin only
+router.delete('/training/records/:id', requireRole('admin'), async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const [existing] = await db.select().from(trainingRecords).where(eq(trainingRecords.id, id));
+        if (!existing) return res.status(404).json({ error: 'Training record not found' });
+
+        await db.delete(trainingRecords).where(eq(trainingRecords.id, id));
+
+        await writeAudit(db, {
+            tableName: 'training_records', recordId: id, action: 'DELETE',
+            oldValue: `${existing.trainingType} for ${existing.userName}`,
+            reason: 'Training record deleted by admin',
+            user: req.user, ipAddress: req.ip,
+        });
+
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------------------------------------------------------------------------
+// DELEGATION LOG — parameterized routes last to avoid shadowing /training/*
+// ---------------------------------------------------------------------------
+
 // GET /api/delegation/:id — single entry
 router.get('/:id', requireRole('admin', 'cra'), async (req, res) => {
     try {
@@ -145,104 +247,6 @@ router.post('/:id/sign', async (req, res) => {
         });
 
         res.json(updated);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ---------------------------------------------------------------------------
-// TRAINING RECORDS
-// ---------------------------------------------------------------------------
-
-// GET /api/delegation/training/records — list training records
-router.get('/training/records', requireRole('admin', 'cra'), async (req, res) => {
-    try {
-        const { userId, trainingType } = req.query;
-        const rows = await db.select().from(trainingRecords)
-            .where(
-                userId && trainingType ? and(eq(trainingRecords.userId, userId), eq(trainingRecords.trainingType, trainingType))
-                : userId ? eq(trainingRecords.userId, userId)
-                : trainingType ? eq(trainingRecords.trainingType, trainingType)
-                : undefined
-            )
-            .orderBy(desc(trainingRecords.trainingDate));
-        res.json(rows);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// POST /api/delegation/training/records — add training record (admin/CRA)
-router.post('/training/records', requireRole('admin', 'cra'), async (req, res) => {
-    try {
-        const { userId: traineeId, trainingType, trainingDate, expiryDate, certificateRef, notes } = req.body;
-
-        if (!traineeId || !trainingType || !trainingDate) {
-            return res.status(400).json({ error: 'userId, trainingType, and trainingDate are required' });
-        }
-
-        const [targetUser] = await db.select({ name: user.name }).from(user).where(eq(user.id, traineeId));
-        if (!targetUser) return res.status(404).json({ error: 'User not found' });
-
-        const [record] = await db.insert(trainingRecords).values({
-            userId:          traineeId,
-            userName:        targetUser.name,
-            trainingType,
-            trainingDate:    new Date(trainingDate),
-            expiryDate:      expiryDate ? new Date(expiryDate) : null,
-            certificateRef:  certificateRef ?? null,
-            notes:           notes ?? null,
-            recordedBy:      req.user.id,
-            recordedByName:  req.user.name,
-        }).returning();
-
-        await writeAudit(db, {
-            tableName: 'training_records', recordId: record.id, action: 'INSERT',
-            newValue: `${trainingType} training recorded for ${targetUser.name}`,
-            reason: 'Training record per ICH E6(R3) §8.3',
-            user: req.user, ipAddress: req.ip,
-        });
-
-        res.status(201).json(record);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// GET /api/delegation/training/expiring — training expiring within N days (default 30)
-router.get('/training/expiring', requireRole('admin', 'cra'), async (req, res) => {
-    try {
-        const days = parseInt(req.query.days ?? '30');
-        const now = new Date();
-        const future = new Date();
-        future.setDate(future.getDate() + days);
-
-        const rows = await db.select().from(trainingRecords)
-            .where(and(gte(trainingRecords.expiryDate, now), lte(trainingRecords.expiryDate, future)))
-            .orderBy(trainingRecords.expiryDate);
-        res.json(rows);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// DELETE /api/delegation/training/records/:id — admin only
-router.delete('/training/records/:id', requireRole('admin'), async (req, res) => {
-    try {
-        const id = parseInt(req.params.id);
-        const [existing] = await db.select().from(trainingRecords).where(eq(trainingRecords.id, id));
-        if (!existing) return res.status(404).json({ error: 'Training record not found' });
-
-        await db.delete(trainingRecords).where(eq(trainingRecords.id, id));
-
-        await writeAudit(db, {
-            tableName: 'training_records', recordId: id, action: 'DELETE',
-            oldValue: `${existing.trainingType} for ${existing.userName}`,
-            reason: 'Training record deleted by admin',
-            user: req.user, ipAddress: req.ip,
-        });
-
-        res.json({ ok: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
