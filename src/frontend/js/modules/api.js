@@ -678,6 +678,80 @@ export const api = {
     async getExpiringTrainings(days = 30) {
         return apiFetch(`/api/delegation/training/expiring?days=${days}`);
     },
+
+    // ── SAE Expedited Reports (ICH E2A) ────────────────────
+    async getSAEReports(filters = {}) {
+        const params = new URLSearchParams();
+        if (filters.aeId)   params.set('aeId', filters.aeId);
+        if (filters.status) params.set('status', filters.status);
+        return apiFetch(`/api/saereports?${params}`);
+    },
+
+    async getOverdueSAEReports() {
+        return apiFetch('/api/saereports/overdue');
+    },
+
+    async createSAEReport(payload) {
+        return apiFetch('/api/saereports', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+    },
+
+    async submitSAEReport(id, payload) {
+        return apiFetch(`/api/saereports/${id}/submit`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+        });
+    },
+
+    // ── Monitoring Visits & SDV (ICH GCP §5.18) ───────────
+    async getMonitoringVisits(filters = {}) {
+        const params = new URLSearchParams();
+        if (filters.status) params.set('status', filters.status);
+        if (filters.siteId) params.set('siteId', filters.siteId);
+        return apiFetch(`/api/monitoring?${params}`);
+    },
+
+    async getMonitoringVisit(id) {
+        return apiFetch(`/api/monitoring/${id}`);
+    },
+
+    async createMonitoringVisit(payload) {
+        return apiFetch('/api/monitoring', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+    },
+
+    async updateMonitoringVisit(id, payload) {
+        return apiFetch(`/api/monitoring/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+        });
+    },
+
+    async submitMonitoringVisit(id) {
+        return apiFetch(`/api/monitoring/${id}/submit`, { method: 'POST' });
+    },
+
+    async acknowledgeMonitoringVisit(id, piComments) {
+        return apiFetch(`/api/monitoring/${id}/acknowledge`, {
+            method: 'POST',
+            body: JSON.stringify({ piComments }),
+        });
+    },
+
+    async getSDVRecords(visitId) {
+        return apiFetch(`/api/monitoring/${visitId}/sdv`);
+    },
+
+    async upsertSDVRecord(visitId, payload) {
+        return apiFetch(`/api/monitoring/${visitId}/sdv`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+    },
 };
 
 window.api = api;

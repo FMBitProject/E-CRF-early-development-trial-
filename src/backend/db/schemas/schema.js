@@ -369,6 +369,73 @@ export const trainingRecords = pgTable('training_records', {
     recordedAt:     timestamp('recorded_at').notNull().defaultNow(),
 });
 
+// ─── SAE Expedited Reports (ICH E2A §4) ─────────────────────────────────────
+
+export const saeReports = pgTable('sae_reports', {
+    id:               integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    aeId:             integer('ae_id').notNull().references(() => adverseEvents.id, { onDelete: 'cascade' }),
+    reportType:       text('report_type').notNull(),        // Initial | Follow-up | Final
+    reportNumber:     integer('report_number').notNull().default(1),
+    day0Date:         text('day0_date').notNull(),          // date first knowledge of SAE
+    deadlineDays:     integer('deadline_days').notNull(),   // 7 or 15
+    deadlineDate:     timestamp('deadline_date').notNull(),
+    submittedAt:      timestamp('submitted_at'),
+    submissionRef:    text('submission_ref'),
+    submittedTo:      text('submitted_to'),                 // BPOM | IRB/IEC | Sponsor | All
+    narrative:        text('narrative'),
+    status:           text('status').notNull().default('Pending'), // Pending | Submitted | Overdue
+    submittedBy:      text('submitted_by').references(() => user.id),
+    submittedByName:  text('submitted_by_name'),
+    createdBy:        text('created_by').references(() => user.id),
+    createdByName:    text('created_by_name'),
+    createdAt:        timestamp('created_at').notNull().defaultNow(),
+    updatedAt:        timestamp('updated_at').notNull().defaultNow(),
+});
+
+// ─── Monitoring Visits & SDV (ICH GCP E6(R3) §5.18) ─────────────────────────
+
+export const monitoringVisits = pgTable('monitoring_visits', {
+    id:                  integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    visitDate:           text('visit_date').notNull(),
+    siteId:              integer('site_id').references(() => sites.id),
+    siteName:            text('site_name'),
+    visitType:           text('visit_type').notNull(), // Site Initiation | Routine Monitoring | Close-out | Remote
+    craId:               text('cra_id').references(() => user.id),
+    craName:             text('cra_name').notNull(),
+    findings:            text('findings'),
+    actionItems:         jsonb('action_items').default('[]'),    // [{item, responsible, dueDate, status}]
+    subjectsReviewed:    jsonb('subjects_reviewed').default('[]'), // [subjectCode, ...]
+    status:              text('status').notNull().default('Draft'), // Draft | Submitted | Acknowledged
+    submittedAt:         timestamp('submitted_at'),
+    acknowledgedBy:      text('acknowledged_by').references(() => user.id),
+    acknowledgedByName:  text('acknowledged_by_name'),
+    acknowledgedAt:      timestamp('acknowledged_at'),
+    piComments:          text('pi_comments'),
+    nextVisitDate:       text('next_visit_date'),
+    notes:               text('notes'),
+    createdAt:           timestamp('created_at').notNull().defaultNow(),
+    updatedAt:           timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const sdvRecords = pgTable('sdv_records', {
+    id:                 integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    monitoringVisitId:  integer('monitoring_visit_id').notNull().references(() => monitoringVisits.id, { onDelete: 'cascade' }),
+    subjectId:          integer('subject_id').references(() => subjects.id),
+    subjectCode:        text('subject_code').notNull(),
+    visitId:            integer('visit_id').references(() => visits.id),
+    visitName:          text('visit_name'),
+    formId:             integer('form_id').references(() => crfForms.id),
+    formName:           text('form_name'),
+    sdvStatus:          text('sdv_status').notNull().default('Not Reviewed'), // Verified | Discrepant | Not Reviewed | N/A
+    discrepancyNote:    text('discrepancy_note'),
+    verifiedBy:         text('verified_by').references(() => user.id),
+    verifiedByName:     text('verified_by_name'),
+    verifiedAt:         timestamp('verified_at'),
+    createdAt:          timestamp('created_at').notNull().defaultNow(),
+});
+
+// ─── Queries ─────────────────────────────────────────────────────────────────
+
 export const queryStatusEnum = pgEnum('query_status', ['Open', 'Resolved', 'Closed']);
 
 export const queries = pgTable('queries', {

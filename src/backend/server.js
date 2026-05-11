@@ -27,6 +27,8 @@ import exportRouter        from './routes/export.js';
 import securityRouter      from './routes/security.js';
 import dblockRouter        from './routes/dblock.js';
 import delegationRouter    from './routes/delegation.js';
+import saeReportsRouter    from './routes/saereports.js';
+import monitoringRouter    from './routes/monitoring.js';
 import { rateLimitAuth }   from './middleware/ratelimit.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -263,6 +265,71 @@ async function runMigrations() {
         )`,
         `CREATE INDEX IF NOT EXISTS idx_training_user ON training_records (user_id)`,
         `CREATE INDEX IF NOT EXISTS idx_training_expiry ON training_records (expiry_date)`,
+        // Tier 3 — SAE Expedited Reports (ICH E2A §4)
+        `CREATE TABLE IF NOT EXISTS sae_reports (
+            id                SERIAL PRIMARY KEY,
+            ae_id             INTEGER NOT NULL REFERENCES adverse_events(id) ON DELETE CASCADE,
+            report_type       TEXT NOT NULL,
+            report_number     INTEGER NOT NULL DEFAULT 1,
+            day0_date         TEXT NOT NULL,
+            deadline_days     INTEGER NOT NULL,
+            deadline_date     TIMESTAMP NOT NULL,
+            submitted_at      TIMESTAMP,
+            submission_ref    TEXT,
+            submitted_to      TEXT,
+            narrative         TEXT,
+            status            TEXT NOT NULL DEFAULT 'Pending',
+            submitted_by      TEXT REFERENCES "user"(id),
+            submitted_by_name TEXT,
+            created_by        TEXT REFERENCES "user"(id),
+            created_by_name   TEXT,
+            created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at        TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_sae_reports_ae ON sae_reports (ae_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_sae_reports_status ON sae_reports (status)`,
+        // Tier 3 — Monitoring Visits (ICH GCP E6(R3) §5.18)
+        `CREATE TABLE IF NOT EXISTS monitoring_visits (
+            id                    SERIAL PRIMARY KEY,
+            visit_date            TEXT NOT NULL,
+            site_id               INTEGER REFERENCES sites(id),
+            site_name             TEXT,
+            visit_type            TEXT NOT NULL,
+            cra_id                TEXT REFERENCES "user"(id),
+            cra_name              TEXT NOT NULL,
+            findings              TEXT,
+            action_items          JSONB DEFAULT '[]',
+            subjects_reviewed     JSONB DEFAULT '[]',
+            status                TEXT NOT NULL DEFAULT 'Draft',
+            submitted_at          TIMESTAMP,
+            acknowledged_by       TEXT REFERENCES "user"(id),
+            acknowledged_by_name  TEXT,
+            acknowledged_at       TIMESTAMP,
+            pi_comments           TEXT,
+            next_visit_date       TEXT,
+            notes                 TEXT,
+            created_at            TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at            TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_monitoring_visits_status ON monitoring_visits (status)`,
+        // Tier 3 — SDV Records (Source Data Verification)
+        `CREATE TABLE IF NOT EXISTS sdv_records (
+            id                   SERIAL PRIMARY KEY,
+            monitoring_visit_id  INTEGER NOT NULL REFERENCES monitoring_visits(id) ON DELETE CASCADE,
+            subject_id           INTEGER REFERENCES subjects(id),
+            subject_code         TEXT NOT NULL,
+            visit_id             INTEGER REFERENCES visits(id),
+            visit_name           TEXT,
+            form_id              INTEGER REFERENCES crf_forms(id),
+            form_name            TEXT,
+            sdv_status           TEXT NOT NULL DEFAULT 'Not Reviewed',
+            discrepancy_note     TEXT,
+            verified_by          TEXT REFERENCES "user"(id),
+            verified_by_name     TEXT,
+            verified_at          TIMESTAMP,
+            created_at           TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_sdv_monitoring ON sdv_records (monitoring_visit_id)`,
     ];
     for (const stmt of stmts) {
         await client.unsafe(stmt);
@@ -312,6 +379,8 @@ app.use('/api/export',         requireAuth, exportRouter);
 app.use('/api/security',       requireAuth, securityRouter);
 app.use('/api/dblock',         requireAuth, dblockRouter);
 app.use('/api/delegation',     requireAuth, delegationRouter);
+app.use('/api/saereports',     requireAuth, saeReportsRouter);
+app.use('/api/monitoring',     requireAuth, monitoringRouter);
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
 // Serve all static frontend files from project root

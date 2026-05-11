@@ -15,6 +15,8 @@ import { renderConsents } from './modules/consents.js';
 import { renderRandomization } from './modules/randomization.js';
 import { renderDblock } from './modules/dblock.js';
 import { renderDelegation } from './modules/delegation.js';
+import { renderSAEReports } from './modules/saereports.js';
+import { renderMonitoring } from './modules/monitoring.js';
 import { initSessionTimeout } from './modules/session.js';
 
 export { showToast, showModal, closeModal };
@@ -38,6 +40,8 @@ const NAV_ITEMS = [
     { id: 'audit',          label: 'Audit Trail',   icon: 'shield-check',     roles: ['admin', 'cra', 'pi'] },
     { id: 'dblock',         label: 'DB Lock',       icon: 'lock',             roles: ['admin', 'cra', 'pi'] },
     { id: 'delegation',     label: 'Delegation',    icon: 'user-check',       roles: ['admin', 'cra', 'pi'] },
+    { id: 'saereports',     label: 'SAE Reports',   icon: 'alert-octagon',    roles: ['admin', 'cra', 'pi'] },
+    { id: 'monitoring',     label: 'Monitoring',    icon: 'clipboard-check',  roles: ['admin', 'cra', 'pi'] },
 ];
 
 const ROLE_CONFIG = {
@@ -221,6 +225,16 @@ const routes = {
         renderBreadcrumb([{ label: 'Delegation &amp; Training', route: 'delegation' }]);
         const el = document.getElementById('main-content');
         if (el) await renderDelegation(el);
+    },
+    'saereports': async () => {
+        renderBreadcrumb([{ label: 'SAE Reports', route: 'saereports' }]);
+        const el = document.getElementById('main-content');
+        if (el) await renderSAEReports(el);
+    },
+    'monitoring': async () => {
+        renderBreadcrumb([{ label: 'Monitoring Visits', route: 'monitoring' }]);
+        const el = document.getElementById('main-content');
+        if (el) await renderMonitoring(el);
     },
 };
 
