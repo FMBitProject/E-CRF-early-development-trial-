@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f=process.env.CLAUDE_TOOL_INPUT_FILE_PATH||''; if(/src\\/backend\\/routes|src\\/frontend\\/js\\/app\\.js/.test(f)){require('child_process').execSync('node scripts/update-guide.js',{cwd:process.cwd(),stdio:'inherit'})}\" 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}
