@@ -1,4 +1,4 @@
-import api from './api.js';
+import { api } from './api.js';
 
 export function renderDataStatus(container) {
     container.innerHTML = `
