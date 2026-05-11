@@ -111,8 +111,8 @@ router.post('/check', requireRole('cra', 'pi', 'admin'), async (req, res) => {
     }
 });
 
-// POST /api/dblock/initiate — CRA initiates the DBL process
-router.post('/initiate', requireRole('cra', 'pi', 'admin'), async (req, res) => {
+// POST /api/dblock/initiate — Data Manager/PI initiates the DBL process
+router.post('/initiate', requireRole('pi', 'admin'), async (req, res) => {
     try {
         const { notes } = req.body;
 

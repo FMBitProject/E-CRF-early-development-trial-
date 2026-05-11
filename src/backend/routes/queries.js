@@ -111,8 +111,8 @@ router.post('/', requireRole('cra', 'admin'), async (req, res) => {
     }
 });
 
-// PATCH /api/queries/:id/resolve — investigator resolves
-router.patch('/:id/resolve', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
+// PATCH /api/queries/:id/resolve — investigator/CRC resolves
+router.patch('/:id/resolve', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, res) => {
     try {
         const { resolutionText } = req.body;
         if (!resolutionText) return res.status(400).json({ error: 'resolutionText is required' });

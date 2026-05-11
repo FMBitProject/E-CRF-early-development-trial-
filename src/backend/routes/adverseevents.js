@@ -264,8 +264,8 @@ router.patch('/:id/report', requireRole('investigator', 'pi', 'admin'), async (r
     }
 });
 
-// PATCH /api/ae/:id/close — close AE (CRA, admin)
-router.patch('/:id/close', requireRole('cra', 'pi', 'admin'), async (req, res) => {
+// PATCH /api/ae/:id/close — close AE (PI/admin clinical decision)
+router.patch('/:id/close', requireRole('pi', 'admin'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const [updated] = await db.update(adverseEvents)

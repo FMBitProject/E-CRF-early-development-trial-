@@ -62,8 +62,8 @@ router.get('/stats', async (req, res) => {
     }
 });
 
-// POST /api/consents — record consent (investigator, admin)
-router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
+// POST /api/consents — record consent (investigator, pi, admin, crc)
+router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, res) => {
     try {
         const {
             subjectId, consentVersion, consentDate,

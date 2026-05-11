@@ -188,8 +188,8 @@ router.patch('/:id/report-irb', requireRole('investigator', 'pi', 'admin'), asyn
     }
 });
 
-// PATCH /api/deviations/:id/status — advance status (CAPA Implemented / Closed)
-router.patch('/:id/status', requireRole('cra', 'pi', 'admin'), async (req, res) => {
+// PATCH /api/deviations/:id/status — advance status (PI/admin clinical governance)
+router.patch('/:id/status', requireRole('pi', 'admin'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const { status } = req.body;

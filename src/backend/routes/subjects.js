@@ -77,8 +77,8 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-// POST /api/subjects — enroll new subject (investigator, admin)
-router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
+// POST /api/subjects — enroll new subject (investigator, pi, admin, crc)
+router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, res) => {
     try {
         const { subjectCode, siteId, initials, dateOfBirth, sex, enrolledAt } = req.body;
         if (!subjectCode) return res.status(400).json({ error: 'subjectCode is required' });
