@@ -19,7 +19,7 @@ import { renderSAEReports } from './modules/saereports.js';
 import { renderMonitoring } from './modules/monitoring.js';
 import { renderSites } from './modules/sites.js';
 import { renderStudyMgmt } from './modules/studymgmt.js';
-import { ensureStudySelected, switchStudy } from './modules/study-select.js';
+import { getSiteContext, ensureStudySelected, switchStudyAndSite } from './modules/study-select.js';
 import { initSessionTimeout } from './modules/session.js';
 
 export { showToast, showModal, closeModal };
@@ -83,9 +83,10 @@ function renderSidebar(currentRoute) {
 
     const initials = user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
     const rc = ROLE_CONFIG[user.role] || { label: user.role, cls: 'bg-slate-500' };
-    const siteLine = window._userSiteName
+    const siteCtx = getSiteContext();
+    const siteLine = siteCtx
         ? `<p class="text-blue-400 text-xs leading-none mt-0.5 truncate flex items-center gap-1">
-               <i data-lucide="building-2" class="w-2.5 h-2.5 inline flex-shrink-0"></i>${window._userSiteName}
+               <i data-lucide="building-2" class="w-2.5 h-2.5 inline flex-shrink-0"></i>${siteCtx.siteCode ? `${siteCtx.siteCode} – ${siteCtx.siteName}` : siteCtx.siteName}
            </p>`
         : '';
 
@@ -145,21 +146,6 @@ function refreshQueryCount() {
 }
 
 window._openQueryCount = 0;
-window._userSiteName   = null;
-
-// Resolve user's assigned site name for sidebar display
-if (user.siteId) {
-    api.getSites()
-        .then(sites => {
-            const site = sites.find(s => s.id === user.siteId);
-            if (site) {
-                window._userSiteName = site.site_code ? `${site.site_code} – ${site.site_name}` : site.site_name;
-                const basePath = parseRoute(window.location.hash).key.split('/')[0] || 'dashboard';
-                renderSidebar(basePath);
-            }
-        })
-        .catch(() => {});
-}
 
 // ---- Breadcrumb ----
 function renderBreadcrumb(segments) {
@@ -323,7 +309,7 @@ async function navigate(hash) {
 
 window.navigate        = (path) => { window.location.hash = path; };
 window.appLogout       = () => { api.logout(); };
-window.appSwitchStudy  = () => { switchStudy(); };
+window.appSwitchStudy  = () => { switchStudyAndSite(); };
 
 window.addEventListener('hashchange', () => navigate(window.location.hash));
 

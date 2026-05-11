@@ -1,119 +1,249 @@
-// Study Selector — shown when no study is selected in localStorage
-// Auto-selects if only one study is accessible
+// Study + Site Onboarding — shown when no context is selected after login
+// Flow: select study → select site → navigate to dashboard
 
 import { api } from './api.js';
-import { showToast } from './utils.js';
 
-export async function ensureStudySelected() {
-    const current = api.getCurrentStudy();
+// ── Context helpers ─────────────────────────────────────────────────────────
 
-    let studies;
-    try {
-        studies = await api.getStudies();
-    } catch {
-        return; // if API fails (e.g. table not yet migrated), don't block the UI
-    }
-
-    if (studies.length === 0) {
-        // No studies yet — admin needs to create one
-        if (api.getCurrentUser()?.role === 'admin') {
-            showStudyRequiredBanner();
-        }
-        return;
-    }
-
-    // Auto-select if only one study
-    if (studies.length === 1 && !current) {
-        api.setCurrentStudy(studies[0]);
-        return;
-    }
-
-    // If current study is still in the list, keep it
-    if (current && studies.find(s => s.id === current.id)) return;
-
-    // Multiple studies and none selected — show picker, wait for selection
-    return new Promise(resolve => showStudyPicker(studies, resolve));
+export function getSiteContext() {
+    const id  = localStorage.getItem('ecrf_site_context_id');
+    const raw = localStorage.getItem('ecrf_site_context_meta');
+    return id ? { id: parseInt(id), ...(raw ? JSON.parse(raw) : {}) } : null;
 }
 
-function showStudyRequiredBanner() {
+export function setSiteContext(site) {
+    if (!site) {
+        localStorage.removeItem('ecrf_site_context_id');
+        localStorage.removeItem('ecrf_site_context_meta');
+    } else {
+        localStorage.setItem('ecrf_site_context_id', String(site.id));
+        localStorage.setItem('ecrf_site_context_meta', JSON.stringify({
+            siteCode: site.site_code ?? site.code ?? '',
+            siteName: site.site_name ?? site.name ?? '',
+        }));
+    }
+}
+
+// ── Main entry point ────────────────────────────────────────────────────────
+
+export async function ensureStudySelected() {
+    const currentStudy = api.getCurrentStudy();
+    const currentSite  = getSiteContext();
+
+    // Both already selected — nothing to do
+    if (currentStudy && currentSite) return;
+
+    let studies = [];
+    try { studies = await api.getStudies(); } catch { /* table not yet migrated */ }
+
+    if (studies.length === 0) {
+        // No studies exist yet
+        const role = api.getCurrentUser()?.role;
+        if (role === 'admin') showNoStudyBanner();
+        return;
+    }
+
+    // Determine which study to use
+    let study = currentStudy;
+    if (!study) {
+        if (studies.length === 1) {
+            study = studies[0];
+            api.setCurrentStudy(study);
+        } else {
+            study = await pickStudy(studies);
+            api.setCurrentStudy(study);
+        }
+    }
+
+    // Now pick site
+    if (!currentSite) {
+        const user = api.getCurrentUser();
+        let sites = [];
+        try { sites = await api.getSites(); } catch {}
+        sites = sites.filter(s => s.status === 'Active' || s.status === 'active');
+
+        if (sites.length === 0) {
+            // No sites — continue without site context (admin may create sites later)
+            return;
+        }
+
+        // If user has a fixed site assigned, auto-select it
+        if (user?.siteId) {
+            const fixed = sites.find(s => s.id === user.siteId);
+            if (fixed) { setSiteContext(fixed); return; }
+        }
+
+        // If only one site, auto-select
+        if (sites.length === 1) {
+            setSiteContext(sites[0]);
+            return;
+        }
+
+        // Multiple sites — show picker
+        await pickSite(study, sites);
+    }
+}
+
+// ── Study picker ─────────────────────────────────────────────────────────────
+
+function pickStudy(studies) {
+    return new Promise(resolve => {
+        document.getElementById('onboarding-overlay')?.remove();
+        const overlay = document.createElement('div');
+        overlay.id = 'onboarding-overlay';
+        overlay.className = 'fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[9999] flex items-center justify-center';
+
+        const rows = studies.map(s => `
+            <button class="study-pick-btn w-full text-left px-4 py-3.5 rounded-xl border-2 border-slate-100
+                    hover:border-blue-400 hover:bg-blue-50/80 transition group"
+                data-id="${s.id}" data-title="${encodeURIComponent(s.title)}"
+                data-protocol="${encodeURIComponent(s.protocolNo)}" data-status="${s.status}">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                        <i data-lucide="flask-conical" class="w-5 h-5 text-blue-600"></i>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <p class="font-semibold text-slate-900 text-sm truncate group-hover:text-blue-700">${s.title}</p>
+                        <p class="text-xs text-slate-500 mt-0.5">${s.protocolNo} &nbsp;·&nbsp; ${s.phase ?? 'N/A'} &nbsp;·&nbsp;
+                            <span class="${s.status === 'Active' ? 'text-emerald-600' : 'text-slate-400'}">${s.status}</span>
+                        </p>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-500 flex-shrink-0"></i>
+                </div>
+            </button>`).join('');
+
+        overlay.innerHTML = `
+            <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg mx-4">
+                <div class="flex items-center gap-3 mb-2">
+                    <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center flex-shrink-0">
+                        <i data-lucide="layers" class="w-5 h-5 text-white"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-400 font-medium uppercase tracking-widest">Step 1 of 2</p>
+                        <h2 class="text-base font-bold text-slate-900 leading-tight">Select Clinical Study</h2>
+                    </div>
+                </div>
+                <p class="text-xs text-slate-500 mb-4 ml-[52px]">Choose the trial you will work on in this session</p>
+                <div class="space-y-2 max-h-72 overflow-y-auto pr-0.5">${rows}</div>
+            </div>`;
+
+        document.body.appendChild(overlay);
+        if (window.lucide) lucide.createIcons();
+
+        overlay.querySelectorAll('.study-pick-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const s = {
+                    id:         parseInt(btn.dataset.id),
+                    title:      decodeURIComponent(btn.dataset.title),
+                    protocolNo: decodeURIComponent(btn.dataset.protocol),
+                    status:     btn.dataset.status,
+                };
+                overlay.remove();
+                resolve(s);
+            });
+        });
+    });
+}
+
+// ── Site picker ───────────────────────────────────────────────────────────────
+
+function pickSite(study, sites) {
+    return new Promise(resolve => {
+        document.getElementById('onboarding-overlay')?.remove();
+        const overlay = document.createElement('div');
+        overlay.id = 'onboarding-overlay';
+        overlay.className = 'fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[9999] flex items-center justify-center';
+
+        const rows = sites.map(s => `
+            <button class="site-pick-btn w-full text-left px-4 py-3.5 rounded-xl border-2 border-slate-100
+                    hover:border-emerald-400 hover:bg-emerald-50/80 transition group"
+                data-id="${s.id}"
+                data-code="${encodeURIComponent(s.site_code ?? '')}"
+                data-name="${encodeURIComponent(s.site_name ?? '')}">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                        <i data-lucide="building-2" class="w-5 h-5 text-emerald-600"></i>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <p class="font-semibold text-slate-900 text-sm truncate group-hover:text-emerald-700">${s.site_name ?? '—'}</p>
+                        <p class="text-xs text-slate-500 mt-0.5">${s.site_code ?? ''} &nbsp;·&nbsp; ${s.country ?? 'N/A'}
+                            ${s.pi_name ? ` &nbsp;·&nbsp; PI: ${s.pi_name}` : ''}
+                        </p>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-emerald-500 flex-shrink-0"></i>
+                </div>
+            </button>`).join('');
+
+        overlay.innerHTML = `
+            <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg mx-4">
+                <div class="flex items-center gap-3 mb-1">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center flex-shrink-0">
+                        <i data-lucide="building-2" class="w-5 h-5 text-white"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-400 font-medium uppercase tracking-widest">Step 2 of 2</p>
+                        <h2 class="text-base font-bold text-slate-900 leading-tight">Select Study Site</h2>
+                    </div>
+                </div>
+                <p class="text-xs text-slate-500 mb-4 ml-[52px]">
+                    <span class="inline-flex items-center gap-1">
+                        <i data-lucide="flask-conical" class="w-3 h-3 text-blue-500 inline"></i>
+                        <span class="font-medium text-blue-700">${study.title}</span>
+                    </span>
+                    &nbsp;·&nbsp; Choose the site for this session
+                </p>
+                <div class="space-y-2 max-h-72 overflow-y-auto pr-0.5">${rows}</div>
+            </div>`;
+
+        document.body.appendChild(overlay);
+        if (window.lucide) lucide.createIcons();
+
+        overlay.querySelectorAll('.site-pick-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const site = {
+                    id:        parseInt(btn.dataset.id),
+                    site_code: decodeURIComponent(btn.dataset.code),
+                    site_name: decodeURIComponent(btn.dataset.name),
+                };
+                setSiteContext(site);
+                overlay.remove();
+                resolve(site);
+            });
+        });
+    });
+}
+
+// ── No study banner (admin) ───────────────────────────────────────────────────
+
+function showNoStudyBanner() {
+    document.getElementById('onboarding-overlay')?.remove();
     const banner = document.createElement('div');
-    banner.id = 'study-required-banner';
-    banner.className = 'fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center';
+    banner.id = 'onboarding-overlay';
+    banner.className = 'fixed inset-0 bg-slate-900/80 z-[9999] flex items-center justify-center';
     banner.innerHTML = `
         <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md mx-4 text-center">
             <div class="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
                 <i data-lucide="flask-conical" class="w-7 h-7 text-amber-600"></i>
             </div>
             <h2 class="text-lg font-bold text-slate-900 mb-2">No Studies Configured</h2>
-            <p class="text-sm text-slate-500 mb-5">No clinical studies have been created yet. As an administrator, please create a study before using the system.</p>
-            <a href="#studymgmt" onclick="document.getElementById('study-required-banner').remove()"
-               class="btn-primary px-6 py-2 rounded-lg text-sm font-semibold inline-block">
-                Go to Study Management
-            </a>
+            <p class="text-sm text-slate-500 mb-5">Create the first clinical study to begin using the E-CRF system.</p>
+            <button id="go-create-study" class="btn-primary px-6 py-2.5 rounded-lg text-sm font-semibold">
+                Create First Study
+            </button>
         </div>`;
     document.body.appendChild(banner);
     if (window.lucide) lucide.createIcons();
-}
-
-function showStudyPicker(studies, onSelected) {
-    document.getElementById('study-picker-overlay')?.remove();
-
-    const overlay = document.createElement('div');
-    overlay.id = 'study-picker-overlay';
-    overlay.className = 'fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[9999] flex items-center justify-center';
-
-    const rows = studies.map(s => `
-        <button class="study-pick-btn w-full text-left px-4 py-3.5 rounded-xl border-2 border-slate-100
-                hover:border-blue-400 hover:bg-blue-50 transition group"
-            data-id="${s.id}" data-title="${encodeURIComponent(s.title)}"
-            data-protocol="${encodeURIComponent(s.protocolNo)}" data-status="${s.status}">
-            <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                    <i data-lucide="flask-conical" class="w-4.5 h-4.5 text-blue-600"></i>
-                </div>
-                <div class="min-w-0 flex-1">
-                    <p class="font-semibold text-slate-900 text-sm truncate group-hover:text-blue-700">${s.title}</p>
-                    <p class="text-xs text-slate-500 mt-0.5">${s.protocolNo} · ${s.phase ?? 'N/A'} · ${s.status}</p>
-                </div>
-                <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 group-hover:text-blue-500 flex-shrink-0"></i>
-            </div>
-        </button>`).join('');
-
-    overlay.innerHTML = `
-        <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg mx-4">
-            <div class="flex items-center gap-3 mb-5">
-                <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
-                    <i data-lucide="layers" class="w-5 h-5 text-white"></i>
-                </div>
-                <div>
-                    <h2 class="text-base font-bold text-slate-900">Select Study</h2>
-                    <p class="text-xs text-slate-500">Choose the clinical trial to work in</p>
-                </div>
-            </div>
-            <div class="space-y-2 max-h-80 overflow-y-auto pr-1">${rows}</div>
-        </div>`;
-
-    document.body.appendChild(overlay);
-    if (window.lucide) lucide.createIcons();
-
-    overlay.querySelectorAll('.study-pick-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            api.setCurrentStudy({
-                id:         parseInt(btn.dataset.id),
-                title:      decodeURIComponent(btn.dataset.title),
-                protocolNo: decodeURIComponent(btn.dataset.protocol),
-                status:     btn.dataset.status,
-            });
-            overlay.remove();
-            window.dispatchEvent(new CustomEvent('study-changed'));
-            if (onSelected) onSelected(); // resolve ensureStudySelected Promise
-        });
+    document.getElementById('go-create-study')?.addEventListener('click', () => {
+        banner.remove();
+        window.location.hash = '#studymgmt';
     });
 }
 
-export function switchStudy() {
-    api.getStudies().then(studies => {
-        if (studies.length > 1) showStudyPicker(studies, null);
-        else showToast('Only one study available', 'info');
-    }).catch(() => {});
+// ── Manual study/site switch (from sidebar or studymgmt) ─────────────────────
+
+export async function switchStudyAndSite() {
+    api.setCurrentStudy(null);
+    setSiteContext(null);
+    await ensureStudySelected();
+    window.dispatchEvent(new CustomEvent('study-changed'));
 }

@@ -221,6 +221,10 @@ export const api = {
 
     async logout() {
         localStorage.removeItem('ecrf_session');
+        localStorage.removeItem('ecrf_study_id');
+        localStorage.removeItem('ecrf_study_meta');
+        localStorage.removeItem('ecrf_site_context_id');
+        localStorage.removeItem('ecrf_site_context_meta');
         try { await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'include' }); } catch {}
         window.location.href = 'login.html';
     },

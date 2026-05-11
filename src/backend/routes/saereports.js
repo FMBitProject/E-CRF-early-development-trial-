@@ -11,7 +11,10 @@ import { writeAudit } from '../lib/audit.js';
 const router = Router();
 
 function isMissingTable(err) {
-    return err.message?.includes('does not exist') || err.code === '42P01';
+    const c = err?.cause;
+    return err?.code === '42P01' || c?.code === '42P01' ||
+           (err?.message || '').includes('does not exist') ||
+           (c?.message || '').includes('does not exist');
 }
 
 function calcDeadline(day0Date, deadlineDays) {
