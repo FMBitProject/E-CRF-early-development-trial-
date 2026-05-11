@@ -45,7 +45,8 @@ router.post('/', requireRole('admin'), async (req, res) => {
         const [row] = await db.insert(studies).values({
             title, protocolNo, phase: phase || null,
             sponsor: sponsor || null, indication: indication || null,
-            startDate: startDate || null, endDate: endDate || null,
+            startDate: startDate ? new Date(startDate) : null,
+            endDate:   endDate   ? new Date(endDate)   : null,
             status: 'Active',
             createdBy: req.user.id, createdByName: req.user.name,
         }).returning();
@@ -72,8 +73,8 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
         if (sponsor     !== undefined) updates.sponsor     = sponsor;
         if (indication  !== undefined) updates.indication  = indication;
         if (status      !== undefined) updates.status      = status;
-        if (startDate   !== undefined) updates.startDate   = startDate;
-        if (endDate     !== undefined) updates.endDate     = endDate;
+        if (startDate   !== undefined) updates.startDate   = startDate ? new Date(startDate) : null;
+        if (endDate     !== undefined) updates.endDate     = endDate   ? new Date(endDate)   : null;
         updates.updatedAt = new Date();
 
         const [row] = await db.update(studies).set(updates).where(eq(studies.id, id)).returning();

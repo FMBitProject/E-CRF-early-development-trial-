@@ -369,27 +369,6 @@ async function runMigrations() {
         `ALTER TABLE training_records   ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
         `ALTER TABLE monitoring_visits  ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
         `ALTER TABLE queries            ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
-        // Seed: create default study for pre-existing data (only if no studies exist)
-        `INSERT INTO studies (title, protocol_no, phase, status)
-         SELECT 'Default Study', 'DEFAULT-001', 'N/A', 'Active'
-         WHERE NOT EXISTS (SELECT 1 FROM studies)`,
-        // Assign all existing users to the default study (only if study_users is empty)
-        `INSERT INTO study_users (study_id, user_id)
-         SELECT s.id, u.id FROM studies s, "user" u
-         WHERE s.protocol_no = 'DEFAULT-001'
-           AND NOT EXISTS (SELECT 1 FROM study_users WHERE study_id = s.id AND user_id = u.id)
-           AND NOT EXISTS (SELECT 1 FROM study_users LIMIT 1)`,
-        // Backfill existing clinical records to the default study
-        `UPDATE subjects            SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
-        `UPDATE adverse_events      SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
-        `UPDATE protocol_deviations SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
-        `UPDATE informed_consents   SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
-        `UPDATE randomization_list  SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
-        `UPDATE study_db_lock       SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
-        `UPDATE delegation_log      SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
-        `UPDATE training_records    SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
-        `UPDATE monitoring_visits   SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
-        `UPDATE queries             SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
     ];
     for (const stmt of stmts) {
         await client.unsafe(stmt);
