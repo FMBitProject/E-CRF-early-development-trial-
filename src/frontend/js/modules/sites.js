@@ -3,6 +3,7 @@
 
 import { api } from './api.js';
 import { showToast } from './utils.js';
+import { getSiteContext, setSiteContext } from './study-select.js';
 
 export async function renderSites(container) {
     container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;padding:3rem;">
@@ -214,7 +215,12 @@ function attachSiteEvents(container) {
             return;
         }
         try {
-            await api.createSite({ code, name, country: country || null, piName: piName || null });
+            const newSite = await api.createSite({ code, name, country: country || null, piName: piName || null });
+            // Auto-select this site as context if none is set yet (initial setup)
+            if (!getSiteContext()) {
+                setSiteContext({ id: newSite.id, site_code: newSite.code, site_name: newSite.name });
+                window.dispatchEvent(new CustomEvent('site-context-changed'));
+            }
             showToast('Site registered successfully', 'success');
             document.getElementById('add-site-modal').classList.add('hidden');
             renderSites(container);

@@ -27,7 +27,7 @@ export function setSiteContext(site) {
 // ── Main entry point ────────────────────────────────────────────────────────
 
 export async function ensureStudySelected() {
-    const currentStudy = api.getCurrentStudy();
+    let currentStudy = api.getCurrentStudy();
     const currentSite  = getSiteContext();
 
     // Both already selected — nothing to do
@@ -37,10 +37,14 @@ export async function ensureStudySelected() {
     try { studies = await api.getStudies(); } catch { /* table not yet migrated */ }
 
     if (studies.length === 0) {
-        // No studies exist yet
-        const role = api.getCurrentUser()?.role;
-        if (role === 'admin') showNoStudyBanner();
+        // No studies exist yet — app.js startup sequence handles the redirect
         return;
+    }
+
+    // Validate stored study still exists (e.g. was deleted)
+    if (currentStudy && !studies.find(s => s.id === currentStudy.id)) {
+        api.setCurrentStudy(null);
+        currentStudy = null;
     }
 
     // Determine which study to use
@@ -210,32 +214,6 @@ function pickSite(study, sites) {
                 resolve(site);
             });
         });
-    });
-}
-
-// ── No study banner (admin) ───────────────────────────────────────────────────
-
-function showNoStudyBanner() {
-    document.getElementById('onboarding-overlay')?.remove();
-    const banner = document.createElement('div');
-    banner.id = 'onboarding-overlay';
-    banner.className = 'fixed inset-0 bg-slate-900/80 z-[9999] flex items-center justify-center';
-    banner.innerHTML = `
-        <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md mx-4 text-center">
-            <div class="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
-                <i data-lucide="flask-conical" class="w-7 h-7 text-amber-600"></i>
-            </div>
-            <h2 class="text-lg font-bold text-slate-900 mb-2">No Studies Configured</h2>
-            <p class="text-sm text-slate-500 mb-5">Create the first clinical study to begin using the E-CRF system.</p>
-            <button id="go-create-study" class="btn-primary px-6 py-2.5 rounded-lg text-sm font-semibold">
-                Create First Study
-            </button>
-        </div>`;
-    document.body.appendChild(banner);
-    if (window.lucide) lucide.createIcons();
-    document.getElementById('go-create-study')?.addEventListener('click', () => {
-        banner.remove();
-        window.location.hash = '#studymgmt';
     });
 }
 

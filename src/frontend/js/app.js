@@ -57,13 +57,31 @@ const ROLE_CONFIG = {
     crc:          { label: 'CRC',                  cls: 'bg-emerald-600' },
 };
 
+// ---- App state helpers ----
+function getAppState() {
+    return {
+        hasStudy: !!api.getCurrentStudy(),
+        hasSite:  !!getSiteContext(),
+    };
+}
+
 // ---- Sidebar ----
 function renderSidebar(currentRoute) {
     const nav      = document.getElementById('sidebar-nav');
     const userArea = document.getElementById('sidebar-user');
     if (!nav || !userArea) return;
 
-    const visible = NAV_ITEMS.filter(item => item.roles.includes(user.role));
+    const { hasStudy, hasSite } = getAppState();
+    let visible;
+    if (!hasStudy) {
+        // No study selected: only show Studies tab (admin) — others see nothing
+        visible = NAV_ITEMS.filter(item => item.id === 'studymgmt' && item.roles.includes(user.role));
+    } else if (!hasSite) {
+        // Study selected but no site: show Studies + Sites (admin can create site)
+        visible = NAV_ITEMS.filter(item => ['studymgmt', 'sites'].includes(item.id) && item.roles.includes(user.role));
+    } else {
+        visible = NAV_ITEMS.filter(item => item.roles.includes(user.role));
+    }
 
     nav.innerHTML = visible.map(item => {
         const isActive = currentRoute === item.id;
@@ -316,11 +334,49 @@ window.addEventListener('hashchange', () => navigate(window.location.hash));
 // Flag: true after the initial navigate() has been called
 let _appReady = false;
 
-// study-changed fires on: (a) initial auto-select, (b) manual study switch
+function navigateByState() {
+    const { hasStudy, hasSite } = getAppState();
+    if (!hasStudy) {
+        // No study: admin goes to study management; others see placeholder
+        if (user.role === 'admin') {
+            navigate('#studymgmt');
+        } else {
+            const el = document.getElementById('main-content');
+            if (el) el.innerHTML = `
+                <div class="flex items-center justify-center h-full">
+                    <div class="text-center p-8 max-w-xs">
+                        <i data-lucide="flask-conical" class="w-12 h-12 text-slate-300 mx-auto mb-4"></i>
+                        <p class="font-semibold text-slate-600 mb-1">No study configured</p>
+                        <p class="text-sm text-slate-400">Contact your administrator to set up a clinical study.</p>
+                    </div>
+                </div>`;
+            if (window.lucide) lucide.createIcons();
+        }
+    } else if (!hasSite) {
+        // Study set but no site: admin creates sites; others go to dashboard (site auto-selected)
+        if (user.role === 'admin') {
+            navigate('#sites');
+        } else {
+            navigate(window.location.hash || '#dashboard');
+            refreshQueryCount();
+        }
+    } else {
+        navigate(window.location.hash || '#dashboard');
+        refreshQueryCount();
+    }
+}
+
+// study-changed: fired when study is created, switched, or cleared
 window.addEventListener('study-changed', () => {
     const basePath = parseRoute(window.location.hash).key.split('/')[0] || 'dashboard';
     renderSidebar(basePath);
-    // Only re-navigate on manual switch (not during startup, which calls navigate itself)
+    if (_appReady) navigateByState();
+});
+
+// site-context-changed: fired when site context is set (first site created or picked)
+window.addEventListener('site-context-changed', () => {
+    const basePath = parseRoute(window.location.hash).key.split('/')[0] || 'dashboard';
+    renderSidebar(basePath);
     if (_appReady) {
         navigate(window.location.hash || '#dashboard');
         refreshQueryCount();
@@ -330,8 +386,9 @@ window.addEventListener('study-changed', () => {
 // Await study selection before navigating — prevents 400 X-Study-ID errors on first render
 await ensureStudySelected();
 _appReady = true;
-navigate(window.location.hash || '#dashboard');
-refreshQueryCount();
+const _initBasePath = parseRoute(window.location.hash).key.split('/')[0] || 'dashboard';
+renderSidebar(_initBasePath);
+navigateByState();
 
 // 21 CFR Part 11 §11.10(d) — 30-minute inactivity session timeout
 initSessionTimeout();
