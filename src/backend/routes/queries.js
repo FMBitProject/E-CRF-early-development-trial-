@@ -5,6 +5,7 @@ import { queries, subjects, visits, crfForms, user } from '../db/schemas/schema.
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 import { sendQueryRaisedEmail, sendQueryResolvedEmail } from '../lib/email.js';
+import { checkAndNotifyVisitClean } from '../lib/visitclean.js';
 
 const router = Router();
 
@@ -177,6 +178,9 @@ router.patch('/:id/close', requireRole('cra', 'admin'), async (req, res) => {
             fieldName: 'status', oldValue: 'Resolved', newValue: 'Closed',
             reason: 'Query closed by CRA', user: req.user, ipAddress: req.ip,
         });
+
+        // Check if this subject is now fully clean (no open queries + SDV 100%)
+        checkAndNotifyVisitClean(req.studyId, q.subjectId).catch(() => {});
 
         res.json(updated);
     } catch (err) {

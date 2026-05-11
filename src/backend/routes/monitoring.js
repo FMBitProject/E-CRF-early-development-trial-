@@ -7,6 +7,7 @@ import { db } from '../db/connection.js';
 import { monitoringVisits, sdvRecords, subjects, sites } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
+import { checkAndNotifyVisitClean } from '../lib/visitclean.js';
 
 const router = Router();
 
@@ -277,6 +278,11 @@ router.post('/:id/sdv', requireRole('admin', 'cra', 'pi'), async (req, res) => {
             reason: `Source data verification per ICH GCP E6(R3) §5.18.4`,
             user: req.user, ipAddress: req.ip,
         });
+
+        // If SDV status changed to Verified, check if subject is now fully clean
+        if (sdvStatus === 'Verified' && record.subjectId) {
+            checkAndNotifyVisitClean(req.studyId, record.subjectId).catch(() => {});
+        }
 
         res.status(existing ? 200 : 201).json(record);
     } catch (err) {
