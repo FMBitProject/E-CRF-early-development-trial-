@@ -197,6 +197,82 @@ router.post('/verify', async (req, res) => {
     }
 });
 
+// POST /api/mfa/direct-login — verify password, set session immediately (no OTP)
+router.post('/direct-login', async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) {
+        return res.status(400).json({ error: 'Email and password are required.' });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    try {
+        // Account lock check
+        const now = new Date();
+        let lockRecord = null;
+        try {
+            [lockRecord] = await db.select().from(accountLocks)
+                .where(eq(accountLocks.email, normalizedEmail));
+        } catch { /* migration pending */ }
+
+        if (lockRecord && !lockRecord.unlockedAt && lockRecord.lockedAt) {
+            if (!lockRecord.autoUnlockAt || new Date(lockRecord.autoUnlockAt) > now) {
+                try {
+                    await db.insert(loginAttempts)
+                        .values({ email: normalizedEmail, ipAddress: req.ip || 'unknown', success: false });
+                } catch { /* migration pending */ }
+                return res.status(423).json({
+                    error: `Account locked after ${POLICY.maxFailedAttempts} failed attempts. ` +
+                           `Auto-unlocks at ${lockRecord.autoUnlockAt?.toISOString() ?? 'N/A'} or contact your administrator.`,
+                    lockedAt:     lockRecord.lockedAt,
+                    autoUnlockAt: lockRecord.autoUnlockAt,
+                });
+            }
+        }
+
+        let signIn;
+        try {
+            signIn = await auth.api.signInEmail({ body: { email: normalizedEmail, password } });
+        } catch (authErr) {
+            await recordFailedAttempt(normalizedEmail, req.ip);
+            return res.status(401).json({ error: 'Invalid email or password.' });
+        }
+
+        if (!signIn || !signIn.token) {
+            await recordFailedAttempt(normalizedEmail, req.ip);
+            return res.status(401).json({ error: 'Invalid email or password.' });
+        }
+
+        // Reset lock state on success
+        try {
+            await db.insert(loginAttempts)
+                .values({ email: normalizedEmail, ipAddress: req.ip || 'unknown', success: true });
+            if (lockRecord && !lockRecord.unlockedAt) {
+                await db.update(accountLocks)
+                    .set({ unlockedAt: new Date(), unlockReason: 'Successful login' })
+                    .where(eq(accountLocks.id, lockRecord.id));
+            }
+        } catch { /* migration pending */ }
+
+        const { token, user } = signIn;
+
+        const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+        res.cookie(SESSION_COOKIE, token, {
+            httpOnly: true,
+            secure:   isSecure,
+            sameSite: 'lax',
+            path:     '/',
+            maxAge:   SESSION_MAX_AGE * 1000,
+        });
+
+        res.json({ token, user: { id: user.id, name: user.name, role: user.role ?? 'investigator' } });
+
+    } catch (err) {
+        console.error('Direct login error:', err.message);
+        res.status(500).json({ error: `Server error: ${err.message}` });
+    }
+});
+
 // POST /api/mfa/resend
 router.post('/resend', (_req, res) => {
     res.status(400).json({ error: 'Please go back and sign in again to get a new code.' });
