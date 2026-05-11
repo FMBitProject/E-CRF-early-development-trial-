@@ -49,6 +49,13 @@ function currentUser() {
 
 // ── Field-name mappers (backend camelCase → frontend snake_case) ──
 
+function mapStudy(s) {
+    return {
+        ...s,
+        startDate: s.startDate ? new Date(s.startDate).toISOString().split('T')[0] : null,
+        endDate:   s.endDate   ? new Date(s.endDate).toISOString().split('T')[0]   : null,
+    };
+}
 function mapSubject(s) {
     const enrolledDate = s.enrolledAt
         ? (typeof s.enrolledAt === 'string' ? s.enrolledAt : new Date(s.enrolledAt).toISOString()).split('T')[0]
@@ -196,11 +203,13 @@ export const api = {
 
     // ── Study Management ───────────────────────────────────
     async getStudies() {
-        return apiFetch('/api/studies');
+        const studies = await apiFetch('/api/studies');
+        return studies.map(mapStudy);
     },
 
     async createStudy(payload) {
-        return apiFetch('/api/studies', { method: 'POST', body: JSON.stringify(payload) });
+        const result = await apiFetch('/api/studies', { method: 'POST', body: JSON.stringify(payload) });
+        return mapStudy(result);
     },
 
     async updateStudy(id, payload) {
