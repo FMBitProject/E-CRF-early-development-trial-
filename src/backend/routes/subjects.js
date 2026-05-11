@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { eq, ilike, and } from 'drizzle-orm';
+import { eq, ilike, and, count, sql } from 'drizzle-orm';
 import { db } from '../db/connection.js';
-import { subjects, sites, visits, ieAssessments } from '../db/schemas/schema.js';
+import { subjects, sites, visits, ieAssessments, crfDataEntries, queries, subjectRandomization } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 
@@ -37,6 +37,109 @@ router.get('/', async (req, res) => {
             .orderBy(subjects.enrolledAt);
 
         res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/subjects/status-overview — PI/admin/CRA aggregate view: entries, signatures, queries, randomization per subject
+router.get('/status-overview', requireRole('pi', 'admin', 'cra'), async (req, res) => {
+    try {
+        const studySubjects = await db
+            .select({
+                id:          subjects.id,
+                subjectCode: subjects.subjectCode,
+                initials:    subjects.initials,
+                status:      subjects.status,
+                siteCode:    sites.code,
+                siteName:    sites.name,
+            })
+            .from(subjects)
+            .leftJoin(sites, eq(subjects.siteId, sites.id))
+            .where(eq(subjects.studyId, req.studyId))
+            .orderBy(subjects.subjectCode);
+
+        if (studySubjects.length === 0) return res.json([]);
+
+        const subjectIds = studySubjects.map(s => s.id);
+
+        // Entry counts grouped by subjectId + status
+        const entryCounts = await db
+            .select({
+                subjectId: crfDataEntries.subjectId,
+                status:    crfDataEntries.status,
+                cnt:       count(),
+            })
+            .from(crfDataEntries)
+            .where(sql`${crfDataEntries.subjectId} = ANY(${sql.raw(`ARRAY[${subjectIds.join(',')}]`)})`)
+            .groupBy(crfDataEntries.subjectId, crfDataEntries.status);
+
+        // Count signed entries per subject (join back to crfDataEntries)
+        const signedPerSubject = await db
+            .select({
+                subjectId: crfDataEntries.subjectId,
+                cnt:       count(),
+            })
+            .from(crfDataEntries)
+            .where(sql`${crfDataEntries.subjectId} = ANY(ARRAY[${sql.raw(subjectIds.join(','))}])
+                AND ${crfDataEntries.id} IN (SELECT entry_id FROM esignatures)`)
+            .groupBy(crfDataEntries.subjectId);
+
+        // Open query counts per subject
+        const openQueries = await db
+            .select({
+                subjectId: queries.subjectId,
+                cnt:       count(),
+            })
+            .from(queries)
+            .where(sql`${queries.subjectId} = ANY(ARRAY[${sql.raw(subjectIds.join(','))}])
+                AND ${queries.status} = 'Open'`)
+            .groupBy(queries.subjectId);
+
+        // Randomization status per subject
+        const randRows = await db
+            .select({
+                subjectId:       subjectRandomization.subjectId,
+                treatmentArm:    subjectRandomization.treatmentArm,
+                randomizedAt:    subjectRandomization.randomizedAt,
+            })
+            .from(subjectRandomization)
+            .where(sql`${subjectRandomization.subjectId} = ANY(ARRAY[${sql.raw(subjectIds.join(','))}])`);
+
+        // Build lookup maps
+        const entryMap = {};
+        for (const row of entryCounts) {
+            if (!entryMap[row.subjectId]) entryMap[row.subjectId] = {};
+            entryMap[row.subjectId][row.status] = parseInt(row.cnt);
+        }
+        const signedMap = Object.fromEntries(signedPerSubject.map(r => [r.subjectId, parseInt(r.cnt)]));
+        const queryMap  = Object.fromEntries(openQueries.map(r => [r.subjectId, parseInt(r.cnt)]));
+        const randMap   = Object.fromEntries(randRows.map(r => [r.subjectId, r]));
+
+        const result = studySubjects.map(s => {
+            const entries = entryMap[s.id] ?? {};
+            const totalEntries = Object.values(entries).reduce((a, b) => a + b, 0);
+            const rand = randMap[s.id];
+            return {
+                id:            s.id,
+                subjectCode:   s.subjectCode,
+                initials:      s.initials,
+                status:        s.status,
+                siteCode:      s.siteCode,
+                siteName:      s.siteName,
+                totalEntries,
+                draftCount:    entries['Draft']  ?? 0,
+                savedCount:    entries['Saved']  ?? 0,
+                signedCount:   signedMap[s.id]   ?? 0,
+                lockedCount:   entries['Locked'] ?? 0,
+                openQueries:   queryMap[s.id]    ?? 0,
+                randomized:    !!rand,
+                treatmentArm:  rand?.treatmentArm ?? null,
+                randomizedAt:  rand?.randomizedAt ?? null,
+            };
+        });
+
+        res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

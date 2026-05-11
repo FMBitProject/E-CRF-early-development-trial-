@@ -195,3 +195,24 @@ tbody tr { transition: background-color 0.1s ease; }
 @media (max-width: 640px) {
     .overflow-x-auto table { min-width: 620px; }
 }
+
+/* ---- Data Status (Subject Overview) ---- */
+.entry-bar {
+    display: inline-flex;
+    height: 10px;
+    width: 80px;
+    border-radius: 5px;
+    overflow: hidden;
+    background: #e5e7eb;
+    vertical-align: middle;
+    margin-right: 4px;
+}
+.entry-seg { display: inline-block; height: 100%; }
+.seg-draft  { background: #9ca3af; }
+.seg-saved  { background: #60a5fa; }
+.seg-signed { background: #34d399; }
+.seg-locked { background: #6366f1; }
+
+.ds-table td { vertical-align: middle; }
+.badge-neutral { background: #e5e7eb; color: #6b7280; }
+.badge-info    { background: #dbeafe; color: #1d4ed8; }

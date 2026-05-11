@@ -17,6 +17,7 @@ import { renderDblock } from './modules/dblock.js';
 import { renderDelegation } from './modules/delegation.js';
 import { renderSAEReports } from './modules/saereports.js';
 import { renderMonitoring } from './modules/monitoring.js';
+import { renderDataStatus } from './modules/datastatus.js';
 import { renderSites } from './modules/sites.js';
 import { renderStudyMgmt } from './modules/studymgmt.js';
 import { getSiteContext, ensureStudySelected, switchStudyAndSite } from './modules/study-select.js';
@@ -45,6 +46,7 @@ const NAV_ITEMS = [
     { id: 'delegation',     label: 'Delegation',    icon: 'user-check',       roles: ['admin', 'cra', 'pi'] },
     { id: 'saereports',     label: 'SAE Reports',   icon: 'alert-octagon',    roles: ['admin', 'cra', 'pi'] },
     { id: 'monitoring',     label: 'Monitoring',    icon: 'clipboard-check',  roles: ['admin', 'cra', 'pi'] },
+    { id: 'datastatus',     label: 'Data Status',   icon: 'table-2',          roles: ['admin', 'cra', 'pi'] },
     { id: 'sites',          label: 'Sites',         icon: 'building-2',       roles: ['admin'] },
     { id: 'studymgmt',     label: 'Studies',       icon: 'flask-conical',    roles: ['admin'] },
 ];
@@ -256,6 +258,11 @@ const routes = {
         renderBreadcrumb([{ label: 'Monitoring Visits', route: 'monitoring' }]);
         const el = document.getElementById('main-content');
         if (el) await renderMonitoring(el);
+    },
+    'datastatus': async () => {
+        renderBreadcrumb([{ label: 'Subject Data Status', route: 'datastatus' }]);
+        const el = document.getElementById('main-content');
+        if (el) renderDataStatus(el);
     },
     'sites': async () => {
         renderBreadcrumb([{ label: 'Site Management', route: 'sites' }]);

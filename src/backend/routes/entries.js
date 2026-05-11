@@ -1,12 +1,39 @@
 import { Router } from 'express';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '../db/connection.js';
-import { crfDataEntries, crfForms, subjects } from '../db/schemas/schema.js';
+import { crfDataEntries, crfForms, subjects, queries } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit, writeFieldDiffAudit } from '../lib/audit.js';
 import { validateCRFData } from '../lib/validate.js';
 
 const router = Router();
+
+async function createAutoQueries(db, req, softViolations, entryId, subjectId, visitId, formId) {
+    if (!softViolations?.length) return;
+    for (const v of softViolations) {
+        const [dup] = await db.select({ id: queries.id })
+            .from(queries)
+            .where(and(
+                eq(queries.entryId, entryId),
+                eq(queries.fieldKey, v.key),
+                inArray(queries.status, ['Open', 'Resolved']),
+            ));
+        if (!dup) {
+            await db.insert(queries).values({
+                studyId:      req.studyId,
+                subjectId:    parseInt(subjectId),
+                visitId:      visitId  ? parseInt(visitId)  : null,
+                formId:       formId   ? parseInt(formId)   : null,
+                entryId,
+                fieldKey:     v.key,
+                fieldLabel:   v.label,
+                queryText:    `[Auto] ${v.message}`,
+                status:       'Open',
+                raisedByName: 'Auto-validation',
+            });
+        }
+    }
+}
 
 // GET /api/entries?subjectId=&visitId=
 router.get('/', async (req, res) => {
@@ -42,7 +69,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/entries — upsert (create or update) a data entry
-router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
+router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, res) => {
     try {
         const body = req.body;
         const { subjectId, visitId, formId, dataJson, reason } = body;
@@ -55,7 +82,7 @@ router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) =>
         if (!form) return res.status(404).json({ error: 'Form not found' });
 
         const schemaFields = form.schemaJson?.fields ?? [];
-        const { valid, errors, warnings } = validateCRFData(dataJson ?? {}, schemaFields);
+        const { valid, errors, warnings, softViolations } = validateCRFData(dataJson ?? {}, schemaFields);
         if (!valid) return res.status(422).json({ error: 'Validation failed', errors });
 
         // Check for existing entry
@@ -85,6 +112,7 @@ router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) =>
                 reason, user: req.user, ipAddress: req.ip,
             });
 
+            await createAutoQueries(db, req, softViolations, existing.id, subjectId, visitId, formId);
             return res.json({ entry: updated, warnings });
         }
 
@@ -103,6 +131,7 @@ router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) =>
             user: req.user, ipAddress: req.ip,
         });
 
+        await createAutoQueries(db, req, softViolations, created.id, subjectId, visitId, formId);
         res.status(201).json({ entry: created, warnings });
     } catch (err) {
         res.status(500).json({ error: err.message });

@@ -268,6 +268,10 @@ export const api = {
         return subject;
     },
 
+    async getSubjectStatusOverview() {
+        return apiFetch('/api/subjects/status-overview');
+    },
+
     async createSubject(payload) {
         // frontend snake_case → backend camelCase
         const body = {

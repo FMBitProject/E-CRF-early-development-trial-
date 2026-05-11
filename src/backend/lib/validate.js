@@ -5,6 +5,7 @@
 export function validateCRFData(formData, schemaFields) {
     const errors = [];
     const warnings = [];
+    const softViolations = []; // structured { key, label, message } — used for auto-query creation
 
     for (const field of schemaFields) {
         const value = formData[field.key];
@@ -30,9 +31,13 @@ export function validateCRFData(formData, schemaFields) {
             } else if (hardMax !== undefined && num > hardMax) {
                 errors.push(`${field.label} (${num}) exceeds physiological maximum (${hardMax}).`);
             } else if (softMin !== undefined && num < softMin) {
-                warnings.push(`${field.label} (${num}) is unusually low. Please verify.`);
+                const msg = `${field.label} (${num}) is unusually low. Please verify.`;
+                warnings.push(msg);
+                softViolations.push({ key: field.key, label: field.label, message: msg });
             } else if (softMax !== undefined && num > softMax) {
-                warnings.push(`${field.label} (${num}) is unusually high. Please verify.`);
+                const msg = `${field.label} (${num}) is unusually high. Please verify.`;
+                warnings.push(msg);
+                softViolations.push({ key: field.key, label: field.label, message: msg });
             }
         }
     }
@@ -44,5 +49,5 @@ export function validateCRFData(formData, schemaFields) {
         errors.push('Diastolic BP must be less than Systolic BP.');
     }
 
-    return { valid: errors.length === 0, errors, warnings };
+    return { valid: errors.length === 0, errors, warnings, softViolations };
 }
