@@ -7,6 +7,10 @@ import { writeAudit } from '../lib/audit.js';
 
 const router = Router();
 
+function isMissingTable(err) {
+    return err.message?.includes('does not exist') || err.code === '42P01';
+}
+
 // GET /api/studies — list studies accessible to current user
 router.get('/', async (req, res) => {
     try {
@@ -25,6 +29,7 @@ router.get('/', async (req, res) => {
             .orderBy(studies.createdAt);
         res.json(rows);
     } catch (err) {
+        if (isMissingTable(err)) return res.json([]); // migration not yet complete
         res.status(500).json({ error: err.message });
     }
 });

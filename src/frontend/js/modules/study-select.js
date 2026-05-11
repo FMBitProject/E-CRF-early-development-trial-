@@ -11,7 +11,7 @@ export async function ensureStudySelected() {
     try {
         studies = await api.getStudies();
     } catch {
-        return; // if API fails, don't block the UI
+        return; // if API fails (e.g. table not yet migrated), don't block the UI
     }
 
     if (studies.length === 0) {
@@ -31,8 +31,8 @@ export async function ensureStudySelected() {
     // If current study is still in the list, keep it
     if (current && studies.find(s => s.id === current.id)) return;
 
-    // Otherwise show picker
-    showStudyPicker(studies);
+    // Multiple studies and none selected — show picker, wait for selection
+    return new Promise(resolve => showStudyPicker(studies, resolve));
 }
 
 function showStudyRequiredBanner() {
@@ -55,7 +55,7 @@ function showStudyRequiredBanner() {
     if (window.lucide) lucide.createIcons();
 }
 
-function showStudyPicker(studies) {
+function showStudyPicker(studies, onSelected) {
     document.getElementById('study-picker-overlay')?.remove();
 
     const overlay = document.createElement('div');
@@ -105,15 +105,15 @@ function showStudyPicker(studies) {
                 status:     btn.dataset.status,
             });
             overlay.remove();
-            // Refresh sidebar to show study name
             window.dispatchEvent(new CustomEvent('study-changed'));
+            if (onSelected) onSelected(); // resolve ensureStudySelected Promise
         });
     });
 }
 
 export function switchStudy() {
     api.getStudies().then(studies => {
-        if (studies.length > 1) showStudyPicker(studies);
+        if (studies.length > 1) showStudyPicker(studies, null);
         else showToast('Only one study available', 'info');
     }).catch(() => {});
 }

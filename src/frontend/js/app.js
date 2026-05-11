@@ -327,17 +327,25 @@ window.appSwitchStudy  = () => { switchStudy(); };
 
 window.addEventListener('hashchange', () => navigate(window.location.hash));
 
-// When study context changes, re-render sidebar and current route
+// Flag: true after the initial navigate() has been called
+let _appReady = false;
+
+// study-changed fires on: (a) initial auto-select, (b) manual study switch
 window.addEventListener('study-changed', () => {
     const basePath = parseRoute(window.location.hash).key.split('/')[0] || 'dashboard';
     renderSidebar(basePath);
+    // Only re-navigate on manual switch (not during startup, which calls navigate itself)
+    if (_appReady) {
+        navigate(window.location.hash || '#dashboard');
+        refreshQueryCount();
+    }
 });
 
+// Await study selection before navigating — prevents 400 X-Study-ID errors on first render
+await ensureStudySelected();
+_appReady = true;
 navigate(window.location.hash || '#dashboard');
 refreshQueryCount();
-
-// Ensure a study is selected after page load
-ensureStudySelected();
 
 // 21 CFR Part 11 §11.10(d) — 30-minute inactivity session timeout
 initSessionTimeout();

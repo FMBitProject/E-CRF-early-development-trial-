@@ -28,6 +28,11 @@ export async function requireStudy(req, res, next) {
         req.studyId = id;
         next();
     } catch (err) {
+        // Table may not exist yet on first cold start — let request through for admin
+        if ((err.message?.includes('does not exist') || err.code === '42P01') && req.user?.role === 'admin') {
+            req.studyId = id;
+            return next();
+        }
         res.status(500).json({ error: err.message });
     }
 }
