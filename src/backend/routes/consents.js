@@ -11,7 +11,7 @@ const router = Router();
 router.get('/', async (req, res) => {
     try {
         const { subjectId } = req.query;
-        const conditions = [];
+        const conditions = [eq(informedConsents.studyId, req.studyId)];
         if (subjectId) conditions.push(eq(informedConsents.subjectId, parseInt(subjectId)));
 
         const rows = await db
@@ -46,9 +46,9 @@ router.get('/', async (req, res) => {
 router.get('/stats', async (req, res) => {
     try {
         const allSubjects = await db.select({ id: subjects.id }).from(subjects)
-            .where(eq(subjects.status, 'Active'));
+            .where(and(eq(subjects.studyId, req.studyId), eq(subjects.status, 'Active')));
         const consented = await db.select({ subjectId: informedConsents.subjectId }).from(informedConsents)
-            .where(eq(informedConsents.isWithdrawn, false));
+            .where(and(eq(informedConsents.studyId, req.studyId), eq(informedConsents.isWithdrawn, false)));
         const consentedIds = new Set(consented.map(c => c.subjectId));
         const unconsented = allSubjects.filter(s => !consentedIds.has(s.id)).length;
 
@@ -81,6 +81,7 @@ router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) =>
         const isWithdrawn = type === 'Withdrawal';
 
         const [created] = await db.insert(informedConsents).values({
+            studyId:        req.studyId,
             subjectId:      parseInt(subjectId),
             consentVersion,
             consentDate,

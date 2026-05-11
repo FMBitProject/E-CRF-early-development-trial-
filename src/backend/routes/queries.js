@@ -12,7 +12,7 @@ const router = Router();
 router.get('/', async (req, res) => {
     try {
         const { status, subjectId } = req.query;
-        const conditions = [];
+        const conditions = [eq(queries.studyId, req.studyId)];
         if (status)    conditions.push(eq(queries.status, status));
         if (subjectId) conditions.push(eq(queries.subjectId, parseInt(subjectId)));
 
@@ -60,6 +60,7 @@ router.post('/', requireRole('cra', 'admin'), async (req, res) => {
         }
 
         const [created] = await db.insert(queries).values({
+            studyId:    req.studyId,
             subjectId,
             visitId:    visitId    ?? null,
             formId:     formId     ?? null,

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, desc, count } from 'drizzle-orm';
+import { eq, and, desc, count } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { subjects, visits, crfDataEntries, queries, auditTrails } from '../db/schemas/schema.js';
 
@@ -9,6 +9,7 @@ const router = Router();
 router.get('/stats', async (req, res) => {
     try {
         // Run all 6 queries in parallel — single round-trip batch
+        const sid = req.studyId;
         const [
             [{ total: totalSubjects }],
             [{ active: activeSubjects }],
@@ -17,10 +18,10 @@ router.get('/stats', async (req, res) => {
             [{ total: totalVisits }],
             recentAudit,
         ] = await Promise.all([
-            db.select({ total: count() }).from(subjects),
-            db.select({ active: count() }).from(subjects).where(eq(subjects.status, 'Active')),
+            db.select({ total: count() }).from(subjects).where(eq(subjects.studyId, sid)),
+            db.select({ active: count() }).from(subjects).where(and(eq(subjects.studyId, sid), eq(subjects.status, 'Active'))),
             db.select({ pending: count() }).from(crfDataEntries).where(eq(crfDataEntries.status, 'Draft')),
-            db.select({ open: count() }).from(queries).where(eq(queries.status, 'Open')),
+            db.select({ open: count() }).from(queries).where(and(eq(queries.studyId, sid), eq(queries.status, 'Open'))),
             db.select({ total: count() }).from(visits),
             db.select({
                 id:        auditTrails.id,

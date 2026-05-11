@@ -24,7 +24,7 @@ function calcDeadline(day0Date, deadlineDays) {
 router.get('/', requireRole('admin', 'cra', 'pi'), async (req, res) => {
     try {
         const { aeId, status } = req.query;
-        const conditions = [];
+        const conditions = [eq(adverseEvents.studyId, req.studyId)];
         if (aeId)   conditions.push(eq(saeReports.aeId, parseInt(aeId)));
         if (status) conditions.push(eq(saeReports.status, status));
 
@@ -80,7 +80,7 @@ router.get('/overdue', requireRole('admin', 'cra', 'pi'), async (req, res) => {
             .from(saeReports)
             .leftJoin(adverseEvents, eq(saeReports.aeId, adverseEvents.id))
             .leftJoin(subjects, eq(adverseEvents.subjectId, subjects.id))
-            .where(and(eq(saeReports.status, 'Pending'), lt(saeReports.deadlineDate, now)))
+            .where(and(eq(adverseEvents.studyId, req.studyId), eq(saeReports.status, 'Pending'), lt(saeReports.deadlineDate, now)))
             .orderBy(saeReports.deadlineDate);
 
         res.json(rows);

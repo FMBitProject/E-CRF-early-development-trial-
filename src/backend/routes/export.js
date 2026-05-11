@@ -27,8 +27,9 @@ function isoNow() {
 }
 
 // GET /api/export/odm — CDISC ODM-XML 1.3.2 export (admin, cra)
-router.get('/odm', requireRole('admin', 'cra', 'pi'), async (_req, res) => {
+router.get('/odm', requireRole('admin', 'cra', 'pi'), async (req, res) => {
     try {
+        const sid = req.studyId;
         const [
             allSubjects,
             allVisits,
@@ -38,12 +39,12 @@ router.get('/odm', requireRole('admin', 'cra', 'pi'), async (_req, res) => {
             allConsents,
             allSigs,
         ] = await Promise.all([
-            db.select().from(subjects).leftJoin(sites, eq(subjects.siteId, sites.id)),
+            db.select().from(subjects).leftJoin(sites, eq(subjects.siteId, sites.id)).where(eq(subjects.studyId, sid)),
             db.select().from(visits),
             db.select().from(crfDataEntries),
             db.select().from(crfForms),
-            db.select().from(adverseEvents),
-            db.select().from(informedConsents),
+            db.select().from(adverseEvents).where(eq(adverseEvents.studyId, sid)),
+            db.select().from(informedConsents).where(eq(informedConsents.studyId, sid)),
             db.select().from(esignatures),
         ]);
 
@@ -269,9 +270,10 @@ router.get('/csv', requireRole('admin', 'cra', 'pi'), async (req, res) => {
         let headers = [];
         let rows    = [];
 
+        const sid = req.studyId;
         if (domain === 'DM') {
             headers = ['SUBJID','SITEID','SITE_NAME','SEX','DOB','ENRLDTC','STATUS','WDRAWDTC','WDRAWREASON'];
-            const data = await db.select().from(subjects).leftJoin(sites, eq(subjects.siteId, sites.id));
+            const data = await db.select().from(subjects).leftJoin(sites, eq(subjects.siteId, sites.id)).where(eq(subjects.studyId, sid));
             rows = data.map(r => {
                 const s = r.subjects ?? r;
                 const site = r.sites ?? null;
@@ -288,6 +290,7 @@ router.get('/csv', requireRole('admin', 'cra', 'pi'), async (req, res) => {
             headers = ['SUBJID','AESEQ','AETERM','AEDECOD','AESOC','AESTDTC','AEENDTC','AESEV','AESER','AEREL','AEOUT','AEACN','AESTATUS','CREATED_BY','CREATED_AT'];
             const data = await db.select().from(adverseEvents)
                 .leftJoin(subjects, eq(adverseEvents.subjectId, subjects.id))
+                .where(eq(adverseEvents.studyId, sid))
                 .orderBy(adverseEvents.subjectId, adverseEvents.id);
             rows = data.map(r => {
                 const ae = r.adverse_events ?? r;
@@ -306,6 +309,7 @@ router.get('/csv', requireRole('admin', 'cra', 'pi'), async (req, res) => {
             headers = ['DEVID','SUBJID','TYPE','CATEGORY','DESCRIPTION','DEVIATION_DATE','DISCOVERY_DATE','ROOT_CAUSE','IMPACT','CAPA','REPORTED_TO_IRB','STATUS','CREATED_BY','CREATED_AT'];
             const data = await db.select().from(protocolDeviations)
                 .leftJoin(subjects, eq(protocolDeviations.subjectId, subjects.id))
+                .where(eq(protocolDeviations.studyId, sid))
                 .orderBy(protocolDeviations.id);
             rows = data.map(r => {
                 const d = r.protocol_deviations ?? r;

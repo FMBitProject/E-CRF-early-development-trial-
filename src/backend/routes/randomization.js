@@ -11,6 +11,7 @@ const router = Router();
 router.get('/list', requireRole('admin'), async (req, res) => {
     try {
         const rows = await db.select().from(randomizationList)
+            .where(eq(randomizationList.studyId, req.studyId))
             .orderBy(randomizationList.id);
         res.json(rows);
     } catch (err) {
@@ -33,6 +34,7 @@ router.post('/list', requireRole('admin'), async (req, res) => {
         }
 
         const values = entries.map(e => ({
+            studyId:      req.studyId,
             randCode:     e.randCode.trim().toUpperCase(),
             treatmentArm: e.treatmentArm,
             stratum:      e.stratum ?? null,
@@ -123,8 +125,8 @@ router.post('/', requireRole('admin', 'investigator', 'pi'), async (req, res) =>
             .where(eq(subjectRandomization.subjectId, sid));
         if (existing) return res.status(409).json({ error: 'Subject already randomized' });
 
-        // Find next available slot (matching stratum if provided)
-        const listConditions = [eq(randomizationList.isUsed, false)];
+        // Find next available slot (matching stratum if provided, scoped to study)
+        const listConditions = [eq(randomizationList.isUsed, false), eq(randomizationList.studyId, req.studyId)];
         if (stratum) listConditions.push(eq(randomizationList.stratum, stratum));
 
         const [slot] = await db.select().from(randomizationList)
@@ -201,9 +203,12 @@ router.patch('/:id/unblind', requireRole('admin'), async (req, res) => {
 // GET /api/randomization/stats
 router.get('/stats', async (req, res) => {
     try {
-        const [listStats] = await db.select().from(randomizationList);
-        const allList = await db.select({ isUsed: randomizationList.isUsed }).from(randomizationList);
-        const assignments = await db.select({ isBlinded: subjectRandomization.isBlinded }).from(subjectRandomization);
+        const allList = await db.select({ isUsed: randomizationList.isUsed }).from(randomizationList)
+            .where(eq(randomizationList.studyId, req.studyId));
+        const assignments = await db.select({ isBlinded: subjectRandomization.isBlinded })
+            .from(subjectRandomization)
+            .leftJoin(subjects, eq(subjectRandomization.subjectId, subjects.id))
+            .where(eq(subjects.studyId, req.studyId));
 
         res.json({
             totalSlots:     allList.length,

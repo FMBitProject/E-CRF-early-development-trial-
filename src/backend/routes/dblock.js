@@ -2,7 +2,7 @@
 // Formal dual-signature DBL workflow with automated pre-lock compliance checks
 
 import { Router } from 'express';
-import { eq, count } from 'drizzle-orm';
+import { eq, and, count } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import {
     studyDbLock, queries, crfDataEntries, adverseEvents, protocolDeviations,
@@ -15,7 +15,7 @@ import { verifyPassword } from '@better-auth/utils/password';
 const router = Router();
 
 // Run all pre-lock compliance checks per ICH GCP E6(R3) §5.5.7
-async function runPreLockChecks() {
+async function runPreLockChecks(studyId) {
     const [
         [{ openQueries }],
         [{ resolvedQueries }],
@@ -26,15 +26,15 @@ async function runPreLockChecks() {
         [{ unconsented }],
         [{ totalSubjects }],
     ] = await Promise.all([
-        db.select({ openQueries:     count() }).from(queries).where(eq(queries.status, 'Open')),
-        db.select({ resolvedQueries: count() }).from(queries).where(eq(queries.status, 'Resolved')),
+        db.select({ openQueries:     count() }).from(queries).where(and(eq(queries.studyId, studyId), eq(queries.status, 'Open'))),
+        db.select({ resolvedQueries: count() }).from(queries).where(and(eq(queries.studyId, studyId), eq(queries.status, 'Resolved'))),
         db.select({ draftEntries:    count() }).from(crfDataEntries).where(eq(crfDataEntries.status, 'Draft')),
         db.select({ savedEntries:    count() }).from(crfDataEntries).where(eq(crfDataEntries.status, 'Saved')),
         db.select({ draftSAEs:       count() }).from(adverseEvents)
-            .where(eq(adverseEvents.isSerious, true) && eq(adverseEvents.reportStatus, 'Draft')),
-        db.select({ openDeviations:  count() }).from(protocolDeviations).where(eq(protocolDeviations.status, 'Open')),
-        db.select({ unconsented:     count() }).from(subjects).where(eq(subjects.status, 'Active')),
-        db.select({ totalSubjects:   count() }).from(subjects),
+            .where(and(eq(adverseEvents.studyId, studyId), eq(adverseEvents.isSerious, true), eq(adverseEvents.reportStatus, 'Draft'))),
+        db.select({ openDeviations:  count() }).from(protocolDeviations).where(and(eq(protocolDeviations.studyId, studyId), eq(protocolDeviations.status, 'Open'))),
+        db.select({ unconsented:     count() }).from(subjects).where(and(eq(subjects.studyId, studyId), eq(subjects.status, 'Active'))),
+        db.select({ totalSubjects:   count() }).from(subjects).where(eq(subjects.studyId, studyId)),
     ]);
 
     const checks = [
@@ -89,7 +89,7 @@ async function runPreLockChecks() {
 // GET /api/dblock/status — current DB lock state
 router.get('/status', async (req, res) => {
     try {
-        const locks = await db.select().from(studyDbLock).orderBy(studyDbLock.createdAt);
+        const locks = await db.select().from(studyDbLock).where(eq(studyDbLock.studyId, req.studyId)).orderBy(studyDbLock.createdAt);
         const current = locks[locks.length - 1] || null;
         res.json({
             isLocked:  current?.status === 'Locked',
@@ -104,7 +104,7 @@ router.get('/status', async (req, res) => {
 // POST /api/dblock/check — run pre-lock checks without initiating (CRA, admin)
 router.post('/check', requireRole('cra', 'pi', 'admin'), async (req, res) => {
     try {
-        const result = await runPreLockChecks();
+        const result = await runPreLockChecks(req.studyId);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -118,7 +118,7 @@ router.post('/initiate', requireRole('cra', 'pi', 'admin'), async (req, res) => 
 
         // Cannot initiate if already locked or pending
         const existing = await db.select({ status: studyDbLock.status }).from(studyDbLock)
-            .orderBy(studyDbLock.createdAt);
+            .where(eq(studyDbLock.studyId, req.studyId)).orderBy(studyDbLock.createdAt);
         const current = existing[existing.length - 1];
         if (current?.status === 'Locked') {
             return res.status(409).json({ error: 'Study database is already locked' });
@@ -128,9 +128,10 @@ router.post('/initiate', requireRole('cra', 'pi', 'admin'), async (req, res) => 
         }
 
         // Run automated checks
-        const preCheck = await runPreLockChecks();
+        const preCheck = await runPreLockChecks(req.studyId);
 
         const [lock] = await db.insert(studyDbLock).values({
+            studyId:         req.studyId,
             status:          'Pending Signatures',
             preCheckJson:    preCheck,
             initiatedBy:     req.user.id,

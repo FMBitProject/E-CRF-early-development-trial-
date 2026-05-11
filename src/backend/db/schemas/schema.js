@@ -52,6 +52,32 @@ export const verification = pgTable('verification', {
     updatedAt:  timestamp('updated_at').defaultNow(),
 });
 
+// ─── Studies / Trials (Tier 4 multi-study isolation) ────────────────────────
+
+export const studies = pgTable('studies', {
+    id:          integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    title:       text('title').notNull(),
+    protocolNo:  text('protocol_no').notNull().unique(),
+    phase:       text('phase'),          // Phase I | II | III | IV | N/A
+    sponsor:     text('sponsor'),
+    indication:  text('indication'),
+    status:      text('status').notNull().default('Active'), // Active | Completed | Suspended | Terminated
+    startDate:   text('start_date'),
+    endDate:     text('end_date'),
+    createdBy:   text('created_by').references(() => user.id),
+    createdByName: text('created_by_name'),
+    createdAt:   timestamp('created_at').notNull().defaultNow(),
+    updatedAt:   timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const studyUsers = pgTable('study_users', {
+    id:          integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:     integer('study_id').notNull().references(() => studies.id, { onDelete: 'cascade' }),
+    userId:      text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    assignedAt:  timestamp('assigned_at').notNull().defaultNow(),
+    assignedBy:  text('assigned_by').references(() => user.id),
+});
+
 // ─── Clinical tables ─────────────────────────────────────────────────────────
 
 export const siteStatusEnum = pgEnum('site_status', ['Active', 'Inactive']);
@@ -70,6 +96,7 @@ export const subjectStatusEnum = pgEnum('subject_status', ['Active', 'Completed'
 
 export const subjects = pgTable('subjects', {
     id:             integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:        integer('study_id').references(() => studies.id),
     subjectCode:    varchar('subject_code', { length: 30 }).notNull().unique(),
     siteId:         integer('site_id').references(() => sites.id),
     initials:       varchar('initials', { length: 10 }),
@@ -183,6 +210,7 @@ export const ieAssessments = pgTable('ie_assessments', {
 
 export const adverseEvents = pgTable('adverse_events', {
     id:                      integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:                 integer('study_id').references(() => studies.id),
     subjectId:               integer('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
     aeTerm:                  text('ae_term').notNull(),
     meddraPt:                text('meddra_pt'),
@@ -212,6 +240,7 @@ export const adverseEvents = pgTable('adverse_events', {
 
 export const protocolDeviations = pgTable('protocol_deviations', {
     id:               integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:          integer('study_id').references(() => studies.id),
     subjectId:        integer('subject_id').references(() => subjects.id, { onDelete: 'cascade' }),
     deviationType:    text('deviation_type').notNull(),
     category:         text('category'),
@@ -235,6 +264,7 @@ export const protocolDeviations = pgTable('protocol_deviations', {
 
 export const informedConsents = pgTable('informed_consents', {
     id:              integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:         integer('study_id').references(() => studies.id),
     subjectId:       integer('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
     consentVersion:  text('consent_version').notNull(),
     consentDate:     text('consent_date').notNull(),
@@ -254,6 +284,7 @@ export const informedConsents = pgTable('informed_consents', {
 
 export const randomizationList = pgTable('randomization_list', {
     id:                integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:           integer('study_id').references(() => studies.id),
     randCode:          text('rand_code').notNull().unique(),
     treatmentArm:      text('treatment_arm').notNull(),
     stratum:           text('stratum'),
@@ -316,6 +347,7 @@ export const passwordMeta = pgTable('password_meta', {
 
 export const studyDbLock = pgTable('study_db_lock', {
     id:               integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:          integer('study_id').references(() => studies.id),
     status:           text('status').notNull().default('Unlocked'),
     preCheckJson:     jsonb('pre_check_json').default('{}'),
     initiatedBy:      text('initiated_by').references(() => user.id),
@@ -338,6 +370,7 @@ export const studyDbLock = pgTable('study_db_lock', {
 
 export const delegationLog = pgTable('delegation_log', {
     id:                integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:           integer('study_id').references(() => studies.id),
     userId:            text('user_id').notNull().references(() => user.id),
     userName:          text('user_name').notNull(),
     userRole:          text('user_role').notNull(),
@@ -357,6 +390,7 @@ export const delegationLog = pgTable('delegation_log', {
 
 export const trainingRecords = pgTable('training_records', {
     id:             integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:        integer('study_id').references(() => studies.id),
     userId:         text('user_id').notNull().references(() => user.id),
     userName:       text('user_name').notNull(),
     trainingType:   text('training_type').notNull(),
@@ -396,6 +430,7 @@ export const saeReports = pgTable('sae_reports', {
 
 export const monitoringVisits = pgTable('monitoring_visits', {
     id:                  integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:             integer('study_id').references(() => studies.id),
     visitDate:           text('visit_date').notNull(),
     siteId:              integer('site_id').references(() => sites.id),
     siteName:            text('site_name'),
@@ -440,6 +475,7 @@ export const queryStatusEnum = pgEnum('query_status', ['Open', 'Resolved', 'Clos
 
 export const queries = pgTable('queries', {
     id:             integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:        integer('study_id').references(() => studies.id),
     subjectId:      integer('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
     visitId:        integer('visit_id').references(() => visits.id),
     formId:         integer('form_id').references(() => crfForms.id),

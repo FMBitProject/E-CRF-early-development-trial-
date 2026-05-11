@@ -18,6 +18,8 @@ import { renderDelegation } from './modules/delegation.js';
 import { renderSAEReports } from './modules/saereports.js';
 import { renderMonitoring } from './modules/monitoring.js';
 import { renderSites } from './modules/sites.js';
+import { renderStudyMgmt } from './modules/studymgmt.js';
+import { ensureStudySelected, switchStudy } from './modules/study-select.js';
 import { initSessionTimeout } from './modules/session.js';
 
 export { showToast, showModal, closeModal };
@@ -44,6 +46,7 @@ const NAV_ITEMS = [
     { id: 'saereports',     label: 'SAE Reports',   icon: 'alert-octagon',    roles: ['admin', 'cra', 'pi'] },
     { id: 'monitoring',     label: 'Monitoring',    icon: 'clipboard-check',  roles: ['admin', 'cra', 'pi'] },
     { id: 'sites',          label: 'Sites',         icon: 'building-2',       roles: ['admin'] },
+    { id: 'studymgmt',     label: 'Studies',       icon: 'flask-conical',    roles: ['admin'] },
 ];
 
 const ROLE_CONFIG = {
@@ -86,6 +89,17 @@ function renderSidebar(currentRoute) {
            </p>`
         : '';
 
+    const study = api.getCurrentStudy();
+    const studyLine = study
+        ? `<div class="mt-2 mx-2 mb-0 px-2 py-1.5 rounded-md bg-white/10 flex items-center gap-1.5 min-w-0">
+               <i data-lucide="flask-conical" class="w-3 h-3 text-blue-300 flex-shrink-0"></i>
+               <span class="text-blue-100 text-xs truncate flex-1 leading-tight font-medium">${study.title}</span>
+               ${['admin'].includes(user.role) ? `<button onclick="window.appSwitchStudy()" title="Switch Study" class="p-0.5 text-blue-300 hover:text-white transition flex-shrink-0">
+                   <i data-lucide="repeat-2" class="w-3 h-3"></i>
+               </button>` : ''}
+           </div>`
+        : '';
+
     userArea.innerHTML = `
     <div class="px-2 pt-2">
         <div class="flex items-center gap-2.5">
@@ -102,6 +116,7 @@ function renderSidebar(currentRoute) {
                 <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
             </button>
         </div>
+        ${studyLine}
     </div>
     `;
 
@@ -116,8 +131,8 @@ function getOpenQueryBadge() {
 
 // Refresh open query count in background and update sidebar badge
 function refreshQueryCount() {
-    fetch('/api/queries?status=Open', { credentials: 'include' })
-        .then(r => r.ok ? r.json() : [])
+    if (!api.getCurrentStudy()) return; // skip if no study selected — will get 400
+    api.getQueries({ status: 'Open' })
         .then(qs => {
             const count = Array.isArray(qs) ? qs.length : 0;
             if (count !== window._openQueryCount) {
@@ -243,6 +258,11 @@ const routes = {
         const el = document.getElementById('main-content');
         if (el) await renderSites(el);
     },
+    'studymgmt': async () => {
+        renderBreadcrumb([{ label: 'Study Management', route: 'studymgmt' }]);
+        const el = document.getElementById('main-content');
+        if (el) await renderStudyMgmt(el);
+    },
 };
 
 // ---- Router ----
@@ -301,12 +321,23 @@ async function navigate(hash) {
     }
 }
 
-window.navigate  = (path) => { window.location.hash = path; };
-window.appLogout = () => { api.logout(); };
+window.navigate        = (path) => { window.location.hash = path; };
+window.appLogout       = () => { api.logout(); };
+window.appSwitchStudy  = () => { switchStudy(); };
 
 window.addEventListener('hashchange', () => navigate(window.location.hash));
+
+// When study context changes, re-render sidebar and current route
+window.addEventListener('study-changed', () => {
+    const basePath = parseRoute(window.location.hash).key.split('/')[0] || 'dashboard';
+    renderSidebar(basePath);
+});
+
 navigate(window.location.hash || '#dashboard');
 refreshQueryCount();
+
+// Ensure a study is selected after page load
+ensureStudySelected();
 
 // 21 CFR Part 11 §11.10(d) — 30-minute inactivity session timeout
 initSessionTimeout();

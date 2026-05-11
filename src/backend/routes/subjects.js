@@ -11,7 +11,7 @@ const router = Router();
 router.get('/', async (req, res) => {
     try {
         const { status, search } = req.query;
-        const conditions = [];
+        const conditions = [eq(subjects.studyId, req.studyId)];
         if (status) conditions.push(eq(subjects.status, status));
         if (search) conditions.push(ilike(subjects.subjectCode, `%${search}%`));
         // Site-scoped: investigator and crc only see subjects at their assigned site
@@ -84,6 +84,7 @@ router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) =>
         if (!subjectCode) return res.status(400).json({ error: 'subjectCode is required' });
 
         const [created] = await db.insert(subjects).values({
+            studyId:     req.studyId,
             subjectCode,
             siteId:      siteId ?? null,
             initials:    initials ?? null,

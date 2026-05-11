@@ -22,12 +22,13 @@ function isMissingTable(err) {
 router.get('/', requireRole('admin', 'cra', 'pi'), async (req, res) => {
     try {
         const { userId, status } = req.query;
+        const base = eq(delegationLog.studyId, req.studyId);
         const rows = await db.select().from(delegationLog)
             .where(
-                userId && status ? and(eq(delegationLog.userId, userId), eq(delegationLog.status, status))
-                : userId ? eq(delegationLog.userId, userId)
-                : status ? eq(delegationLog.status, status)
-                : undefined
+                userId && status ? and(base, eq(delegationLog.userId, userId), eq(delegationLog.status, status))
+                : userId ? and(base, eq(delegationLog.userId, userId))
+                : status ? and(base, eq(delegationLog.status, status))
+                : base
             )
             .orderBy(desc(delegationLog.createdAt));
         res.json(rows);
@@ -171,6 +172,7 @@ router.post('/', requireRole('admin', 'pi'), async (req, res) => {
         if (!targetUser) return res.status(404).json({ error: 'User not found' });
 
         const [entry] = await db.insert(delegationLog).values({
+            studyId:         req.studyId,
             userId:          delegatedUserId,
             userName:        targetUser.name,
             userRole:        targetUser.role,

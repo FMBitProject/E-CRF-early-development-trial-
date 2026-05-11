@@ -29,6 +29,8 @@ import dblockRouter        from './routes/dblock.js';
 import delegationRouter    from './routes/delegation.js';
 import saeReportsRouter    from './routes/saereports.js';
 import monitoringRouter    from './routes/monitoring.js';
+import studiesRouter       from './routes/studies.js';
+import { requireStudy }    from './middleware/study.js';
 import { rateLimitAuth }   from './middleware/ratelimit.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -330,6 +332,64 @@ async function runMigrations() {
             created_at           TIMESTAMP NOT NULL DEFAULT NOW()
         )`,
         `CREATE INDEX IF NOT EXISTS idx_sdv_monitoring ON sdv_records (monitoring_visit_id)`,
+        // Tier 4 — Multi-study architecture
+        `CREATE TABLE IF NOT EXISTS studies (
+            id             INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+            title          TEXT NOT NULL,
+            protocol_no    TEXT NOT NULL UNIQUE,
+            phase          TEXT,
+            sponsor        TEXT,
+            indication     TEXT,
+            status         TEXT NOT NULL DEFAULT 'Active',
+            start_date     TEXT,
+            end_date       TEXT,
+            created_by     TEXT REFERENCES "user"(id),
+            created_by_name TEXT,
+            created_at     TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at     TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE TABLE IF NOT EXISTS study_users (
+            id           INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+            study_id     INTEGER NOT NULL REFERENCES studies(id) ON DELETE CASCADE,
+            user_id      TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+            assigned_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+            assigned_by  TEXT REFERENCES "user"(id),
+            UNIQUE(study_id, user_id)
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_study_users_study ON study_users (study_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_study_users_user  ON study_users (user_id)`,
+        // Add study_id FK to all clinical tables
+        `ALTER TABLE subjects           ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
+        `ALTER TABLE adverse_events     ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
+        `ALTER TABLE protocol_deviations ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
+        `ALTER TABLE informed_consents  ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
+        `ALTER TABLE randomization_list ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
+        `ALTER TABLE study_db_lock      ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
+        `ALTER TABLE delegation_log     ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
+        `ALTER TABLE training_records   ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
+        `ALTER TABLE monitoring_visits  ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
+        `ALTER TABLE queries            ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
+        // Seed: create default study for pre-existing data (only if no studies exist)
+        `INSERT INTO studies (title, protocol_no, phase, status)
+         SELECT 'Default Study', 'DEFAULT-001', 'N/A', 'Active'
+         WHERE NOT EXISTS (SELECT 1 FROM studies)`,
+        // Assign all existing users to the default study (only if study_users is empty)
+        `INSERT INTO study_users (study_id, user_id)
+         SELECT s.id, u.id FROM studies s, "user" u
+         WHERE s.protocol_no = 'DEFAULT-001'
+           AND NOT EXISTS (SELECT 1 FROM study_users WHERE study_id = s.id AND user_id = u.id)
+           AND NOT EXISTS (SELECT 1 FROM study_users LIMIT 1)`,
+        // Backfill existing clinical records to the default study
+        `UPDATE subjects            SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
+        `UPDATE adverse_events      SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
+        `UPDATE protocol_deviations SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
+        `UPDATE informed_consents   SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
+        `UPDATE randomization_list  SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
+        `UPDATE study_db_lock       SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
+        `UPDATE delegation_log      SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
+        `UPDATE training_records    SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
+        `UPDATE monitoring_visits   SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
+        `UPDATE queries             SET study_id = (SELECT id FROM studies WHERE protocol_no = 'DEFAULT-001' LIMIT 1) WHERE study_id IS NULL`,
     ];
     for (const stmt of stmts) {
         await client.unsafe(stmt);
@@ -359,29 +419,32 @@ app.all('/api/auth/*', toNodeHandler(auth));
 app.use(express.json());
 
 // Auth-required API routes
-app.use('/api/subjects',             requireAuth, subjectsRouter);
-app.use('/api/subjects/:subjectId/visits', requireAuth, visitsRouter);
-app.use('/api/forms',                requireAuth, formsRouter);
-app.use('/api/entries',              requireAuth, entriesRouter);
-app.use('/api/audit',                requireAuth, auditRouter);
-app.use('/api/queries',              requireAuth, queriesRouter);
-
 app.use('/api/mfa',      rateLimitAuth, mfaRouter);
 app.use('/api/register', rateLimitAuth, registerRouter);
-app.use('/api/sites',          requireAuth, sitesRouter);
-app.use('/api/dashboard',      requireAuth, dashboardRouter);
-app.use('/api/signatures',     requireAuth, signaturesRouter);
-app.use('/api/ae',             requireAuth, adverseEventsRouter);
-app.use('/api/deviations',     requireAuth, deviationsRouter);
-app.use('/api/consents',       requireAuth, consentsRouter);
-app.use('/api/randomization',  requireAuth, randomizationRouter);
-app.use('/api/export',         requireAuth, exportRouter);
-app.use('/api/security',       requireAuth, securityRouter);
-app.use('/api/dblock',         requireAuth, dblockRouter);
-app.use('/api/delegation',     requireAuth, delegationRouter);
-app.use('/api/saereports',     requireAuth, saeReportsRouter);
-app.use('/api/monitoring',     requireAuth, monitoringRouter);
+app.use('/api/sites',      requireAuth, sitesRouter);
+app.use('/api/security',   requireAuth, securityRouter);
+app.use('/api/studies',    requireAuth, studiesRouter);
+app.use('/api/audit',      requireAuth, auditRouter);
+app.use('/api/forms',      requireAuth, formsRouter);
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+
+// Study-scoped routes — require both auth and X-Study-ID header
+const studyAuth = [requireAuth, requireStudy];
+app.use('/api/subjects',                  ...studyAuth, subjectsRouter);
+app.use('/api/subjects/:subjectId/visits', ...studyAuth, visitsRouter);
+app.use('/api/entries',                   ...studyAuth, entriesRouter);
+app.use('/api/queries',                   ...studyAuth, queriesRouter);
+app.use('/api/dashboard',                 ...studyAuth, dashboardRouter);
+app.use('/api/signatures',                ...studyAuth, signaturesRouter);
+app.use('/api/ae',                        ...studyAuth, adverseEventsRouter);
+app.use('/api/deviations',                ...studyAuth, deviationsRouter);
+app.use('/api/consents',                  ...studyAuth, consentsRouter);
+app.use('/api/randomization',             ...studyAuth, randomizationRouter);
+app.use('/api/export',                    ...studyAuth, exportRouter);
+app.use('/api/dblock',                    ...studyAuth, dblockRouter);
+app.use('/api/delegation',                ...studyAuth, delegationRouter);
+app.use('/api/saereports',                ...studyAuth, saeReportsRouter);
+app.use('/api/monitoring',                ...studyAuth, monitoringRouter);
 
 // Serve all static frontend files from project root
 app.use(express.static(rootDir));

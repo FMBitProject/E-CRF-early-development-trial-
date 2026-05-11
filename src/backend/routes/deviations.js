@@ -11,7 +11,7 @@ const router = Router();
 router.get('/', async (req, res) => {
     try {
         const { subjectId, status, type } = req.query;
-        const conditions = [];
+        const conditions = [eq(protocolDeviations.studyId, req.studyId)];
         if (subjectId) conditions.push(eq(protocolDeviations.subjectId, parseInt(subjectId)));
         if (status)    conditions.push(eq(protocolDeviations.status, status));
         if (type)      conditions.push(eq(protocolDeviations.deviationType, type));
@@ -54,7 +54,7 @@ router.get('/stats', async (req, res) => {
             deviationType: protocolDeviations.deviationType,
             status:        protocolDeviations.status,
             reportedToIrb: protocolDeviations.reportedToIrb,
-        }).from(protocolDeviations);
+        }).from(protocolDeviations).where(eq(protocolDeviations.studyId, req.studyId));
 
         res.json({
             total:    all.length,
@@ -93,6 +93,7 @@ router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) =>
         }
 
         const [created] = await db.insert(protocolDeviations).values({
+            studyId:         req.studyId,
             subjectId:       subjectId ? parseInt(subjectId) : null,
             deviationType,
             category:        category       ?? null,

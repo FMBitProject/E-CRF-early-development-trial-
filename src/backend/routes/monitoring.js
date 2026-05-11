@@ -18,12 +18,12 @@ function isMissingTable(err) {
 router.get('/', requireRole('admin', 'cra', 'pi'), async (req, res) => {
     try {
         const { status, siteId } = req.query;
-        const conditions = [];
+        const conditions = [eq(monitoringVisits.studyId, req.studyId)];
         if (status) conditions.push(eq(monitoringVisits.status, status));
         if (siteId) conditions.push(eq(monitoringVisits.siteId, parseInt(siteId)));
 
         const rows = await db.select().from(monitoringVisits)
-            .where(conditions.length ? and(...conditions) : undefined)
+            .where(and(...conditions))
             .orderBy(desc(monitoringVisits.visitDate));
 
         res.json(rows);
@@ -72,6 +72,7 @@ router.post('/', requireRole('admin', 'cra', 'pi'), async (req, res) => {
         }
 
         const [record] = await db.insert(monitoringVisits).values({
+            studyId:          req.studyId,
             visitDate,
             siteId:           siteId ? parseInt(siteId) : null,
             siteName,

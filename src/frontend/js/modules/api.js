@@ -2,12 +2,19 @@
 // E-CRF API Module — calls real backend, no localStorage
 // ============================================================
 
+// ── Study context (localStorage) ───────────────────────────
+function getStudyId() {
+    return localStorage.getItem('ecrf_study_id') || null;
+}
+
 // ── HTTP helper ────────────────────────────────────────────
 async function apiFetch(path, options = {}) {
+    const studyId = getStudyId();
+    const studyHeader = studyId ? { 'X-Study-ID': studyId } : {};
     const res = await fetch(path, {
         ...options,
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+        headers: { 'Content-Type': 'application/json', ...studyHeader, ...(options.headers || {}) },
     });
     if (res.status === 401) {
         const sessionStr = localStorage.getItem('ecrf_session');
@@ -169,6 +176,48 @@ export const api = {
 
     // ── Auth ───────────────────────────────────────────────
     getCurrentUser() { return currentUser(); },
+
+    // ── Study context ──────────────────────────────────────
+    getCurrentStudy() {
+        const id  = localStorage.getItem('ecrf_study_id');
+        const raw = localStorage.getItem('ecrf_study_meta');
+        return id ? { id: parseInt(id), ...(raw ? JSON.parse(raw) : {}) } : null;
+    },
+
+    setCurrentStudy(study) {
+        if (!study) {
+            localStorage.removeItem('ecrf_study_id');
+            localStorage.removeItem('ecrf_study_meta');
+        } else {
+            localStorage.setItem('ecrf_study_id', String(study.id));
+            localStorage.setItem('ecrf_study_meta', JSON.stringify({ title: study.title, protocolNo: study.protocolNo, status: study.status }));
+        }
+    },
+
+    // ── Study Management ───────────────────────────────────
+    async getStudies() {
+        return apiFetch('/api/studies');
+    },
+
+    async createStudy(payload) {
+        return apiFetch('/api/studies', { method: 'POST', body: JSON.stringify(payload) });
+    },
+
+    async updateStudy(id, payload) {
+        return apiFetch(`/api/studies/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+    },
+
+    async getStudyUsers(studyId) {
+        return apiFetch(`/api/studies/${studyId}/users`);
+    },
+
+    async assignUserToStudy(studyId, userId) {
+        return apiFetch(`/api/studies/${studyId}/users`, { method: 'POST', body: JSON.stringify({ userId }) });
+    },
+
+    async removeUserFromStudy(studyId, userId) {
+        return apiFetch(`/api/studies/${studyId}/users/${userId}`, { method: 'DELETE' });
+    },
 
     async logout() {
         localStorage.removeItem('ecrf_session');

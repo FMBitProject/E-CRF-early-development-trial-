@@ -23,7 +23,7 @@ function calcExpeditedDeadline(isSerious, seriousCriteria) {
 router.get('/', async (req, res) => {
     try {
         const { subjectId, serious, status } = req.query;
-        const conditions = [];
+        const conditions = [eq(adverseEvents.studyId, req.studyId)];
         if (subjectId) conditions.push(eq(adverseEvents.subjectId, parseInt(subjectId)));
         if (serious === 'true') conditions.push(eq(adverseEvents.isSerious, true));
         if (status) conditions.push(eq(adverseEvents.reportStatus, status));
@@ -86,7 +86,7 @@ router.get('/stats', async (req, res) => {
             reportStatus: adverseEvents.reportStatus,
             requiresExpeditedReport: adverseEvents.requiresExpeditedReport,
             expeditedDeadline: adverseEvents.expeditedDeadline,
-        }).from(adverseEvents);
+        }).from(adverseEvents).where(eq(adverseEvents.studyId, req.studyId));
 
         const now = new Date();
         res.json({
@@ -139,6 +139,7 @@ router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) =>
         const deadline = calcExpeditedDeadline(serious, criteria);
 
         const [created] = await db.insert(adverseEvents).values({
+            studyId:                 req.studyId,
             subjectId:               parseInt(subjectId),
             aeTerm,
             meddraPt:                meddraPt ?? null,
