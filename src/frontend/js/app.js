@@ -17,6 +17,7 @@ import { renderDblock } from './modules/dblock.js';
 import { renderDelegation } from './modules/delegation.js';
 import { renderSAEReports } from './modules/saereports.js';
 import { renderMonitoring } from './modules/monitoring.js';
+import { renderSites } from './modules/sites.js';
 import { initSessionTimeout } from './modules/session.js';
 
 export { showToast, showModal, closeModal };
@@ -42,6 +43,7 @@ const NAV_ITEMS = [
     { id: 'delegation',     label: 'Delegation',    icon: 'user-check',       roles: ['admin', 'cra', 'pi'] },
     { id: 'saereports',     label: 'SAE Reports',   icon: 'alert-octagon',    roles: ['admin', 'cra', 'pi'] },
     { id: 'monitoring',     label: 'Monitoring',    icon: 'clipboard-check',  roles: ['admin', 'cra', 'pi'] },
+    { id: 'sites',          label: 'Sites',         icon: 'building-2',       roles: ['admin'] },
 ];
 
 const ROLE_CONFIG = {
@@ -235,6 +237,11 @@ const routes = {
         renderBreadcrumb([{ label: 'Monitoring Visits', route: 'monitoring' }]);
         const el = document.getElementById('main-content');
         if (el) await renderMonitoring(el);
+    },
+    'sites': async () => {
+        renderBreadcrumb([{ label: 'Site Management', route: 'sites' }]);
+        const el = document.getElementById('main-content');
+        if (el) await renderSites(el);
     },
 };
 

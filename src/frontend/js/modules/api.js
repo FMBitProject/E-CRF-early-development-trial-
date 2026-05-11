@@ -414,6 +414,14 @@ export const api = {
         return rows.map(mapSite);
     },
 
+    async createSite(payload) {
+        return apiFetch('/api/sites', { method: 'POST', body: JSON.stringify(payload) });
+    },
+
+    async updateSite(id, payload) {
+        return apiFetch(`/api/sites/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+    },
+
     // ── Adverse Events / SAE ───────────────────────────────
     async getAdverseEvents(filters = {}) {
         const params = new URLSearchParams();
