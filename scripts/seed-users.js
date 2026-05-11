@@ -14,10 +14,10 @@ const client = postgres(process.env.DATABASE_URL, { max: 1 });
 const db = drizzle(client, { schema });
 
 const TEST_USERS = [
-    { name: 'Dr. Siti Aminah',  email: 'pi@trial.dev',           role: 'pi',           password: 'Trial@PI2025!' },
-    { name: 'Dr. Budi Santoso', email: 'investigator@trial.dev',  role: 'investigator', password: 'Trial@Inv2025!' },
-    { name: 'Dewi Rahayu',      email: 'cra@trial.dev',           role: 'cra',          password: 'Trial@CRA2025!' },
-    { name: 'Rina Kusuma',      email: 'crc@trial.dev',           role: 'crc',          password: 'Trial@CRC2025!' },
+    { name: 'Principal Investigator', email: 'pi@trial.dev',           role: 'pi',           password: 'Trial@PI2025!' },
+    { name: 'Investigator',           email: 'investigator@trial.dev',  role: 'investigator', password: 'Trial@Inv2025!' },
+    { name: 'CRA Monitor',            email: 'cra@trial.dev',           role: 'cra',          password: 'Trial@CRA2025!' },
+    { name: 'Study Coordinator',      email: 'crc@trial.dev',           role: 'crc',          password: 'Trial@CRC2025!' },
 ];
 
 async function run() {
