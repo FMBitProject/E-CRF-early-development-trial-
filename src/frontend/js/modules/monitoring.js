@@ -498,22 +498,3 @@ function attachMonitoringEvents(container, role, sites) {
     });
 }
 
-function visitTypeIcon(type) {
-    const icons = {
-        'Site Initiation':   '🚀',
-        'Routine Monitoring':'🔍',
-        'Close-out':         '🔒',
-        'Remote':            '💻',
-    };
-    return icons[type] || '📋';
-}
-
-function statusBadge(status) {
-    const map = {
-        'Draft':        'background:#f3f4f6;color:#374151',
-        'Submitted':    'background:#dbeafe;color:#1e40af',
-        'Acknowledged': 'background:#d1fae5;color:#065f46',
-    };
-    const style = map[status] || 'background:#f3f4f6;color:#374151';
-    return `<span style="${style};padding:0.2rem 0.65rem;border-radius:999px;font-size:0.78rem;font-weight:600;">${status}</span>`;
-}
