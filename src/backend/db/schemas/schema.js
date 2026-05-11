@@ -62,8 +62,8 @@ export const studies = pgTable('studies', {
     sponsor:     text('sponsor'),
     indication:  text('indication'),
     status:      text('status').notNull().default('Active'), // Active | Completed | Suspended | Terminated
-    startDate:   text('start_date'),
-    endDate:     text('end_date'),
+    startDate:   timestamp('start_date'),
+    endDate:     timestamp('end_date'),
     createdBy:   text('created_by').references(() => user.id),
     createdByName: text('created_by_name'),
     createdAt:   timestamp('created_at').notNull().defaultNow(),
@@ -439,7 +439,7 @@ export const monitoringVisits = pgTable('monitoring_visits', {
     craName:             text('cra_name').notNull(),
     findings:            text('findings'),
     actionItems:         jsonb('action_items').default('[]'),    // [{item, responsible, dueDate, status}]
-    subjectsReviewed:    jsonb('subjects_reviewed').default('[]'), // [subjectCode, ...]
+    subjectsReviewed:    jsonb('subjects_reviewed').default('[]'), // [subjectCode, ...]'
     status:              text('status').notNull().default('Draft'), // Draft | Submitted | Acknowledged
     submittedAt:         timestamp('submitted_at'),
     acknowledgedBy:      text('acknowledged_by').references(() => user.id),
