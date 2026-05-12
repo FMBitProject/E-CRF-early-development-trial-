@@ -98,7 +98,7 @@ function renderSidebar(currentRoute) {
         : '';
 
     const study = api.getCurrentStudy();
-    const studyLine = study
+    const studyLine = (study && study.status === 'Active')
         ? `<div class="mt-2 mx-2 mb-0 px-2 py-1.5 rounded-md bg-white/10 flex items-center gap-1.5 min-w-0">
                <i data-lucide="flask-conical" class="w-3 h-3 text-blue-300 flex-shrink-0"></i>
                <span class="text-blue-100 text-xs truncate flex-1 leading-tight font-medium">${study.title}</span>
@@ -290,6 +290,7 @@ const routes = {
         if (el) { const { renderSites } = await import('./modules/sites.js'); await renderSites(el); }
     },
     'studymgmt': async () => {
+        if (user.role !== 'admin') { window.location.hash = '#dashboard'; return; }
         renderBreadcrumb([{ label: 'Study Management', route: 'studymgmt' }]);
         const el = document.getElementById('main-content');
         if (el) { const { renderStudyMgmt } = await import('./modules/studymgmt.js'); await renderStudyMgmt(el); }
