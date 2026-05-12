@@ -16,13 +16,13 @@ const VALID_ROLES = ['admin', 'investigator', 'pi', 'cra', 'crc'];
 router.get('/', requireRole('admin'), async (req, res) => {
     try {
         const users = await db.select({
-            id:            user.id,
-            name:          user.name,
-            email:         user.email,
-            role:          user.role,
-            siteId:        user.siteId,
-            emailVerified: user.emailVerified,
-            createdAt:     user.createdAt,
+            id:        user.id,
+            name:      user.name,
+            email:     user.email,
+            role:      user.role,
+            siteId:    user.siteId,
+            isActive:  user.isActive,
+            createdAt: user.createdAt,
         }).from(user).orderBy(user.createdAt);
 
         // Enrich with site name and study assignments
@@ -302,19 +302,20 @@ router.patch('/:id/deactivate', requireRole('admin'), async (req, res) => {
         if (!reason) return res.status(400).json({ error: 'reason is required' });
         if (targetId === req.user.id) return res.status(400).json({ error: 'Cannot deactivate your own account' });
 
-        const [existing] = await db.select({ id: user.id, emailVerified: user.emailVerified })
+        const [existing] = await db.select({ id: user.id, isActive: user.isActive })
             .from(user).where(eq(user.id, targetId));
         if (!existing) return res.status(404).json({ error: 'User not found' });
+        if (!existing.isActive) return res.status(409).json({ error: 'User is already deactivated' });
 
-        // Deactivate by setting emailVerified = false (locks login) and flagging mustChange
-        await db.update(user).set({ emailVerified: false }).where(eq(user.id, targetId));
+        // Deactivate via is_active flag (not emailVerified — that's for email verification only)
+        await db.update(user).set({ isActive: false }).where(eq(user.id, targetId));
 
-        // Invalidate all active sessions
+        // Invalidate all active sessions immediately
         await db.delete(session).where(eq(session.userId, targetId));
 
         await writeAudit(db, {
             tableName: 'user', recordId: targetId, action: 'UPDATE',
-            fieldName: 'email_verified', oldValue: 'true', newValue: 'false',
+            fieldName: 'is_active', oldValue: 'true', newValue: 'false',
             reason,
             user: req.user, ipAddress: req.ip,
         });

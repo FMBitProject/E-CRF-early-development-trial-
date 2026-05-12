@@ -84,7 +84,7 @@ function renderList(users) {
               <div class="flex items-center gap-2">
                 <p class="font-semibold text-slate-800 text-sm truncate">${u.name}</p>
                 <span class="text-xs px-1.5 py-0.5 rounded-full font-medium ${rc.cls}">${rc.label}</span>
-                ${!u.emailVerified ? '<span class="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">Deactivated</span>' : ''}
+                ${u.isActive === false ? '<span class="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">Deactivated</span>' : ''}
               </div>
               <p class="text-xs text-slate-400 truncate">${u.email}</p>
               <div class="flex items-center gap-3 mt-0.5">
@@ -97,7 +97,7 @@ function renderList(users) {
             <button onclick="window.umEditUser('${u.id}')" class="ph-btn ph-btn-secondary text-xs">
               <i data-lucide="settings" class="w-3.5 h-3.5"></i> Manage
             </button>
-            ${u.emailVerified
+            ${u.isActive !== false
                 ? `<button onclick="window.umDeactivate('${u.id}','${u.name.replace(/'/g, "\\'")}')" class="ph-btn ph-btn-ghost text-xs text-red-500" title="Deactivate">
                     <i data-lucide="user-x" class="w-3.5 h-3.5"></i>
                    </button>`

@@ -372,6 +372,8 @@ async function runMigrations() {
         `ALTER TABLE training_records   ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
         `ALTER TABLE monitoring_visits  ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
         `ALTER TABLE queries            ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
+        // Proper user deactivation flag (replaces emailVerified misuse)
+        `ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`,
         // Tier 5 — Visit Schedule Templates (Form Builder prerequisite)
         `CREATE TABLE IF NOT EXISTS visit_schedule_templates (
             id               SERIAL PRIMARY KEY,

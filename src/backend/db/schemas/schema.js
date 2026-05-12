@@ -14,6 +14,7 @@ export const user = pgTable('user', {
     updatedAt:     timestamp('updated_at').notNull().defaultNow(),
     role:          varchar('role', { length: 20 }).notNull().default('investigator'),
     siteId:        integer('site_id'),
+    isActive:      boolean('is_active').notNull().default(true),
 });
 
 export const session = pgTable('session', {
