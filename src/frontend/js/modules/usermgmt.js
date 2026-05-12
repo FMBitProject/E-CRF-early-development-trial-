@@ -126,60 +126,51 @@ window.umInvite = () => {
         `<option value="${s.id}">${s.code} – ${s.name}</option>`
     ).join('');
 
-    showModal(`
-    <div class="space-y-4" style="min-width:min(460px,90vw)">
-      <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center">
-          <i data-lucide="user-plus" class="w-5 h-5"></i>
+    showModal({
+        title: 'Invite New User',
+        size:  'md',
+        body: `
+      <div class="space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="ph-label">Full Name *</label>
+            <input id="um-inv-name" class="ph-input" placeholder="Dr. Jane Smith">
+          </div>
+          <div>
+            <label class="ph-label">Email *</label>
+            <input id="um-inv-email" class="ph-input" type="email" placeholder="jane@hospital.org">
+          </div>
         </div>
-        <div>
-          <h3 class="font-semibold text-slate-800">Invite New User</h3>
-          <p class="text-xs text-slate-500">A temporary password will be emailed to the user</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="ph-label">Role *</label>
+            <select id="um-inv-role" class="ph-input">
+              ${Object.entries(ROLE_CONFIG).map(([v, r]) => `<option value="${v}">${r.label}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="ph-label">Assign to Site</label>
+            <select id="um-inv-site" class="ph-input">
+              <option value="">— No site —</option>
+              ${siteOptions}
+            </select>
+          </div>
         </div>
-      </div>
-
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="ph-label">Full Name *</label>
-          <input id="um-inv-name" class="ph-input" placeholder="Dr. Jane Smith">
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
+          <p class="font-semibold mb-1">What happens next:</p>
+          <ul class="list-disc pl-4 space-y-0.5">
+            <li>Account is created immediately</li>
+            <li>Temporary password sent to the email above</li>
+            <li>User must change password on first login</li>
+          </ul>
         </div>
-        <div>
-          <label class="ph-label">Email *</label>
-          <input id="um-inv-email" class="ph-input" type="email" placeholder="jane@hospital.org">
-        </div>
-      </div>
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="ph-label">Role *</label>
-          <select id="um-inv-role" class="ph-input">
-            ${Object.entries(ROLE_CONFIG).map(([v, r]) => `<option value="${v}">${r.label}</option>`).join('')}
-          </select>
-        </div>
-        <div>
-          <label class="ph-label">Assign to Site</label>
-          <select id="um-inv-site" class="ph-input">
-            <option value="">— No site —</option>
-            ${siteOptions}
-          </select>
-        </div>
-      </div>
-
-      <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
-        <p class="font-semibold mb-1">What happens next:</p>
-        <ul class="list-disc pl-4 space-y-0.5">
-          <li>Account is created immediately</li>
-          <li>Temporary password sent to the email above</li>
-          <li>User must change password on first login</li>
-        </ul>
-      </div>
-
-      <div class="flex justify-end gap-2">
-        <button onclick="closeModal()" class="ph-btn ph-btn-ghost text-sm">Cancel</button>
-        <button onclick="window.umDoInvite()" class="ph-btn ph-btn-primary text-sm flex items-center gap-1.5">
-          <i data-lucide="send" class="w-3.5 h-3.5"></i> Send Invite
-        </button>
-      </div>
-    </div>`);
+      </div>`,
+        footer: `
+          <button onclick="closeModal()" class="ph-btn ph-btn-ghost text-sm">Cancel</button>
+          <button onclick="window.umDoInvite()" class="ph-btn ph-btn-primary text-sm flex items-center gap-1.5">
+            <i data-lucide="send" class="w-3.5 h-3.5"></i> Send Invite
+          </button>`,
+    });
     lucide.createIcons();
 };
 
@@ -222,67 +213,57 @@ window.umEditUser = async (userId) => {
       <span>${s.title} <span class="text-xs text-slate-400 font-mono">${s.protocolNo}</span></span>
     </label>`).join('');
 
-    showModal(`
-    <div class="space-y-5" style="min-width:min(500px,90vw)">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold text-sm">
-          ${u.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+    showModal({
+        title: u.name,
+        size:  'lg',
+        body: `
+      <div class="space-y-5">
+        <p class="text-xs text-slate-400">${u.email}</p>
+        <!-- Role -->
+        <div class="border border-slate-100 rounded-lg p-4 space-y-3">
+          <p class="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+            <i data-lucide="shield" class="w-4 h-4 text-indigo-500"></i> Role
+          </p>
+          <div class="grid grid-cols-2 gap-2">
+            ${Object.entries(ROLE_CONFIG).map(([v, r]) => `
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="radio" name="um-role-${userId}" value="${v}" ${u.role === v ? 'checked' : ''} class="accent-indigo-600">
+              <span class="${r.cls} text-xs px-2 py-0.5 rounded-full font-medium">${r.label}</span>
+            </label>`).join('')}
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="um-role-reason" class="ph-input text-xs flex-1" placeholder="Reason for role change (required)">
+            <button onclick="window.umChangeRole('${userId}')" class="ph-btn ph-btn-secondary text-xs whitespace-nowrap">
+              <i data-lucide="check" class="w-3.5 h-3.5"></i> Apply
+            </button>
+          </div>
         </div>
-        <div>
-          <h3 class="font-semibold text-slate-800">${u.name}</h3>
-          <p class="text-xs text-slate-400">${u.email}</p>
+        <!-- Site -->
+        <div class="border border-slate-100 rounded-lg p-4 space-y-3">
+          <p class="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+            <i data-lucide="building-2" class="w-4 h-4 text-emerald-500"></i> Site Assignment
+          </p>
+          <div class="flex items-center gap-2">
+            <select id="um-site-select" class="ph-input text-xs flex-1">
+              <option value="">— No site —</option>
+              ${siteOptions}
+            </select>
+            <input id="um-site-reason" class="ph-input text-xs flex-1" placeholder="Reason (required)">
+            <button onclick="window.umChangeSite('${userId}')" class="ph-btn ph-btn-secondary text-xs whitespace-nowrap">
+              <i data-lucide="check" class="w-3.5 h-3.5"></i> Apply
+            </button>
+          </div>
         </div>
-      </div>
-
-      <!-- Role -->
-      <div class="border border-slate-100 rounded-lg p-4 space-y-3">
-        <p class="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-          <i data-lucide="shield" class="w-4 h-4 text-indigo-500"></i> Role
-        </p>
-        <div class="grid grid-cols-2 gap-2">
-          ${Object.entries(ROLE_CONFIG).map(([v, r]) => `
-          <label class="flex items-center gap-2 text-sm cursor-pointer">
-            <input type="radio" name="um-role-${userId}" value="${v}" ${u.role === v ? 'checked' : ''} class="accent-indigo-600">
-            <span class="${r.cls} text-xs px-2 py-0.5 rounded-full font-medium">${r.label}</span>
-          </label>`).join('')}
+        <!-- Study Assignments -->
+        <div class="border border-slate-100 rounded-lg p-4 space-y-2">
+          <p class="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+            <i data-lucide="flask-conical" class="w-4 h-4 text-blue-500"></i> Study Access
+          </p>
+          ${studyOptions || '<p class="text-xs text-slate-400">No studies available</p>'}
         </div>
-        <div class="flex items-center gap-2">
-          <input id="um-role-reason" class="ph-input text-xs flex-1" placeholder="Reason for role change (required)">
-          <button onclick="window.umChangeRole('${userId}')" class="ph-btn ph-btn-secondary text-xs whitespace-nowrap">
-            <i data-lucide="check" class="w-3.5 h-3.5"></i> Apply
-          </button>
-        </div>
-      </div>
-
-      <!-- Site -->
-      <div class="border border-slate-100 rounded-lg p-4 space-y-3">
-        <p class="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-          <i data-lucide="building-2" class="w-4 h-4 text-emerald-500"></i> Site Assignment
-        </p>
-        <div class="flex items-center gap-2">
-          <select id="um-site-select" class="ph-input text-xs flex-1">
-            <option value="">— No site —</option>
-            ${siteOptions}
-          </select>
-          <input id="um-site-reason" class="ph-input text-xs flex-1" placeholder="Reason (required)">
-          <button onclick="window.umChangeSite('${userId}')" class="ph-btn ph-btn-secondary text-xs whitespace-nowrap">
-            <i data-lucide="check" class="w-3.5 h-3.5"></i> Apply
-          </button>
-        </div>
-      </div>
-
-      <!-- Study Assignments -->
-      <div class="border border-slate-100 rounded-lg p-4 space-y-2">
-        <p class="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-          <i data-lucide="flask-conical" class="w-4 h-4 text-blue-500"></i> Study Access
-        </p>
-        ${studyOptions || '<p class="text-xs text-slate-400">No studies available</p>'}
-      </div>
-
-      <div class="flex justify-end">
-        <button onclick="closeModal()" class="ph-btn ph-btn-ghost text-sm">Done</button>
-      </div>
-    </div>`);
+      </div>`,
+        footer: `<button onclick="closeModal()" class="ph-btn ph-btn-ghost text-sm">Done</button>`,
+    });
     lucide.createIcons();
 };
 

@@ -96,53 +96,43 @@ function openBuilderModal(tmpl = null) {
         `<option value="${f.id}">${f.name}</option>`
     ).join('');
 
-    showModal(`
-    <div class="space-y-4" style="min-width:min(750px,95vw)">
-      <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-md bg-purple-100 text-purple-700 flex items-center justify-center flex-shrink-0">
-          <i data-lucide="calendar-days" class="w-5 h-5"></i>
+    showModal({
+        title: tmpl ? 'Edit Visit Schedule' : 'New Visit Schedule Template',
+        size:  'xl',
+        body: `
+      <div class="space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="ph-label">Template Name *</label>
+            <input id="vt-name" class="ph-input" value="${tmpl?.name ?? ''}" placeholder="e.g. Phase III Treatment Schedule">
+          </div>
+          <div>
+            <label class="ph-label">Description</label>
+            <input id="vt-description" class="ph-input" value="${tmpl?.description ?? ''}" placeholder="Optional">
+          </div>
         </div>
+        <div class="border-t border-slate-100 pt-4">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-sm font-semibold text-slate-700">Visit Plan <span id="vt-item-count" class="text-xs text-slate-400 font-normal">(${_items.length})</span></p>
+            <button onclick="window.vtAddItem()" class="ph-btn ph-btn-secondary text-xs flex items-center gap-1">
+              <i data-lucide="plus" class="w-3 h-3"></i> Add Visit
+            </button>
+          </div>
+          <div id="vt-items" class="space-y-2 max-h-80 overflow-y-auto pr-1"></div>
+          <div id="vt-form-options" class="hidden">${formOptions}</div>
+        </div>
+        ${tmpl ? `
         <div>
-          <h3 class="font-semibold text-slate-800">${tmpl ? 'Edit Visit Schedule' : 'New Visit Schedule Template'}</h3>
-          <p class="text-xs text-slate-500">Define the protocol visit plan for this study</p>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="ph-label">Template Name *</label>
-          <input id="vt-name" class="ph-input" value="${tmpl?.name ?? ''}" placeholder="e.g. Phase III Treatment Schedule">
-        </div>
-        <div>
-          <label class="ph-label">Description</label>
-          <input id="vt-description" class="ph-input" value="${tmpl?.description ?? ''}" placeholder="Optional">
-        </div>
-      </div>
-
-      <div class="border-t border-slate-100 pt-4">
-        <div class="flex items-center justify-between mb-3">
-          <p class="text-sm font-semibold text-slate-700">Visit Plan <span id="vt-item-count" class="text-xs text-slate-400 font-normal">(${_items.length})</span></p>
-          <button onclick="window.vtAddItem()" class="ph-btn ph-btn-secondary text-xs flex items-center gap-1">
-            <i data-lucide="plus" class="w-3 h-3"></i> Add Visit
-          </button>
-        </div>
-        <div id="vt-items" class="space-y-2 max-h-80 overflow-y-auto pr-1"></div>
-        <div id="vt-form-options" class="hidden">${formOptions}</div>
-      </div>
-
-      ${tmpl ? `
-      <div>
-        <label class="ph-label">Reason for Change *</label>
-        <input id="vt-reason" class="ph-input" placeholder="Why is this template being updated?">
-      </div>` : ''}
-
-      <div class="flex justify-end gap-2 pt-2">
-        <button onclick="closeModal()" class="ph-btn ph-btn-ghost text-sm">Cancel</button>
-        <button onclick="window.vtSave()" class="ph-btn ph-btn-primary text-sm flex items-center gap-1.5">
-          <i data-lucide="save" class="w-3.5 h-3.5"></i> ${tmpl ? 'Save Changes' : 'Create Template'}
-        </button>
-      </div>
-    </div>`);
+          <label class="ph-label">Reason for Change *</label>
+          <input id="vt-reason" class="ph-input" placeholder="Why is this template being updated?">
+        </div>` : ''}
+      </div>`,
+        footer: `
+          <button onclick="closeModal()" class="ph-btn ph-btn-ghost text-sm">Cancel</button>
+          <button onclick="window.vtSave()" class="ph-btn ph-btn-primary text-sm flex items-center gap-1.5">
+            <i data-lucide="save" class="w-3.5 h-3.5"></i> ${tmpl ? 'Save Changes' : 'Create Template'}
+          </button>`,
+    });
 
     renderItemList();
     lucide.createIcons();
@@ -316,14 +306,12 @@ window.vtView = async (id) => {
     try {
         const tmpl = await api.request(`/api/visit-templates/${id}`);
         const formMap = Object.fromEntries(_forms.map(f => [f.id, f.name]));
-        showModal(`
-        <div class="space-y-3" style="min-width:min(560px,90vw)">
-          <div class="flex items-center gap-2">
-            <i data-lucide="calendar-days" class="w-5 h-5 text-purple-600"></i>
-            <h3 class="font-semibold text-slate-800">${tmpl.name}</h3>
-          </div>
+        showModal({
+            title: tmpl.name,
+            size:  'lg',
+            body: `
           <div class="space-y-2 max-h-96 overflow-y-auto">
-            ${(tmpl.items ?? []).map((it, i) => `
+            ${(tmpl.items ?? []).length ? (tmpl.items ?? []).map((it, i) => `
             <div class="border border-slate-200 rounded-lg p-3 bg-slate-50">
               <div class="flex items-center gap-2 mb-1">
                 <span class="w-6 h-6 rounded-full bg-purple-100 text-purple-700 text-xs font-bold flex items-center justify-center">${i + 1}</span>
@@ -333,10 +321,10 @@ window.vtView = async (id) => {
               </div>
               ${it.study_day != null || it.studyDay != null ? `<p class="text-xs text-slate-500 pl-8">Study Day ${it.study_day ?? it.studyDay} (window ±${it.window_days_before ?? it.windowDaysBefore ?? 3}/${it.window_days_after ?? it.windowDaysAfter ?? 3} days)</p>` : ''}
               ${(it.form_ids ?? it.formIds ?? []).length ? `<p class="text-xs text-blue-600 pl-8">Forms: ${(it.form_ids ?? it.formIds).map(id => formMap[id] ?? `Form #${id}`).join(', ')}</p>` : ''}
-            </div>`).join('')}
-          </div>
-          <div class="flex justify-end"><button onclick="closeModal()" class="ph-btn ph-btn-ghost text-sm">Close</button></div>
-        </div>`);
+            </div>`).join('') : '<p class="text-xs text-slate-400 text-center py-8">No visits defined in this template.</p>'}
+          </div>`,
+            footer: `<button onclick="closeModal()" class="ph-btn ph-btn-ghost text-sm">Close</button>`,
+        });
         lucide.createIcons();
     } catch (err) {
         showToast(err.message, 'error');
@@ -375,36 +363,31 @@ export async function generateVisitsFromTemplate(subjectId, subjectCode) {
         `<option value="${t.id}">${t.name} (${t.visitCount ?? 0} visits)</option>`
     ).join('');
 
-    showModal(`
-    <div class="space-y-4" style="min-width:min(420px,90vw)">
-      <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-md bg-purple-100 text-purple-700 flex items-center justify-center">
-          <i data-lucide="calendar-check" class="w-5 h-5"></i>
+    showModal({
+        title: 'Generate Visit Schedule',
+        size:  'md',
+        body: `
+      <div class="space-y-4">
+        <p class="text-xs text-slate-500">Subject: <span class="font-semibold text-slate-700">${subjectCode}</span></p>
+        <div>
+          <label class="ph-label">Visit Template *</label>
+          <select id="vt-gen-template" class="ph-input">${options}</select>
         </div>
         <div>
-          <h3 class="font-semibold text-slate-800">Generate Visit Schedule</h3>
-          <p class="text-xs text-slate-500">Subject ${subjectCode}</p>
+          <label class="ph-label">Enrollment / Day 0 Date</label>
+          <input type="date" id="vt-gen-date" class="ph-input" value="${new Date().toISOString().split('T')[0]}">
         </div>
-      </div>
-      <div>
-        <label class="ph-label">Visit Template *</label>
-        <select id="vt-gen-template" class="ph-input">${options}</select>
-      </div>
-      <div>
-        <label class="ph-label">Enrollment / Day 0 Date</label>
-        <input type="date" id="vt-gen-date" class="ph-input" value="${new Date().toISOString().split('T')[0]}">
-      </div>
-      <label class="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-        <input type="checkbox" id="vt-gen-overwrite" class="rounded">
-        Remove existing un-used scheduled visits first
-      </label>
-      <div class="flex justify-end gap-2">
-        <button onclick="closeModal()" class="ph-btn ph-btn-ghost text-sm">Cancel</button>
-        <button onclick="window._vtDoGenerate(${subjectId})" class="ph-btn ph-btn-primary text-sm flex items-center gap-1.5">
-          <i data-lucide="zap" class="w-3.5 h-3.5"></i> Generate Visits
-        </button>
-      </div>
-    </div>`);
+        <label class="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+          <input type="checkbox" id="vt-gen-overwrite" class="rounded">
+          Remove existing un-used scheduled visits first
+        </label>
+      </div>`,
+        footer: `
+          <button onclick="closeModal()" class="ph-btn ph-btn-ghost text-sm">Cancel</button>
+          <button onclick="window._vtDoGenerate(${subjectId})" class="ph-btn ph-btn-primary text-sm flex items-center gap-1.5">
+            <i data-lucide="zap" class="w-3.5 h-3.5"></i> Generate Visits
+          </button>`,
+    });
     lucide.createIcons();
 }
 

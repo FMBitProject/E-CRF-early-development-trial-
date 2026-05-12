@@ -101,56 +101,46 @@ function openBuilderModal(form = null) {
     _editForm = form;
     _fields   = form ? JSON.parse(JSON.stringify(form.schemaJson?.fields ?? [])) : [];
 
-    showModal(`
-    <div class="space-y-4 w-full" style="min-width:min(700px,90vw)">
-      <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center flex-shrink-0">
-          <i data-lucide="clipboard-list" class="w-5 h-5"></i>
+    showModal({
+        title: form ? 'Edit CRF Form' : 'New CRF Form',
+        size:  'xl',
+        body: `
+      <div class="space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="ph-label">Form Name *</label>
+            <input id="fb-name" class="ph-input" value="${form?.name ?? ''}" placeholder="e.g. Vital Signs">
+          </div>
+          <div>
+            <label class="ph-label">Version</label>
+            <input id="fb-version" class="ph-input" value="${form?.version ?? '1.0'}" placeholder="1.0">
+          </div>
         </div>
         <div>
-          <h3 class="font-semibold text-slate-800">${form ? 'Edit Form' : 'New CRF Form'}</h3>
-          <p class="text-xs text-slate-500">Define fields and validation rules</p>
+          <label class="ph-label">Description</label>
+          <input id="fb-description" class="ph-input" value="${form?.description ?? ''}" placeholder="Brief description (optional)">
         </div>
-      </div>
-
-      <div class="grid grid-cols-2 gap-3">
+        <div class="border-t border-slate-100 pt-4">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-sm font-semibold text-slate-700">Fields <span id="fb-field-count" class="text-xs text-slate-400 font-normal">(${_fields.length})</span></p>
+            <button onclick="window.fbAddField()" class="ph-btn ph-btn-secondary text-xs flex items-center gap-1">
+              <i data-lucide="plus" class="w-3 h-3"></i> Add Field
+            </button>
+          </div>
+          <div id="fb-fields" class="space-y-2 max-h-72 overflow-y-auto pr-1"></div>
+        </div>
+        ${form ? `
         <div>
-          <label class="ph-label">Form Name *</label>
-          <input id="fb-name" class="ph-input" value="${form?.name ?? ''}" placeholder="e.g. Vital Signs">
-        </div>
-        <div>
-          <label class="ph-label">Version</label>
-          <input id="fb-version" class="ph-input" value="${form?.version ?? '1.0'}" placeholder="1.0">
-        </div>
-      </div>
-      <div>
-        <label class="ph-label">Description</label>
-        <input id="fb-description" class="ph-input" value="${form?.description ?? ''}" placeholder="Brief description (optional)">
-      </div>
-
-      <div class="border-t border-slate-100 pt-4">
-        <div class="flex items-center justify-between mb-3">
-          <p class="text-sm font-semibold text-slate-700">Fields <span id="fb-field-count" class="text-xs text-slate-400 font-normal">(${_fields.length})</span></p>
-          <button onclick="window.fbAddField()" class="ph-btn ph-btn-secondary text-xs flex items-center gap-1">
-            <i data-lucide="plus" class="w-3 h-3"></i> Add Field
-          </button>
-        </div>
-        <div id="fb-fields" class="space-y-2 max-h-72 overflow-y-auto pr-1"></div>
-      </div>
-
-      ${form ? `
-      <div>
-        <label class="ph-label">Reason for Change *</label>
-        <input id="fb-reason" class="ph-input" placeholder="Describe what changed and why">
-      </div>` : ''}
-
-      <div class="flex justify-end gap-2 pt-2">
-        <button onclick="closeModal()" class="ph-btn ph-btn-ghost text-sm">Cancel</button>
-        <button onclick="window.fbSave()" class="ph-btn ph-btn-primary text-sm flex items-center gap-1.5">
-          <i data-lucide="save" class="w-3.5 h-3.5"></i> ${form ? 'Save Changes' : 'Create Form'}
-        </button>
-      </div>
-    </div>`);
+          <label class="ph-label">Reason for Change *</label>
+          <input id="fb-reason" class="ph-input" placeholder="Describe what changed and why">
+        </div>` : ''}
+      </div>`,
+        footer: `
+          <button onclick="closeModal()" class="ph-btn ph-btn-ghost text-sm">Cancel</button>
+          <button onclick="window.fbSave()" class="ph-btn ph-btn-primary text-sm flex items-center gap-1.5">
+            <i data-lucide="save" class="w-3.5 h-3.5"></i> ${form ? 'Save Changes' : 'Create Form'}
+          </button>`,
+    });
 
     renderFieldList();
     lucide.createIcons();
@@ -327,14 +317,12 @@ window.fbPreview = async (id) => {
     const form = _forms.find(f => f.id === id) || await api.request(`/api/forms/${id}`);
     const full = await api.request(`/api/forms/${id}`);
     const fields = full.schemaJson?.fields ?? [];
-    showModal(`
-    <div class="space-y-3" style="min-width:min(560px,90vw)">
-      <div class="flex items-center gap-2">
-        <i data-lucide="eye" class="w-5 h-5 text-blue-600"></i>
-        <h3 class="font-semibold text-slate-800">${form.name} <span class="text-xs text-slate-400 font-normal">v${form.version}</span></h3>
-      </div>
+    showModal({
+        title:  `${form.name} — v${form.version}`,
+        size:   'lg',
+        body: `
       <div class="space-y-2 max-h-96 overflow-y-auto">
-        ${fields.map(f => `
+        ${fields.length ? fields.map(f => `
         <div class="border border-slate-200 rounded-lg p-3 bg-slate-50">
           <div class="flex items-center justify-between mb-1">
             <p class="text-sm font-medium text-slate-700">${f.label} ${f.required ? '<span class="text-red-500">*</span>' : ''}</p>
@@ -345,10 +333,10 @@ window.fbPreview = async (id) => {
           ${f.min != null || f.max != null ? `<p class="text-xs text-slate-500">Range: ${f.min ?? '—'} – ${f.max ?? '—'}</p>` : ''}
           ${f.softMin != null || f.softMax != null ? `<p class="text-xs text-amber-600">Soft alert: ${f.softMin ?? '—'} – ${f.softMax ?? '—'}</p>` : ''}
           ${f.options?.length ? `<p class="text-xs text-slate-500">Options: ${f.options.join(' · ')}</p>` : ''}
-        </div>`).join('')}
-      </div>
-      <div class="flex justify-end"><button onclick="closeModal()" class="ph-btn ph-btn-ghost text-sm">Close</button></div>
-    </div>`);
+        </div>`).join('') : '<p class="text-xs text-slate-400 text-center py-8">No fields defined in this form.</p>'}
+      </div>`,
+        footer: `<button onclick="closeModal()" class="ph-btn ph-btn-ghost text-sm">Close</button>`,
+    });
     lucide.createIcons();
 };
 
