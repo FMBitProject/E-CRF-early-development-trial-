@@ -406,9 +406,6 @@ async function runMigrations() {
         await client.unsafe(stmt);
     }
 }
-// Run migrations async — server starts immediately, migrations complete before first real request
-runMigrations().catch(err => console.warn('Migration warning:', err.message));
-
 const app = express();
 
 app.use(cors({
@@ -465,6 +462,17 @@ app.use(express.static(rootDir));
 app.get('/', (_req, res) => res.sendFile(path.join(rootDir, 'login.html')));
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
+
+// Run migrations synchronously BEFORE accepting connections — guarantees all
+// schema changes (e.g. is_active, visit_schedule_templates) exist before any
+// route handler runs. IF NOT EXISTS makes every statement safe to re-run.
+try {
+    await runMigrations();
+    console.log('DB migrations applied.');
+} catch (err) {
+    console.error('Migration error (non-fatal):', err.message);
+}
+
 app.listen(PORT, () => {
     console.log(`E-CRF Server running on http://localhost:${PORT}`);
     console.log(`Better Auth endpoint: http://localhost:${PORT}/api/auth`);

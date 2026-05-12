@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { eq, and, ne } from 'drizzle-orm';
-import { db } from '../db/connection.js';
+import { eq, and } from 'drizzle-orm';
+import { db, client } from '../db/connection.js';
 import { user, studyUsers, sites, studies, passwordMeta, session } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
@@ -15,22 +15,44 @@ const VALID_ROLES = ['admin', 'investigator', 'pi', 'cra', 'crc'];
 // ── GET /api/users — list all users (admin only)
 router.get('/', requireRole('admin'), async (req, res) => {
     try {
-        const users = await db.select({
-            id:        user.id,
-            name:      user.name,
-            email:     user.email,
-            role:      user.role,
-            siteId:    user.siteId,
-            isActive:  user.isActive,
-            createdAt: user.createdAt,
-        }).from(user).orderBy(user.createdAt);
+        // Self-healing: if is_active column doesn't exist yet (first startup race),
+        // add it inline and retry rather than returning 500.
+        const fetchUsers = () => client`
+            SELECT u.id, u.name, u.email, u.role,
+                   u.site_id    AS "siteId",
+                   u.created_at AS "createdAt",
+                   u.is_active  AS "isActive"
+            FROM "user" u
+            ORDER BY u.created_at`;
+
+        let users;
+        try {
+            users = await fetchUsers();
+        } catch (colErr) {
+            if ((colErr.message || '').includes('is_active')) {
+                await client.unsafe(
+                    `ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE`
+                );
+                users = await fetchUsers();
+            } else {
+                throw colErr;
+            }
+        }
 
         // Enrich with site name and study assignments
         const allSites = await db.select({ id: sites.id, name: sites.name, code: sites.code }).from(sites);
         const siteMap = new Map(allSites.map(s => [s.id, s]));
 
-        const allStudyUsers = await db.select().from(studyUsers);
-        const allStudies = await db.select({ id: studies.id, title: studies.title, protocolNo: studies.protocolNo }).from(studies);
+        const allStudyUsers = await db.select({
+            userId:  studyUsers.userId,
+            studyId: studyUsers.studyId,
+        }).from(studyUsers);
+
+        const allStudies = await db.select({
+            id:         studies.id,
+            title:      studies.title,
+            protocolNo: studies.protocolNo,
+        }).from(studies);
         const studyMap = new Map(allStudies.map(s => [s.id, s]));
 
         const enriched = users.map(u => {
@@ -42,7 +64,7 @@ router.get('/', requireRole('admin'), async (req, res) => {
             return {
                 ...u,
                 siteName: site ? `${site.code} – ${site.name}` : null,
-                studies: studyAssignments,
+                studies:  studyAssignments,
             };
         });
 
