@@ -826,6 +826,54 @@ export const api = {
             body: JSON.stringify(payload),
         });
     },
+
+    // ── CRF Form Builder ────────────────────────────────────
+    request(path, options = {}) {
+        return apiFetch(path, options);
+    },
+
+    // ── Visit Schedule Templates ─────────────────────────────
+    async getVisitTemplates() { return apiFetch('/api/visit-templates'); },
+    async getVisitTemplate(id) { return apiFetch(`/api/visit-templates/${id}`); },
+    async createVisitTemplate(payload) {
+        return apiFetch('/api/visit-templates', { method: 'POST', body: JSON.stringify(payload) });
+    },
+    async updateVisitTemplate(id, payload) {
+        return apiFetch(`/api/visit-templates/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+    },
+    async deleteVisitTemplate(id, reason) {
+        return apiFetch(`/api/visit-templates/${id}`, { method: 'DELETE', body: JSON.stringify({ reason }) });
+    },
+    async generateVisitsFromTemplate(templateId, subjectId, payload) {
+        return apiFetch(`/api/visit-templates/${templateId}/generate/${subjectId}`, {
+            method: 'POST', body: JSON.stringify(payload),
+        });
+    },
+
+    // ── User Management ─────────────────────────────────────
+    async getUsers() { return apiFetch('/api/users'); },
+    async getUser(id) { return apiFetch(`/api/users/${id}`); },
+    async inviteUser(payload) {
+        return apiFetch('/api/users/invite', { method: 'POST', body: JSON.stringify(payload) });
+    },
+    async changeUserRole(id, role, reason) {
+        return apiFetch(`/api/users/${id}/role`, { method: 'PATCH', body: JSON.stringify({ role, reason }) });
+    },
+    async changeUserSite(id, siteId, reason) {
+        return apiFetch(`/api/users/${id}/site`, { method: 'PATCH', body: JSON.stringify({ siteId, reason }) });
+    },
+    async assignUserToStudy(userId, studyId) {
+        return apiFetch(`/api/users/${userId}/studies`, { method: 'POST', body: JSON.stringify({ studyId }) });
+    },
+    async removeUserFromStudy(userId, studyId) {
+        return apiFetch(`/api/users/${userId}/studies/${studyId}`, { method: 'DELETE' });
+    },
+    async deactivateUser(id, reason) {
+        return apiFetch(`/api/users/${id}/deactivate`, { method: 'PATCH', body: JSON.stringify({ reason }) });
+    },
+
+    // ── Notifications ────────────────────────────────────────
+    async getNotifications() { return apiFetch('/api/notifications'); },
 };
 
 window.api = api;

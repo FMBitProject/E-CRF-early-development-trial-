@@ -11,6 +11,8 @@ import {
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 import { verifyPassword } from '@better-auth/utils/password';
+import { sendDBLockRequestEmail } from '../lib/email.js';
+import { user as userTable, studies } from '../db/schemas/schema.js';
 
 const router = Router();
 
@@ -146,6 +148,25 @@ router.post('/initiate', requireRole('pi', 'admin'), async (req, res) => {
             reason: `DBL initiated by ${req.user.name} — Pre-checks: ${preCheck.allPassed ? 'ALL PASSED' : 'FAILED'}`,
             user: req.user, ipAddress: req.ip,
         });
+
+        // Notify CRA and Admin users to sign
+        const [study] = await db.select({ title: studies.title, protocolNo: studies.protocolNo })
+            .from(studies).where(eq(studies.id, req.studyId));
+        const signatories = await db.select({ name: userTable.name, email: userTable.email, role: userTable.role })
+            .from(userTable)
+            .where(eq(userTable.role, 'cra'));
+        const admins = await db.select({ name: userTable.name, email: userTable.email, role: userTable.role })
+            .from(userTable)
+            .where(eq(userTable.role, 'admin'));
+        const toNotify = [...signatories, ...admins].filter(u => u.email && u.email !== req.user.email);
+        for (const u of toNotify) {
+            sendDBLockRequestEmail(u.email, u.name, {
+                studyTitle:  study?.title   ?? 'Study',
+                protocolNo:  study?.protocolNo ?? '—',
+                requestedBy: req.user.name,
+                role:        u.role === 'cra' ? 'CRA / Monitor' : 'Administrator',
+            }).catch(() => {});
+        }
 
         res.status(201).json({ lock, preCheck });
     } catch (err) {

@@ -20,6 +20,9 @@ import { renderMonitoring } from './modules/monitoring.js';
 import { renderDataStatus } from './modules/datastatus.js';
 import { renderSites } from './modules/sites.js';
 import { renderStudyMgmt } from './modules/studymgmt.js';
+import { renderFormBuilder } from './modules/formbuilder.js';
+import { renderVisitTemplates } from './modules/visittemplates.js';
+import { renderUserMgmt } from './modules/usermgmt.js';
 import { getSiteContext, ensureStudySelected, switchStudyAndSite } from './modules/study-select.js';
 import { initSessionTimeout } from './modules/session.js';
 
@@ -47,8 +50,11 @@ const NAV_ITEMS = [
     { id: 'saereports',     label: 'SAE Reports',   icon: 'alert-octagon',    roles: ['admin', 'cra', 'pi'] },
     { id: 'monitoring',     label: 'Monitoring',    icon: 'clipboard-check',  roles: ['admin', 'cra', 'pi'] },
     { id: 'datastatus',     label: 'Data Status',   icon: 'table-2',          roles: ['admin', 'cra', 'pi'] },
-    { id: 'sites',          label: 'Sites',         icon: 'building-2',       roles: ['admin'] },
-    { id: 'studymgmt',     label: 'Studies',       icon: 'flask-conical',    roles: ['admin'] },
+    { id: 'sites',          label: 'Sites',          icon: 'building-2',       roles: ['admin'] },
+    { id: 'studymgmt',     label: 'Studies',        icon: 'flask-conical',    roles: ['admin'] },
+    { id: 'formbuilder',   label: 'Form Builder',   icon: 'clipboard-edit',   roles: ['admin'] },
+    { id: 'visittemplates',label: 'Visit Templates',icon: 'calendar-check',   roles: ['admin', 'pi'] },
+    { id: 'usermgmt',      label: 'Users',          icon: 'users-round',      roles: ['admin'] },
 ];
 
 const ROLE_CONFIG = {
@@ -274,6 +280,21 @@ const routes = {
         const el = document.getElementById('main-content');
         if (el) await renderStudyMgmt(el);
     },
+    'formbuilder': async () => {
+        renderBreadcrumb([{ label: 'Form Builder', route: 'formbuilder' }]);
+        const el = document.getElementById('main-content');
+        if (el) await renderFormBuilder(el);
+    },
+    'visittemplates': async () => {
+        renderBreadcrumb([{ label: 'Visit Templates', route: 'visittemplates' }]);
+        const el = document.getElementById('main-content');
+        if (el) await renderVisitTemplates(el);
+    },
+    'usermgmt': async () => {
+        renderBreadcrumb([{ label: 'Users', route: 'usermgmt' }]);
+        const el = document.getElementById('main-content');
+        if (el) await renderUserMgmt(el);
+    },
 };
 
 // ---- Router ----
@@ -336,6 +357,70 @@ window.navigate        = (path) => { window.location.hash = path; };
 window.appLogout       = () => { api.logout(); };
 window.appSwitchStudy  = () => { switchStudyAndSite(); };
 
+// ── Notification Bell ─────────────────────────────────────────────────────────
+let _notifOpen = false;
+
+window.toggleNotifPanel = () => {
+    _notifOpen = !_notifOpen;
+    const panel = document.getElementById('notif-panel');
+    if (panel) {
+        panel.classList.toggle('hidden', !_notifOpen);
+        if (_notifOpen) window.refreshNotifications();
+    }
+};
+
+document.addEventListener('click', (e) => {
+    if (_notifOpen && !document.getElementById('notif-bell-wrap')?.contains(e.target)) {
+        _notifOpen = false;
+        document.getElementById('notif-panel')?.classList.add('hidden');
+    }
+});
+
+window.refreshNotifications = async () => {
+    if (!api.getCurrentStudy()) return;
+    try {
+        const data   = await api.getNotifications();
+        const alerts = data.alerts ?? [];
+        const badge  = document.getElementById('notif-badge');
+        const list   = document.getElementById('notif-list');
+
+        // Update badge
+        if (badge) {
+            if (alerts.length > 0) {
+                badge.textContent = alerts.length > 9 ? '9+' : String(alerts.length);
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        // Update panel list
+        if (list) {
+            if (!alerts.length) {
+                list.innerHTML = `<p class="text-xs text-slate-400 text-center py-8">No alerts — all clear ✓</p>`;
+            } else {
+                const COLOR_MAP = { danger: 'text-red-700 bg-red-50 border-red-100', warning: 'text-amber-700 bg-amber-50 border-amber-100', info: 'text-blue-700 bg-blue-50 border-blue-100' };
+                const ICON_MAP  = { danger: 'alert-octagon', warning: 'alert-triangle', info: 'info' };
+                list.innerHTML = alerts.map(a => `
+                <a href="${a.link ?? '#dashboard'}" onclick="window.toggleNotifPanel()"
+                   class="block px-4 py-3 hover:bg-slate-50 transition border-b border-slate-50 last:border-0">
+                  <div class="flex items-start gap-2.5">
+                    <i data-lucide="${ICON_MAP[a.type] ?? 'bell'}" class="w-4 h-4 mt-0.5 flex-shrink-0 ${a.type === 'danger' ? 'text-red-500' : a.type === 'warning' ? 'text-amber-500' : 'text-blue-500'}"></i>
+                    <div class="min-w-0">
+                      <p class="text-sm font-semibold text-slate-800 leading-tight">${a.title}</p>
+                      <p class="text-xs text-slate-500 mt-0.5 leading-relaxed">${a.body}</p>
+                    </div>
+                  </div>
+                </a>`).join('');
+                lucide.createIcons();
+            }
+        }
+    } catch {}
+};
+
+// Poll notifications every 5 minutes if study is selected
+setInterval(() => { if (api.getCurrentStudy()) window.refreshNotifications(); }, 5 * 60 * 1000);
+
 window.addEventListener('hashchange', () => navigate(window.location.hash));
 
 // Flag: true after the initial navigate() has been called
@@ -377,7 +462,10 @@ function navigateByState() {
 window.addEventListener('study-changed', () => {
     const basePath = parseRoute(window.location.hash).key.split('/')[0] || 'dashboard';
     renderSidebar(basePath);
-    if (_appReady) navigateByState();
+    if (_appReady) {
+        navigateByState();
+        window.refreshNotifications();
+    }
 });
 
 // site-context-changed: fired when site context is set (first site created or picked)
@@ -399,3 +487,6 @@ navigateByState();
 
 // 21 CFR Part 11 §11.10(d) — 30-minute inactivity session timeout
 initSessionTimeout();
+
+// Initial notification load (after study is known)
+setTimeout(() => window.refreshNotifications(), 1500);

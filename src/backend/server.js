@@ -29,9 +29,12 @@ import dblockRouter        from './routes/dblock.js';
 import delegationRouter    from './routes/delegation.js';
 import saeReportsRouter    from './routes/saereports.js';
 import monitoringRouter    from './routes/monitoring.js';
-import studiesRouter       from './routes/studies.js';
-import { requireStudy }    from './middleware/study.js';
-import { rateLimitAuth }   from './middleware/ratelimit.js';
+import studiesRouter         from './routes/studies.js';
+import visitTemplatesRouter  from './routes/visittemplates.js';
+import userMgmtRouter        from './routes/usermgmt.js';
+import notificationsRouter   from './routes/notifications.js';
+import { requireStudy }      from './middleware/study.js';
+import { rateLimitAuth }     from './middleware/ratelimit.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir   = path.resolve(__dirname, '../../');
@@ -369,6 +372,33 @@ async function runMigrations() {
         `ALTER TABLE training_records   ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
         `ALTER TABLE monitoring_visits  ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
         `ALTER TABLE queries            ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
+        // Tier 5 — Visit Schedule Templates (Form Builder prerequisite)
+        `CREATE TABLE IF NOT EXISTS visit_schedule_templates (
+            id               SERIAL PRIMARY KEY,
+            study_id         INTEGER NOT NULL REFERENCES studies(id) ON DELETE CASCADE,
+            name             TEXT NOT NULL,
+            description      TEXT,
+            is_active        BOOLEAN NOT NULL DEFAULT TRUE,
+            created_by       TEXT REFERENCES "user"(id),
+            created_by_name  TEXT,
+            created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at       TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_visit_tmpl_study ON visit_schedule_templates (study_id)`,
+        `CREATE TABLE IF NOT EXISTS visit_schedule_items (
+            id                  SERIAL PRIMARY KEY,
+            template_id         INTEGER NOT NULL REFERENCES visit_schedule_templates(id) ON DELETE CASCADE,
+            visit_name          TEXT NOT NULL,
+            visit_order         INTEGER NOT NULL,
+            visit_type          TEXT NOT NULL DEFAULT 'Scheduled',
+            study_day           INTEGER,
+            window_days_before  INTEGER NOT NULL DEFAULT 3,
+            window_days_after   INTEGER NOT NULL DEFAULT 3,
+            form_ids            INTEGER[] NOT NULL DEFAULT '{}',
+            is_mandatory        BOOLEAN NOT NULL DEFAULT TRUE,
+            notes               TEXT
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_visit_items_tmpl ON visit_schedule_items (template_id)`,
     ];
     for (const stmt of stmts) {
         await client.unsafe(stmt);
@@ -405,6 +435,8 @@ app.use('/api/security',   requireAuth, securityRouter);
 app.use('/api/studies',    requireAuth, studiesRouter);
 app.use('/api/audit',      requireAuth, auditRouter);
 app.use('/api/forms',      requireAuth, formsRouter);
+app.use('/api/users',         requireAuth, userMgmtRouter);
+app.use('/api/notifications', requireAuth, requireStudy, notificationsRouter);
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
 // Study-scoped routes — require both auth and X-Study-ID header
@@ -424,6 +456,7 @@ app.use('/api/dblock',                    ...studyAuth, dblockRouter);
 app.use('/api/delegation',                ...studyAuth, delegationRouter);
 app.use('/api/saereports',                ...studyAuth, saeReportsRouter);
 app.use('/api/monitoring',                ...studyAuth, monitoringRouter);
+app.use('/api/visit-templates',           ...studyAuth, visitTemplatesRouter);
 
 // Serve all static frontend files from project root
 app.use(express.static(rootDir));

@@ -38,6 +38,24 @@
                 <div id="breadcrumb" class="flex items-center gap-1.5 text-sm text-slate-500 min-w-0">
                     </div>
                 <div class="ml-auto flex items-center gap-3" id="header-actions">
+                    <!-- Notification Bell -->
+                    <div class="relative" id="notif-bell-wrap">
+                      <button id="notif-bell-btn" onclick="window.toggleNotifPanel()" title="Alerts & Notifications"
+                        class="relative p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition">
+                        <i data-lucide="bell" class="w-4 h-4"></i>
+                        <span id="notif-badge" class="hidden absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center leading-none"></span>
+                      </button>
+                      <!-- Dropdown panel -->
+                      <div id="notif-panel" class="hidden absolute right-0 top-10 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 z-50 overflow-hidden">
+                        <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                          <p class="text-sm font-semibold text-slate-800">Alerts</p>
+                          <button onclick="window.refreshNotifications()" class="text-xs text-blue-600 hover:underline">Refresh</button>
+                        </div>
+                        <div id="notif-list" class="max-h-80 overflow-y-auto divide-y divide-slate-50">
+                          <p class="text-xs text-slate-400 text-center py-6">Loading...</p>
+                        </div>
+                      </div>
+                    </div>
                     </div>
             </header>
 
