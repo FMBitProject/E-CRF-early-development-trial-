@@ -463,15 +463,10 @@ app.get('/', (_req, res) => res.sendFile(path.join(rootDir, 'login.html')));
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
-// Run migrations synchronously BEFORE accepting connections — guarantees all
-// schema changes (e.g. is_active, visit_schedule_templates) exist before any
-// route handler runs. IF NOT EXISTS makes every statement safe to re-run.
-try {
-    await runMigrations();
-    console.log('DB migrations applied.');
-} catch (err) {
-    console.error('Migration error (non-fatal):', err.message);
-}
+// Run migrations async — self-healing in each route handles any race on first boot.
+runMigrations()
+    .then(() => console.log('DB migrations applied.'))
+    .catch(err => console.warn('Migration warning (non-fatal):', err.message));
 
 app.listen(PORT, () => {
     console.log(`E-CRF Server running on http://localhost:${PORT}`);

@@ -4,25 +4,6 @@
 
 import { api } from './modules/api.js';
 import { showToast, showModal, closeModal } from './modules/utils.js';
-import { renderDashboard } from './modules/dashboard.js';
-import { renderSubjects, renderSubjectDetail } from './modules/subjects.js';
-import { renderDataEntry } from './modules/forms.js';
-import { renderAuditTrail } from './modules/audit.js';
-import { renderQueries } from './modules/queries.js';
-import { renderAdverseEvents } from './modules/adverseevents.js';
-import { renderDeviations } from './modules/deviations.js';
-import { renderConsents } from './modules/consents.js';
-import { renderRandomization } from './modules/randomization.js';
-import { renderDblock } from './modules/dblock.js';
-import { renderDelegation } from './modules/delegation.js';
-import { renderSAEReports } from './modules/saereports.js';
-import { renderMonitoring } from './modules/monitoring.js';
-import { renderDataStatus } from './modules/datastatus.js';
-import { renderSites } from './modules/sites.js';
-import { renderStudyMgmt } from './modules/studymgmt.js';
-import { renderFormBuilder } from './modules/formbuilder.js';
-import { renderVisitTemplates } from './modules/visittemplates.js';
-import { renderUserMgmt } from './modules/usermgmt.js';
 import { getSiteContext, ensureStudySelected, switchStudyAndSite } from './modules/study-select.js';
 import { initSessionTimeout } from './modules/session.js';
 
@@ -193,10 +174,12 @@ function renderBreadcrumb(segments) {
 const routes = {
     'dashboard': async () => {
         renderBreadcrumb([{ label: 'Dashboard', route: 'dashboard' }]);
+        const { renderDashboard } = await import('./modules/dashboard.js');
         await renderDashboard();
     },
     'subjects': async () => {
         renderBreadcrumb([{ label: 'Subjects', route: 'subjects' }]);
+        const { renderSubjects } = await import('./modules/subjects.js');
         await renderSubjects();
     },
     'subjects/new': async () => {
@@ -204,6 +187,7 @@ const routes = {
             { label: 'Subjects', route: 'subjects' },
             { label: 'Enroll New Subject', route: 'subjects/new' },
         ]);
+        const { renderSubjects } = await import('./modules/subjects.js');
         await renderSubjects({ showNewForm: true });
     },
     'subjects/:id': async (id) => {
@@ -211,6 +195,7 @@ const routes = {
             { label: 'Subjects', route: 'subjects' },
             { label: `Subject ${id}`, route: `subjects/${id}` },
         ]);
+        const { renderSubjectDetail } = await import('./modules/subjects.js');
         await renderSubjectDetail(id);
     },
     'subjects/:id/visits/:vid/forms/:fid': async (id, vid, fid) => {
@@ -219,81 +204,88 @@ const routes = {
             { label: `Subject ${id}`, route: `subjects/${id}` },
             { label: 'Data Entry', route: `subjects/${id}/visits/${vid}/forms/${fid}` },
         ]);
+        const { renderDataEntry } = await import('./modules/forms.js');
         await renderDataEntry({ subjectId: id, visitId: vid, formId: fid });
     },
     'audit': async () => {
         renderBreadcrumb([{ label: 'Audit Trail', route: 'audit' }]);
+        const { renderAuditTrail } = await import('./modules/audit.js');
         await renderAuditTrail();
     },
     'queries': async () => {
         renderBreadcrumb([{ label: 'Data Queries', route: 'queries' }]);
+        const { renderQueries } = await import('./modules/queries.js');
         await renderQueries();
     },
     'ae': async () => {
         renderBreadcrumb([{ label: 'Adverse Events', route: 'ae' }]);
+        const { renderAdverseEvents } = await import('./modules/adverseevents.js');
         await renderAdverseEvents();
     },
     'deviations': async () => {
         renderBreadcrumb([{ label: 'Protocol Deviations', route: 'deviations' }]);
+        const { renderDeviations } = await import('./modules/deviations.js');
         await renderDeviations();
     },
     'consents': async () => {
         renderBreadcrumb([{ label: 'Informed Consent', route: 'consents' }]);
+        const { renderConsents } = await import('./modules/consents.js');
         await renderConsents();
     },
     'randomization': async () => {
         renderBreadcrumb([{ label: 'Randomization', route: 'randomization' }]);
+        const { renderRandomization } = await import('./modules/randomization.js');
         await renderRandomization();
     },
     'dblock': async () => {
         renderBreadcrumb([{ label: 'Database Lock', route: 'dblock' }]);
         const el = document.getElementById('main-content');
-        if (el) await renderDblock(el);
+        if (el) { const { renderDblock } = await import('./modules/dblock.js'); await renderDblock(el); }
     },
     'delegation': async () => {
         renderBreadcrumb([{ label: 'Delegation &amp; Training', route: 'delegation' }]);
         const el = document.getElementById('main-content');
-        if (el) await renderDelegation(el);
+        if (el) { const { renderDelegation } = await import('./modules/delegation.js'); await renderDelegation(el); }
     },
     'saereports': async () => {
         renderBreadcrumb([{ label: 'SAE Reports', route: 'saereports' }]);
         const el = document.getElementById('main-content');
-        if (el) await renderSAEReports(el);
+        if (el) { const { renderSAEReports } = await import('./modules/saereports.js'); await renderSAEReports(el); }
     },
     'monitoring': async () => {
         renderBreadcrumb([{ label: 'Monitoring Visits', route: 'monitoring' }]);
         const el = document.getElementById('main-content');
-        if (el) await renderMonitoring(el);
+        if (el) { const { renderMonitoring } = await import('./modules/monitoring.js'); await renderMonitoring(el); }
     },
     'datastatus': async () => {
         renderBreadcrumb([{ label: 'Subject Data Status', route: 'datastatus' }]);
         const el = document.getElementById('main-content');
-        if (el) renderDataStatus(el);
+        if (el) { const { renderDataStatus } = await import('./modules/datastatus.js'); renderDataStatus(el); }
     },
     'sites': async () => {
         renderBreadcrumb([{ label: 'Site Management', route: 'sites' }]);
         const el = document.getElementById('main-content');
-        if (el) await renderSites(el);
+        if (el) { const { renderSites } = await import('./modules/sites.js'); await renderSites(el); }
     },
     'studymgmt': async () => {
         renderBreadcrumb([{ label: 'Study Management', route: 'studymgmt' }]);
         const el = document.getElementById('main-content');
-        if (el) await renderStudyMgmt(el);
+        if (el) { const { renderStudyMgmt } = await import('./modules/studymgmt.js'); await renderStudyMgmt(el); }
     },
     'formbuilder': async () => {
         renderBreadcrumb([{ label: 'Form Builder', route: 'formbuilder' }]);
         const el = document.getElementById('main-content');
-        if (el) await renderFormBuilder(el);
+        if (el) { const { renderFormBuilder } = await import('./modules/formbuilder.js'); await renderFormBuilder(el); }
     },
     'visittemplates': async () => {
         renderBreadcrumb([{ label: 'Visit Templates', route: 'visittemplates' }]);
         const el = document.getElementById('main-content');
-        if (el) await renderVisitTemplates(el);
+        if (el) { const { renderVisitTemplates } = await import('./modules/visittemplates.js'); await renderVisitTemplates(el); }
     },
     'usermgmt': async () => {
         renderBreadcrumb([{ label: 'Users', route: 'usermgmt' }]);
         const el = document.getElementById('main-content');
-        if (el) await renderUserMgmt(el);
+        if (el) { const { renderUserMgmt } = await import('./modules/usermgmt.js'); await renderUserMgmt(el); }
     },
 };
 
