@@ -154,6 +154,28 @@ function refreshQueryCount() {
 
 window._openQueryCount = 0;
 
+// ---- Study Status Banner ----
+const _BANNER_CFG = {
+    Terminated: { bg: 'bg-red-600',   icon: 'ban',          msg: 'Study TERMINATED — data entry and modifications are locked.' },
+    Completed:  { bg: 'bg-slate-600', icon: 'lock',         msg: 'Study COMPLETED — data entry and modifications are locked.' },
+    Suspended:  { bg: 'bg-amber-500', icon: 'pause-circle', msg: 'Study SUSPENDED — data entry and modifications are locked pending review.' },
+};
+
+function updateStudyStatusBanner() {
+    const el  = document.getElementById('study-status-banner');
+    if (!el) return;
+    const study = api.getCurrentStudy();
+    const cfg   = study ? _BANNER_CFG[study.status] : null;
+    if (!cfg) {
+        el.className = 'hidden flex-shrink-0';
+        el.innerHTML = '';
+        return;
+    }
+    el.className = `${cfg.bg} text-white flex-shrink-0 flex items-center gap-2.5 px-5 py-2 text-xs font-semibold`;
+    el.innerHTML = `<i data-lucide="${cfg.icon}" class="w-3.5 h-3.5 flex-shrink-0"></i><span>${cfg.msg}</span>`;
+    lucide.createIcons();
+}
+
 // ---- Breadcrumb ----
 function renderBreadcrumb(segments) {
     const el = document.getElementById('breadcrumb');
@@ -314,6 +336,7 @@ async function navigate(hash) {
     const { key, params } = parseRoute(hash);
     const basePath = key.split('/')[0] || 'dashboard';
     renderSidebar(basePath);
+    updateStudyStatusBanner();
 
     const handler = routes[key];
     const contentEl = document.getElementById('main-content');
@@ -454,6 +477,7 @@ function navigateByState() {
 window.addEventListener('study-changed', () => {
     const basePath = parseRoute(window.location.hash).key.split('/')[0] || 'dashboard';
     renderSidebar(basePath);
+    updateStudyStatusBanner();
     if (_appReady) {
         navigateByState();
         window.refreshNotifications();

@@ -3,6 +3,16 @@ import { eq, and } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { studyUsers, studies } from '../db/schemas/schema.js';
 
+const CLOSED_STATUSES = new Set(['Terminated', 'Completed', 'Suspended']);
+
+const EXEMPT_WRITE_PATTERNS = [
+    /^\/api\/dblock\/\d+\/sign-cra$/,
+    /^\/api\/dblock\/\d+\/sign-admin$/,
+    /^\/api\/queries\/\d+\/resolve$/,
+    /^\/api\/monitoring\/\d+\/acknowledge$/,
+    /^\/api\/export\//,
+];
+
 export async function requireStudy(req, res, next) {
     const raw = req.headers['x-study-id'];
     if (!raw) return res.status(400).json({ error: 'X-Study-ID header is required' });
@@ -25,7 +35,20 @@ export async function requireStudy(req, res, next) {
             }
         }
 
-        req.studyId = id;
+        req.studyId     = id;
+        req.studyStatus = study.status;
+
+        if (CLOSED_STATUSES.has(study.status) && req.method !== 'GET') {
+            const url = req.originalUrl.split('?')[0];
+            const isExempt = EXEMPT_WRITE_PATTERNS.some(p => p.test(url));
+            if (!isExempt) {
+                return res.status(423).json({
+                    error: `Study is ${study.status}. Data modifications are not permitted.`,
+                    studyStatus: study.status,
+                });
+            }
+        }
+
         next();
     } catch (err) {
         // Table may not exist yet on first cold start — let admin through
@@ -33,7 +56,8 @@ export async function requireStudy(req, res, next) {
                         (err?.message || '').includes('does not exist') ||
                         (err?.cause?.message || '').includes('does not exist');
         if (missing && req.user?.role === 'admin') {
-            req.studyId = id;
+            req.studyId     = id;
+            req.studyStatus = 'Active';
             return next();
         }
         res.status(500).json({ error: err.message });
