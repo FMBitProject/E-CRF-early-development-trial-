@@ -31,8 +31,21 @@ export async function ensureStudySelected() {
     let currentStudy = api.getCurrentStudy();
     const currentSite  = getSiteContext();
 
-    // Both already selected — nothing to do
-    if (currentStudy && currentSite) return;
+    // Both already selected — but refresh site status if it was cached without status field
+    if (currentStudy && currentSite) {
+        if (currentSite.status === undefined) {
+            api.getSites()
+                .then(sites => {
+                    const fresh = Array.isArray(sites) ? sites.find(s => s.id === currentSite.id) : null;
+                    if (fresh) {
+                        setSiteContext(fresh);
+                        window.dispatchEvent(new Event('site-context-changed'));
+                    }
+                })
+                .catch(() => {});
+        }
+        return;
+    }
 
     let studies = [];
     try { studies = await api.getStudies(); } catch { /* table not yet migrated */ }
