@@ -49,7 +49,7 @@ function renderPage(studies) {
                             ${current?.id === s.id ? 'bg-blue-600 text-white' : 'text-blue-600 hover:text-blue-800 border border-blue-200 hover:bg-blue-50'} transition"
                             data-id="${s.id}" data-title="${encodeURIComponent(s.title)}"
                             data-protocol="${encodeURIComponent(s.protocolNo)}" data-status="${s.status}">
-                            ${current?.id === s.id ? 'Active' : 'Switch'}
+                            ${current?.id === s.id ? 'Selected ✓' : 'Select'}
                         </button>
                         <button class="btn-users-study text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50 px-2 py-1 rounded transition"
                             data-id="${s.id}" data-title="${encodeURIComponent(s.title)}">Users</button>

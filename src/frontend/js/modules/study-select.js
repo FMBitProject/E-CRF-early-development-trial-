@@ -31,19 +31,18 @@ export async function ensureStudySelected() {
     let currentStudy = api.getCurrentStudy();
     const currentSite  = getSiteContext();
 
-    // Both already selected — but refresh site status if it was cached without status field
+    // Both already selected — always refresh site status from API in background
+    // so changes made in Site Management are reflected without a full re-login
     if (currentStudy && currentSite) {
-        if (currentSite.status === undefined) {
-            api.getSites()
-                .then(sites => {
-                    const fresh = Array.isArray(sites) ? sites.find(s => s.id === currentSite.id) : null;
-                    if (fresh) {
-                        setSiteContext(fresh);
-                        window.dispatchEvent(new Event('site-context-changed'));
-                    }
-                })
-                .catch(() => {});
-        }
+        api.getSites()
+            .then(sites => {
+                const fresh = Array.isArray(sites) ? sites.find(s => s.id === currentSite.id) : null;
+                if (fresh && fresh.status !== currentSite.status) {
+                    setSiteContext(fresh);
+                    window.dispatchEvent(new Event('site-context-changed'));
+                }
+            })
+            .catch(() => {});
         return;
     }
 
