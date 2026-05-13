@@ -91,7 +91,7 @@ function renderSidebar(currentRoute) {
     const initials = user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
     const rc = ROLE_CONFIG[user.role] || { label: user.role, cls: 'bg-slate-500' };
     const siteCtx = getSiteContext();
-    const siteLine = siteCtx
+    const siteLine = (siteCtx && siteCtx.status !== 'Inactive')
         ? `<p class="text-blue-400 text-xs leading-none mt-0.5 truncate flex items-center gap-1">
                <i data-lucide="building-2" class="w-2.5 h-2.5 inline flex-shrink-0"></i>${siteCtx.siteCode ? `${siteCtx.siteCode} – ${siteCtx.siteName}` : siteCtx.siteName}
            </p>`

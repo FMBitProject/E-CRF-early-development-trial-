@@ -54,10 +54,15 @@ function renderFormList(container) {
 
     if (!_forms.length) {
         el.innerHTML = `
-        <div class="text-center py-16 text-slate-400">
-          <i data-lucide="file-plus" class="w-10 h-10 mx-auto mb-3 opacity-40"></i>
-          <p class="font-medium">No CRF forms yet</p>
-          <p class="text-sm mt-1">Create your first form to enable data entry</p>
+        <div class="ph-card p-12 flex flex-col items-center text-center">
+          <div class="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
+            <i data-lucide="clipboard-list" class="w-8 h-8 text-blue-400"></i>
+          </div>
+          <p class="text-base font-semibold text-slate-700 mb-1">No CRF forms yet</p>
+          <p class="text-sm text-slate-400 mb-5 max-w-xs">Design the electronic Case Report Forms that investigators will use to capture clinical trial data.</p>
+          <button onclick="window.fbNewForm()" class="ph-btn ph-btn-primary text-sm flex items-center gap-2">
+            <i data-lucide="plus" class="w-4 h-4"></i> Create your first form
+          </button>
         </div>`;
         lucide.createIcons();
         return;

@@ -20,6 +20,7 @@ export function setSiteContext(site) {
         localStorage.setItem('ecrf_site_context_meta', JSON.stringify({
             siteCode: site.site_code ?? site.code ?? '',
             siteName: site.site_name ?? site.name ?? '',
+            status:   site.status ?? 'Active',
         }));
     }
 }
