@@ -10,13 +10,19 @@ import { writeAudit } from '../lib/audit.js';
 
 const router = Router();
 
-// GET /api/sites — list sites (all for admin, active-only for others)
+// GET /api/sites — list sites (all for admin, assigned site only for others)
 router.get('/', async (req, res) => {
     try {
         const isAdmin = req.user?.role === 'admin';
-        const rows = isAdmin
-            ? await db.select().from(sites).orderBy(sites.code)
-            : await db.select().from(sites).where(eq(sites.status, 'Active')).orderBy(sites.code);
+        let rows;
+        if (isAdmin) {
+            rows = await db.select().from(sites).orderBy(sites.code);
+        } else if (req.user.siteId) {
+            const [site] = await db.select().from(sites).where(eq(sites.id, req.user.siteId));
+            rows = site ? [site] : [];
+        } else {
+            rows = [];
+        }
         res.json(rows);
     } catch (err) {
         res.status(500).json({ error: err.message });

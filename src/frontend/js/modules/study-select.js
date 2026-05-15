@@ -30,6 +30,7 @@ export function setSiteContext(site) {
 export async function ensureStudySelected() {
     let currentStudy = api.getCurrentStudy();
     const currentSite  = getSiteContext();
+    const user = api.getCurrentUser();
 
     // Both already selected — always refresh site status from API in background
     // so changes made in Site Management are reflected without a full re-login
@@ -50,7 +51,11 @@ export async function ensureStudySelected() {
     try { studies = await api.getStudies(); } catch { /* table not yet migrated */ }
 
     if (studies.length === 0) {
-        // No studies exist yet — app.js startup sequence handles the redirect
+        // Non-admin: not assigned to any study — show blocking message
+        if (user?.role !== 'admin') {
+            await showNoStudyMessage();
+        }
+        // Admin: no studies in system yet — app.js startup sequence handles redirect
         return;
     }
 
@@ -74,20 +79,17 @@ export async function ensureStudySelected() {
 
     // Now pick site
     if (!currentSite) {
-        const user = api.getCurrentUser();
         let sites = [];
         try { sites = await api.getSites(); } catch {}
         sites = sites.filter(s => s.status === 'Active' || s.status === 'active');
 
         if (sites.length === 0) {
-            // No sites — continue without site context (admin may create sites later)
+            // Non-admin: not assigned to any (active) site — show blocking message
+            if (user?.role !== 'admin') {
+                await showNoSiteMessage();
+            }
+            // Admin: no sites yet — continue (admin can create sites)
             return;
-        }
-
-        // If user has a fixed site assigned, auto-select it
-        if (user?.siteId) {
-            const fixed = sites.find(s => s.id === user.siteId);
-            if (fixed) { setSiteContext(fixed); return; }
         }
 
         // If only one site, auto-select
@@ -99,6 +101,64 @@ export async function ensureStudySelected() {
         // Multiple sites — show picker
         await pickSite(study, sites);
     }
+}
+
+// ── No-assignment blocking overlays ─────────────────────────────────────────
+
+function showNoStudyMessage() {
+    return new Promise(() => {
+        document.getElementById('onboarding-overlay')?.remove();
+        const overlay = document.createElement('div');
+        overlay.id = 'onboarding-overlay';
+        overlay.className = 'fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[9999] flex items-center justify-center';
+        overlay.innerHTML = `
+            <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm mx-4 text-center">
+                <div class="w-16 h-16 rounded-2xl bg-amber-50 border-2 border-amber-200 flex items-center justify-center mx-auto mb-5">
+                    <i data-lucide="flask-conical" class="w-8 h-8 text-amber-500"></i>
+                </div>
+                <h2 class="text-lg font-bold text-slate-900 mb-2">No Study Assigned</h2>
+                <p class="text-sm text-slate-500 mb-6 leading-relaxed">
+                    You have not been assigned to any clinical study.<br>
+                    Please contact your administrator to request access.
+                </p>
+                <button id="no-study-logout"
+                    class="w-full px-4 py-3 rounded-xl bg-slate-800 text-white text-sm font-semibold hover:bg-slate-700 transition flex items-center justify-center gap-2">
+                    <i data-lucide="log-out" class="w-4 h-4"></i>
+                    Sign Out
+                </button>
+            </div>`;
+        document.body.appendChild(overlay);
+        if (window.lucide) lucide.createIcons();
+        overlay.querySelector('#no-study-logout').addEventListener('click', () => api.logout());
+    });
+}
+
+function showNoSiteMessage() {
+    return new Promise(() => {
+        document.getElementById('onboarding-overlay')?.remove();
+        const overlay = document.createElement('div');
+        overlay.id = 'onboarding-overlay';
+        overlay.className = 'fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[9999] flex items-center justify-center';
+        overlay.innerHTML = `
+            <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm mx-4 text-center">
+                <div class="w-16 h-16 rounded-2xl bg-amber-50 border-2 border-amber-200 flex items-center justify-center mx-auto mb-5">
+                    <i data-lucide="building-2" class="w-8 h-8 text-amber-500"></i>
+                </div>
+                <h2 class="text-lg font-bold text-slate-900 mb-2">No Site Assigned</h2>
+                <p class="text-sm text-slate-500 mb-6 leading-relaxed">
+                    You have not been assigned to a clinical site.<br>
+                    Please contact your administrator to request access.
+                </p>
+                <button id="no-site-logout"
+                    class="w-full px-4 py-3 rounded-xl bg-slate-800 text-white text-sm font-semibold hover:bg-slate-700 transition flex items-center justify-center gap-2">
+                    <i data-lucide="log-out" class="w-4 h-4"></i>
+                    Sign Out
+                </button>
+            </div>`;
+        document.body.appendChild(overlay);
+        if (window.lucide) lucide.createIcons();
+        overlay.querySelector('#no-site-logout').addEventListener('click', () => api.logout());
+    });
 }
 
 // ── Study picker ─────────────────────────────────────────────────────────────

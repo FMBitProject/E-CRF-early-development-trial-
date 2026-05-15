@@ -445,28 +445,40 @@ let _appReady = false;
 function navigateByState() {
     const { hasStudy, hasSite } = getAppState();
     if (!hasStudy) {
-        // No study: admin goes to study management; others see placeholder
+        // No study: admin goes to study management; others see "not assigned" message
         if (user.role === 'admin') {
             navigate('#studymgmt');
         } else {
             const el = document.getElementById('main-content');
             if (el) el.innerHTML = `
                 <div class="flex items-center justify-center h-full">
-                    <div class="text-center p-8 max-w-xs">
-                        <i data-lucide="flask-conical" class="w-12 h-12 text-slate-300 mx-auto mb-4"></i>
-                        <p class="font-semibold text-slate-600 mb-1">No study configured</p>
-                        <p class="text-sm text-slate-400">Contact your administrator to set up a clinical study.</p>
+                    <div class="text-center p-8 max-w-sm">
+                        <div class="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                            <i data-lucide="flask-conical" class="w-8 h-8 text-slate-300"></i>
+                        </div>
+                        <p class="font-semibold text-slate-700 mb-2">No Study Assigned</p>
+                        <p class="text-sm text-slate-400">You have not been assigned to any clinical study. Contact your administrator to request access.</p>
                     </div>
                 </div>`;
             if (window.lucide) lucide.createIcons();
         }
     } else if (!hasSite) {
-        // Study set but no site: admin creates sites; others go to dashboard (site auto-selected)
+        // Study set but no site: admin creates sites; others see "not assigned" message
         if (user.role === 'admin') {
             navigate('#sites');
         } else {
-            navigate(window.location.hash || '#dashboard');
-            refreshQueryCount();
+            const el = document.getElementById('main-content');
+            if (el) el.innerHTML = `
+                <div class="flex items-center justify-center h-full">
+                    <div class="text-center p-8 max-w-sm">
+                        <div class="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                            <i data-lucide="building-2" class="w-8 h-8 text-slate-300"></i>
+                        </div>
+                        <p class="font-semibold text-slate-700 mb-2">No Site Assigned</p>
+                        <p class="text-sm text-slate-400">You have not been assigned to a clinical site. Contact your administrator to request access.</p>
+                    </div>
+                </div>`;
+            if (window.lucide) lucide.createIcons();
         }
     } else {
         navigate(window.location.hash || '#dashboard');
