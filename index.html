@@ -24,8 +24,32 @@
                 </div>
             </div>
 
-            <nav class="flex-1 px-2 py-3 overflow-y-auto" id="sidebar-nav">
+            <!-- Scroll wrapper -->
+            <div class="flex-1 relative flex flex-col min-h-0" id="sidebar-nav-wrap">
+                <!-- Scroll up button -->
+                <button id="nav-scroll-up"
+                    class="absolute top-0 left-0 right-0 z-10 hidden flex items-center justify-center h-7
+                           bg-gradient-to-b from-[#0A2E5C] to-transparent pointer-events-auto"
+                    aria-label="Scroll up">
+                    <span class="flex items-center gap-1 px-3 py-0.5 rounded-full bg-white/10 border border-white/15 text-white/80 hover:text-white hover:bg-white/20 transition text-xs">
+                        <i data-lucide="chevron-up" class="w-3.5 h-3.5"></i>
+                    </span>
+                </button>
+
+                <nav class="flex-1 px-2 py-3 overflow-y-auto sidebar-nav-scroll" id="sidebar-nav"
+                     style="scrollbar-width:none; -ms-overflow-style:none;">
                 </nav>
+
+                <!-- Scroll down button -->
+                <button id="nav-scroll-down"
+                    class="absolute bottom-0 left-0 right-0 z-10 hidden flex items-center justify-center h-7
+                           bg-gradient-to-t from-[#0A2E5C] to-transparent pointer-events-auto"
+                    aria-label="Scroll down">
+                    <span class="flex items-center gap-1 px-3 py-0.5 rounded-full bg-white/10 border border-white/15 text-white/80 hover:text-white hover:bg-white/20 transition text-xs">
+                        <i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>
+                    </span>
+                </button>
+            </div>
 
             <div class="px-2 pb-3 flex-shrink-0" style="border-top:1px solid rgba(255,255,255,0.07)">
                 <div id="sidebar-user" class="pt-3">
@@ -86,5 +110,50 @@
     <div id="toast-container" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 pointer-events-none"></div>
 
 <script type="module" src="src/frontend/js/app.js"></script>
+
+<style>
+    .sidebar-nav-scroll::-webkit-scrollbar { display: none; }
+</style>
+
+<script>
+(function () {
+    const SCROLL_STEP = 120;
+
+    function initNavScroll() {
+        const nav  = document.getElementById('sidebar-nav');
+        const btnU = document.getElementById('nav-scroll-up');
+        const btnD = document.getElementById('nav-scroll-down');
+        if (!nav || !btnU || !btnD) return;
+
+        function update() {
+            const atTop    = nav.scrollTop <= 4;
+            const atBottom = nav.scrollTop + nav.clientHeight >= nav.scrollHeight - 4;
+            btnU.classList.toggle('hidden', atTop);
+            btnD.classList.toggle('hidden', atBottom);
+        }
+
+        nav.addEventListener('scroll', update, { passive: true });
+
+        btnU.addEventListener('click', () => {
+            nav.scrollBy({ top: -SCROLL_STEP, behavior: 'smooth' });
+        });
+        btnD.addEventListener('click', () => {
+            nav.scrollBy({ top: SCROLL_STEP, behavior: 'smooth' });
+        });
+
+        // Re-check whenever the sidebar re-renders (nav items change)
+        new MutationObserver(update).observe(nav, { childList: true, subtree: true });
+
+        update();
+    }
+
+    // Wait for DOM + deferred lucide, then init
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initNavScroll);
+    } else {
+        initNavScroll();
+    }
+})();
+</script>
 </body>
 </html>
