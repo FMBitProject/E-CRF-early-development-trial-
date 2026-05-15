@@ -87,9 +87,18 @@ function renderList(users) {
                 ${u.isActive === false ? '<span class="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">Deactivated</span>' : ''}
               </div>
               <p class="text-xs text-slate-400 truncate">${u.email}</p>
-              <div class="flex items-center gap-3 mt-0.5">
-                ${u.siteName ? `<span class="text-xs text-slate-500 flex items-center gap-1"><i data-lucide="building-2" class="w-3 h-3"></i>${u.siteName}</span>` : '<span class="text-xs text-slate-300">No site</span>'}
-                ${studyList ? `<span class="text-xs text-slate-500 flex items-center gap-1"><i data-lucide="flask-conical" class="w-3 h-3"></i>${studyList}</span>` : ''}
+              <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
+                ${(u.siteAssignments ?? []).length
+                    ? (u.siteAssignments ?? []).map(a =>
+                        `<span class="text-xs text-slate-500 flex items-center gap-1">
+                           <i data-lucide="building-2" class="w-3 h-3 text-emerald-500"></i>
+                           <span>${a.siteCode}</span>
+                           <span class="text-slate-300">/</span>
+                           <i data-lucide="flask-conical" class="w-3 h-3 text-blue-400"></i>
+                           <span class="text-blue-600">${a.protocolNo}</span>
+                         </span>`).join('<span class="text-slate-200 text-xs">·</span>')
+                    : '<span class="text-xs text-slate-300">No site assigned</span>'}
+                ${studyList && !(u.siteAssignments ?? []).length ? `<span class="text-xs text-slate-500 flex items-center gap-1"><i data-lucide="flask-conical" class="w-3 h-3"></i>${studyList}</span>` : ''}
               </div>
             </div>
           </div>
@@ -201,17 +210,18 @@ window.umEditUser = async (userId) => {
     const u = _users.find(u => u.id === userId);
     if (!u) return;
 
-    const siteOptions = _sites.map(s =>
-        `<option value="${s.id}" ${u.siteId === s.id ? 'selected' : ''}>${s.code} – ${s.name}</option>`
-    ).join('');
-
+    const siteAssignments = u.siteAssignments ?? [];
     const assignedStudyIds = (u.studies ?? []).map(s => s.id);
+
     const studyOptions = _studies.map(s => `
     <label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-slate-50 p-1.5 rounded">
       <input type="checkbox" class="rounded" value="${s.id}" ${assignedStudyIds.includes(s.id) ? 'checked' : ''}
         onchange="window.umToggleStudy('${userId}',${s.id},this.checked)">
       <span>${s.title} <span class="text-xs text-slate-400 font-mono">${s.protocolNo}</span></span>
     </label>`).join('');
+
+    const siteSelectOpts  = _sites.map(s => `<option value="${s.id}">${s.code} – ${s.name}</option>`).join('');
+    const studySelectOpts = _studies.map(s => `<option value="${s.id}">${s.title} (${s.protocolNo})</option>`).join('');
 
     showModal({
         title: u.name,
@@ -238,23 +248,56 @@ window.umEditUser = async (userId) => {
             </button>
           </div>
         </div>
-        <!-- Site -->
+        <!-- Site Assignments (multi-site) -->
         <div class="border border-slate-100 rounded-lg p-4 space-y-3">
           <p class="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-            <i data-lucide="building-2" class="w-4 h-4 text-emerald-500"></i> Site Assignment
+            <i data-lucide="building-2" class="w-4 h-4 text-emerald-500"></i> Site Assignments
+            <span class="text-xs font-normal text-slate-400">— a user can be assigned to multiple sites across studies</span>
           </p>
-          <div class="flex items-center gap-2">
-            <select id="um-site-select" class="ph-input text-xs flex-1">
-              <option value="">— No site —</option>
-              ${siteOptions}
-            </select>
-            <input id="um-site-reason" class="ph-input text-xs flex-1" placeholder="Reason (required)">
-            <button onclick="window.umChangeSite('${userId}')" class="ph-btn ph-btn-secondary text-xs whitespace-nowrap">
-              <i data-lucide="check" class="w-3.5 h-3.5"></i> Apply
-            </button>
+
+          <!-- Existing assignments list -->
+          <div id="um-site-list-${userId}" class="space-y-1.5">
+            ${siteAssignments.length ? siteAssignments.map(a => `
+              <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-100">
+                <i data-lucide="building-2" class="w-3.5 h-3.5 text-emerald-500 flex-shrink-0"></i>
+                <span class="text-xs font-semibold text-slate-700 flex-shrink-0">${a.siteCode} – ${a.siteName}</span>
+                <span class="text-slate-300 text-xs flex-shrink-0">for</span>
+                <span class="text-xs text-blue-700 flex items-center gap-1 flex-shrink-0">
+                  <i data-lucide="flask-conical" class="w-3 h-3"></i>${a.studyTitle}
+                  <span class="text-slate-400 font-mono">(${a.protocolNo})</span>
+                </span>
+                <div class="flex-1"></div>
+                <button onclick="window.umRemoveSiteAssignment('${userId}',${a.id})"
+                  class="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-0.5 rounded transition flex items-center gap-1">
+                  <i data-lucide="x" class="w-3 h-3"></i> Remove
+                </button>
+              </div>`) .join('')
+            : '<p class="text-xs text-slate-400 py-1">No site assignments yet.</p>'}
+          </div>
+
+          <!-- Add new assignment -->
+          <div class="pt-2 border-t border-slate-100">
+            <p class="text-xs font-medium text-slate-500 mb-2">Add assignment:</p>
+            <div class="grid grid-cols-2 gap-2 mb-2">
+              <select id="um-add-site" class="ph-input text-xs">
+                <option value="">— Select site —</option>
+                ${siteSelectOpts}
+              </select>
+              <select id="um-add-study" class="ph-input text-xs">
+                <option value="">— Select study —</option>
+                ${studySelectOpts}
+              </select>
+            </div>
+            <div class="flex items-center gap-2">
+              <input id="um-add-site-reason" class="ph-input text-xs flex-1" placeholder="Reason (required)">
+              <button onclick="window.umAddSiteAssignment('${userId}')"
+                class="ph-btn ph-btn-secondary text-xs whitespace-nowrap flex items-center gap-1">
+                <i data-lucide="plus" class="w-3.5 h-3.5"></i> Add
+              </button>
+            </div>
           </div>
         </div>
-        <!-- Study Assignments -->
+        <!-- Study Access -->
         <div class="border border-slate-100 rounded-lg p-4 space-y-2">
           <p class="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
             <i data-lucide="flask-conical" class="w-4 h-4 text-blue-500"></i> Study Access
@@ -288,21 +331,92 @@ window.umChangeRole = async (userId) => {
     }
 };
 
-// ── Site change ──────────────────────────────────────────────────────────────
-window.umChangeSite = async (userId) => {
-    const siteId = document.getElementById('um-site-select')?.value || null;
-    const reason = document.getElementById('um-site-reason')?.value?.trim();
-    if (!reason) return showToast('Reason is required', 'error');
+// ── Site assignments (multi-site) ────────────────────────────────────────────
+window.umAddSiteAssignment = async (userId) => {
+    const siteId  = document.getElementById('um-add-site')?.value;
+    const studyId = document.getElementById('um-add-study')?.value;
+    const reason  = document.getElementById('um-add-site-reason')?.value?.trim();
+    if (!siteId)  return showToast('Select a site', 'error');
+    if (!studyId) return showToast('Select a study', 'error');
+    if (!reason)  return showToast('Reason is required', 'error');
 
     try {
-        await api.request(`/api/users/${userId}/site`, {
-            method: 'PATCH',
-            body: JSON.stringify({ siteId, reason }),
+        const assignment = await api.request(`/api/users/${userId}/sites`, {
+            method: 'POST',
+            body: JSON.stringify({ siteId, studyId, reason }),
         });
-        showToast('Site assignment updated', 'success');
+        showToast('Site assignment added', 'success');
         _users = await api.request('/api/users');
-        closeModal();
         renderList(_users);
+
+        // Refresh the list inside the open modal without closing it
+        const u = _users.find(u => u.id === userId);
+        const listEl = document.getElementById(`um-site-list-${userId}`);
+        if (u && listEl) {
+            const assignments = u.siteAssignments ?? [];
+            listEl.innerHTML = assignments.length ? assignments.map(a => `
+              <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-100">
+                <i data-lucide="building-2" class="w-3.5 h-3.5 text-emerald-500 flex-shrink-0"></i>
+                <span class="text-xs font-semibold text-slate-700 flex-shrink-0">${a.siteCode} – ${a.siteName}</span>
+                <span class="text-slate-300 text-xs flex-shrink-0">for</span>
+                <span class="text-xs text-blue-700 flex items-center gap-1 flex-shrink-0">
+                  <i data-lucide="flask-conical" class="w-3 h-3"></i>${a.studyTitle}
+                  <span class="text-slate-400 font-mono">(${a.protocolNo})</span>
+                </span>
+                <div class="flex-1"></div>
+                <button onclick="window.umRemoveSiteAssignment('${userId}',${a.id})"
+                  class="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-0.5 rounded transition flex items-center gap-1">
+                  <i data-lucide="x" class="w-3 h-3"></i> Remove
+                </button>
+              </div>`).join('')
+            : '<p class="text-xs text-slate-400 py-1">No site assignments yet.</p>';
+            lucide.createIcons();
+            // Clear inputs
+            document.getElementById('um-add-site').value = '';
+            document.getElementById('um-add-study').value = '';
+            document.getElementById('um-add-site-reason').value = '';
+        }
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+};
+
+window.umRemoveSiteAssignment = async (userId, assignmentId) => {
+    const reason = prompt('Reason for removing this site assignment (required):');
+    if (!reason) return;
+
+    try {
+        await api.request(`/api/users/${userId}/sites/${assignmentId}`, {
+            method: 'DELETE',
+            body: JSON.stringify({ reason }),
+        });
+        showToast('Site assignment removed', 'success');
+        _users = await api.request('/api/users');
+        renderList(_users);
+
+        // Refresh list inside open modal
+        const u = _users.find(u => u.id === userId);
+        const listEl = document.getElementById(`um-site-list-${userId}`);
+        if (u && listEl) {
+            const assignments = u.siteAssignments ?? [];
+            listEl.innerHTML = assignments.length ? assignments.map(a => `
+              <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-100">
+                <i data-lucide="building-2" class="w-3.5 h-3.5 text-emerald-500 flex-shrink-0"></i>
+                <span class="text-xs font-semibold text-slate-700 flex-shrink-0">${a.siteCode} – ${a.siteName}</span>
+                <span class="text-slate-300 text-xs flex-shrink-0">for</span>
+                <span class="text-xs text-blue-700 flex items-center gap-1 flex-shrink-0">
+                  <i data-lucide="flask-conical" class="w-3 h-3"></i>${a.studyTitle}
+                  <span class="text-slate-400 font-mono">(${a.protocolNo})</span>
+                </span>
+                <div class="flex-1"></div>
+                <button onclick="window.umRemoveSiteAssignment('${userId}',${a.id})"
+                  class="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-0.5 rounded transition flex items-center gap-1">
+                  <i data-lucide="x" class="w-3 h-3"></i> Remove
+                </button>
+              </div>`).join('')
+            : '<p class="text-xs text-slate-400 py-1">No site assignments yet.</p>';
+            lucide.createIcons();
+        }
     } catch (err) {
         showToast(err.message, 'error');
     }

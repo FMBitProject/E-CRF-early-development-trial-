@@ -3,26 +3,54 @@
 
 import { Router } from 'express';
 import { eq } from 'drizzle-orm';
-import { db } from '../db/connection.js';
+import { db, client } from '../db/connection.js';
 import { sites } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 
 const router = Router();
 
-// GET /api/sites — list sites (all for admin, assigned site only for others)
+// GET /api/sites — list sites (all for admin; user_sites-based for others)
 router.get('/', async (req, res) => {
     try {
         const isAdmin = req.user?.role === 'admin';
-        let rows;
         if (isAdmin) {
-            rows = await db.select().from(sites).orderBy(sites.code);
-        } else if (req.user.siteId) {
+            const rows = await db.select().from(sites).orderBy(sites.code);
+            return res.json(rows);
+        }
+
+        // Non-admin: return sites from user_sites, filtered by X-Study-ID if present
+        const studyId = req.headers['x-study-id'] ? parseInt(req.headers['x-study-id']) : null;
+
+        let rows = [];
+        try {
+            if (studyId) {
+                rows = await client`
+                    SELECT DISTINCT s.*
+                    FROM user_sites us
+                    JOIN sites s ON s.id = us.site_id
+                    WHERE us.user_id = ${req.user.id} AND us.study_id = ${studyId}
+                    ORDER BY s.code
+                `;
+            } else {
+                rows = await client`
+                    SELECT DISTINCT s.*
+                    FROM user_sites us
+                    JOIN sites s ON s.id = us.site_id
+                    WHERE us.user_id = ${req.user.id}
+                    ORDER BY s.code
+                `;
+            }
+        } catch {
+            // user_sites table not yet created — fall back to legacy site_id column
+        }
+
+        // Fallback: if no user_sites rows, use legacy user.site_id
+        if (!rows.length && req.user.siteId) {
             const [site] = await db.select().from(sites).where(eq(sites.id, req.user.siteId));
             rows = site ? [site] : [];
-        } else {
-            rows = [];
         }
+
         res.json(rows);
     } catch (err) {
         res.status(500).json({ error: err.message });

@@ -79,6 +79,16 @@ export const studyUsers = pgTable('study_users', {
     assignedBy:  text('assigned_by').references(() => user.id),
 });
 
+// Multi-site assignment: one user can work at multiple sites across studies
+export const userSites = pgTable('user_sites', {
+    id:         integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    userId:     text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    siteId:     integer('site_id').notNull(),
+    studyId:    integer('study_id').notNull(),
+    assignedAt: timestamp('assigned_at').notNull().defaultNow(),
+    assignedBy: text('assigned_by').references(() => user.id),
+});
+
 // ─── Clinical tables ─────────────────────────────────────────────────────────
 
 export const siteStatusEnum = pgEnum('site_status', ['Active', 'Inactive']);

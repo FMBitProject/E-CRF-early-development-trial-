@@ -1,12 +1,28 @@
 import { Router } from 'express';
 import { eq, and } from 'drizzle-orm';
 import { db, client } from '../db/connection.js';
-import { user, studyUsers, sites, studies, passwordMeta, session } from '../db/schemas/schema.js';
+import { user, studyUsers, userSites, sites, studies, passwordMeta, session } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 import { sendUserInviteEmail } from '../lib/email.js';
 import { auth } from '../auth/better-auth.js';
 import crypto from 'crypto';
+
+// Self-healing: ensure user_sites table exists
+async function ensureUserSitesTable() {
+    await client.unsafe(`
+        CREATE TABLE IF NOT EXISTS user_sites (
+            id          SERIAL PRIMARY KEY,
+            user_id     TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+            site_id     INTEGER NOT NULL,
+            study_id    INTEGER NOT NULL,
+            assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            assigned_by TEXT REFERENCES "user"(id),
+            UNIQUE(user_id, site_id, study_id)
+        )
+    `);
+}
+ensureUserSitesTable().catch(() => {});
 
 const router = Router();
 
@@ -39,7 +55,7 @@ router.get('/', requireRole('admin'), async (req, res) => {
             }
         }
 
-        // Enrich with site name and study assignments
+        // Enrich with site name, study assignments, and multi-site assignments
         const allSites = await db.select({ id: sites.id, name: sites.name, code: sites.code }).from(sites);
         const siteMap = new Map(allSites.map(s => [s.id, s]));
 
@@ -55,16 +71,43 @@ router.get('/', requireRole('admin'), async (req, res) => {
         }).from(studies);
         const studyMap = new Map(allStudies.map(s => [s.id, s]));
 
+        // Fetch all user_sites assignments (multi-site support)
+        const allUserSites = await client`
+            SELECT us.id, us.user_id, us.site_id, us.study_id,
+                   s.code AS site_code, s.name AS site_name,
+                   st.title AS study_title, st.protocol_no AS protocol_no
+            FROM user_sites us
+            JOIN sites s  ON s.id  = us.site_id
+            JOIN studies st ON st.id = us.study_id
+            ORDER BY us.user_id, st.id, s.code
+        `.catch(() => []);
+
         const enriched = users.map(u => {
             const site = u.siteId ? siteMap.get(u.siteId) : null;
             const studyAssignments = allStudyUsers
                 .filter(su => su.userId === u.id)
                 .map(su => studyMap.get(su.studyId))
                 .filter(Boolean);
+            const siteAssignments = allUserSites
+                .filter(us => us.user_id === u.id)
+                .map(us => ({
+                    id:          us.id,
+                    siteId:      us.site_id,
+                    siteCode:    us.site_code,
+                    siteName:    us.site_name,
+                    studyId:     us.study_id,
+                    studyTitle:  us.study_title,
+                    protocolNo:  us.protocol_no,
+                }));
+            // Legacy siteName: use first assignment or old siteId column
+            const legacySite = siteAssignments[0]
+                ? `${siteAssignments[0].siteCode} – ${siteAssignments[0].siteName}`
+                : (site ? `${site.code} – ${site.name}` : null);
             return {
                 ...u,
-                siteName: site ? `${site.code} – ${site.name}` : null,
-                studies:  studyAssignments,
+                siteName:        legacySite,
+                siteAssignments,
+                studies:         studyAssignments,
             };
         });
 
@@ -248,6 +291,81 @@ router.patch('/:id/site', requireRole('admin'), async (req, res) => {
         });
 
         res.json(updated);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── POST /api/users/:id/sites — add a site+study assignment (admin only)
+router.post('/:id/sites', requireRole('admin'), async (req, res) => {
+    try {
+        const targetId = req.params.id;
+        const { siteId, studyId, reason } = req.body;
+        if (!siteId || !studyId) return res.status(400).json({ error: 'siteId and studyId are required' });
+        if (!reason)             return res.status(400).json({ error: 'reason is required' });
+
+        const [targetUser] = await db.select({ id: user.id }).from(user).where(eq(user.id, targetId));
+        if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+        const [site] = await db.select({ id: sites.id, code: sites.code, name: sites.name })
+            .from(sites).where(eq(sites.id, parseInt(siteId)));
+        if (!site) return res.status(404).json({ error: 'Site not found' });
+
+        const [study] = await db.select({ id: studies.id, title: studies.title })
+            .from(studies).where(eq(studies.id, parseInt(studyId)));
+        if (!study) return res.status(404).json({ error: 'Study not found' });
+
+        const [row] = await client`
+            INSERT INTO user_sites (user_id, site_id, study_id, assigned_by)
+            VALUES (${targetId}, ${parseInt(siteId)}, ${parseInt(studyId)}, ${req.user.id})
+            ON CONFLICT (user_id, site_id, study_id) DO NOTHING
+            RETURNING *
+        `;
+        if (!row) return res.status(409).json({ error: 'Assignment already exists' });
+
+        await writeAudit(db, {
+            tableName: 'user_sites', recordId: String(row.id), action: 'INSERT',
+            newValue: `User assigned to site "${site.code} – ${site.name}" for study "${study.title}"`,
+            reason,
+            user: req.user, ipAddress: req.ip,
+        });
+
+        res.status(201).json({
+            id: row.id, siteId: site.id, siteCode: site.code, siteName: site.name,
+            studyId: study.id, studyTitle: study.title,
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── DELETE /api/users/:id/sites/:assignmentId — remove a site assignment (admin only)
+router.delete('/:id/sites/:assignmentId', requireRole('admin'), async (req, res) => {
+    try {
+        const targetId     = req.params.id;
+        const assignmentId = parseInt(req.params.assignmentId);
+        const { reason }   = req.body;
+        if (!reason) return res.status(400).json({ error: 'reason is required' });
+
+        const [row] = await client`
+            SELECT us.*, s.code AS site_code, s.name AS site_name, st.title AS study_title
+            FROM user_sites us
+            JOIN sites s   ON s.id  = us.site_id
+            JOIN studies st ON st.id = us.study_id
+            WHERE us.id = ${assignmentId} AND us.user_id = ${targetId}
+        `;
+        if (!row) return res.status(404).json({ error: 'Assignment not found' });
+
+        await client`DELETE FROM user_sites WHERE id = ${assignmentId}`;
+
+        await writeAudit(db, {
+            tableName: 'user_sites', recordId: String(assignmentId), action: 'DELETE',
+            oldValue: `User removed from site "${row.site_code} – ${row.site_name}" for study "${row.study_title}"`,
+            reason,
+            user: req.user, ipAddress: req.ip,
+        });
+
+        res.json({ removed: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
