@@ -862,12 +862,6 @@ export const api = {
     async changeUserSite(id, siteId, reason) {
         return apiFetch(`/api/users/${id}/site`, { method: 'PATCH', body: JSON.stringify({ siteId, reason }) });
     },
-    async assignUserToStudy(userId, studyId) {
-        return apiFetch(`/api/users/${userId}/studies`, { method: 'POST', body: JSON.stringify({ studyId }) });
-    },
-    async removeUserFromStudy(userId, studyId) {
-        return apiFetch(`/api/users/${userId}/studies/${studyId}`, { method: 'DELETE' });
-    },
     async deactivateUser(id, reason) {
         return apiFetch(`/api/users/${id}/deactivate`, { method: 'PATCH', body: JSON.stringify({ reason }) });
     },
