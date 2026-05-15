@@ -259,6 +259,7 @@ router.post('/:id/studies', requireRole('admin'), async (req, res) => {
         const targetId = req.params.id;
         const { studyId } = req.body;
         if (!studyId) return res.status(400).json({ error: 'studyId is required' });
+        if (isNaN(parseInt(studyId))) return res.status(400).json({ error: 'Invalid study ID' });
 
         const [targetUser] = await db.select({ id: user.id }).from(user).where(eq(user.id, targetId));
         if (!targetUser) return res.status(404).json({ error: 'User not found' });
@@ -295,6 +296,7 @@ router.delete('/:id/studies/:studyId', requireRole('admin'), async (req, res) =>
     try {
         const targetId = req.params.id;
         const studyId  = parseInt(req.params.studyId);
+        if (isNaN(studyId)) return res.status(400).json({ error: 'Invalid study ID' });
 
         const [row] = await db.select().from(studyUsers)
             .where(and(eq(studyUsers.userId, targetId), eq(studyUsers.studyId, studyId)));
