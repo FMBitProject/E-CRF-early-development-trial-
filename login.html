@@ -193,7 +193,7 @@
                     role:    data.user.role || 'investigator',
                     loginAt: new Date().toISOString(),
                 }));
-                window.location.href = 'index.html';
+                window.location.href = 'select.html';
 
             } catch (err) {
                 showError('Could not connect to server. Make sure the backend is running.');
@@ -206,7 +206,7 @@
 
         // Redirect if already logged in
         if (localStorage.getItem('ecrf_session')) {
-            window.location.href = 'index.html';
+            window.location.href = 'select.html';
         }
     </script>
 </body>

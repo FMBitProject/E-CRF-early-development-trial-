@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-CRF System — Select Study &amp; Site</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e3a5f'/%3E%3Cpath d='M10 9h8a5 5 0 0 1 0 10h-8zm2 2v6h6a3 3 0 0 0 0-6z' fill='white'/%3E%3Crect x='10' y='21' width='10' height='2' rx='1' fill='white'/%3E%3C/svg%3E">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link rel="stylesheet" href="src/frontend/css/style.css">
+    <style>
+        .login-left {
+            background: linear-gradient(145deg, #0A2E5C 0%, #0F3872 50%, #1554A0 100%);
+        }
+        .step-card {
+            transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+        }
+        .step-card:hover {
+            box-shadow: 0 0 0 2px rgba(21, 84, 160, 0.2);
+        }
+        .step-card.study-card:hover {
+            border-color: #60a5fa;
+            background-color: #eff6ff;
+        }
+        .step-card.site-card:hover {
+            border-color: #34d399;
+            background-color: #f0fdf4;
+        }
+        .step-dot {
+            transition: all 0.3s;
+        }
+        #step-panel-study, #step-panel-site {
+            animation: fadeSlideIn 0.25s ease-out;
+        }
+        @keyframes fadeSlideIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="h-full flex">
+
+    <!-- Left branding panel -->
+    <div class="hidden lg:flex lg:w-[42%] login-left flex-col justify-between p-12 text-white flex-shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center border border-white/20">
+                <i data-lucide="clipboard-list" class="w-5 h-5 text-white"></i>
+            </div>
+            <div>
+                <span class="text-base font-bold tracking-tight">E-CRF System</span>
+                <span class="block text-xs text-blue-300 leading-none mt-0.5">Clinical Data Platform</span>
+            </div>
+        </div>
+
+        <div class="max-w-sm">
+            <h1 class="text-3xl font-bold leading-snug mb-3">
+                Select Your<br>Study &amp; Site
+            </h1>
+            <p class="text-blue-200 text-sm mb-8 leading-relaxed">
+                Choose the clinical trial and investigational site you will work on in this session. Your selection determines data access and audit context.
+            </p>
+
+            <div class="space-y-4">
+                <div class="flex items-start gap-3.5">
+                    <div class="w-8 h-8 rounded-lg bg-white/10 border border-white/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i data-lucide="flask-conical" class="w-4 h-4 text-blue-200"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-semibold text-white">Study Context</p>
+                        <p class="text-xs text-blue-300 mt-0.5 leading-relaxed">Defines which trial protocol, forms, and visit schedule apply to your session.</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3.5">
+                    <div class="w-8 h-8 rounded-lg bg-white/10 border border-white/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i data-lucide="building-2" class="w-4 h-4 text-blue-200"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-semibold text-white">Site Context</p>
+                        <p class="text-xs text-blue-300 mt-0.5 leading-relaxed">Scopes subject data, delegation logs, and monitoring records to your site.</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3.5">
+                    <div class="w-8 h-8 rounded-lg bg-white/10 border border-white/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i data-lucide="shield-check" class="w-4 h-4 text-blue-200"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-semibold text-white">Audit Trail</p>
+                        <p class="text-xs text-blue-300 mt-0.5 leading-relaxed">Every action is recorded with your study and site context per ICH GCP E6 (R2).</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 text-xs text-blue-400">
+            <i data-lucide="shield" class="w-3.5 h-3.5"></i>
+            <span>FDA 21 CFR Part 11 &nbsp;|&nbsp; ICH GCP E6 (R2) &nbsp;|&nbsp; Audit Trail Active</span>
+        </div>
+    </div>
+
+    <!-- Right selection panel -->
+    <div class="flex-1 flex flex-col bg-slate-50 min-h-0">
+
+        <!-- Top bar -->
+        <div class="flex items-center justify-between px-8 py-4 bg-white border-b border-slate-200 flex-shrink-0">
+            <!-- Mobile logo -->
+            <div class="flex lg:hidden items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-[#0A2E5C] flex items-center justify-center">
+                    <i data-lucide="clipboard-list" class="w-4 h-4 text-white"></i>
+                </div>
+                <span class="text-sm font-bold text-slate-800">E-CRF System</span>
+            </div>
+            <div class="hidden lg:block"></div>
+
+            <!-- User info + logout -->
+            <div class="flex items-center gap-3">
+                <div id="user-chip" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 text-xs text-slate-600 font-medium"></div>
+                <button id="btn-logout"
+                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition border border-slate-200">
+                    <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+                    Sign Out
+                </button>
+            </div>
+        </div>
+
+        <!-- Main content -->
+        <div class="flex-1 flex items-start justify-center overflow-y-auto py-10 px-6">
+            <div class="w-full max-w-xl">
+
+                <!-- Progress steps indicator -->
+                <div id="progress-bar" class="flex items-center gap-3 mb-8">
+                    <div id="prog-study" class="flex items-center gap-2">
+                        <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-blue-600 text-white">1</div>
+                        <span class="text-sm font-semibold text-slate-800">Select Study</span>
+                    </div>
+                    <div class="flex-1 h-px bg-slate-200"></div>
+                    <div id="prog-site" class="flex items-center gap-2">
+                        <div id="prog-site-dot" class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-slate-200 text-slate-400">2</div>
+                        <span id="prog-site-label" class="text-sm font-medium text-slate-400">Select Site</span>
+                    </div>
+                </div>
+
+                <!-- Loading state -->
+                <div id="loading-state" class="flex flex-col items-center justify-center py-16 gap-4">
+                    <div class="w-10 h-10 rounded-full border-4 border-blue-100 border-t-blue-500 animate-spin"></div>
+                    <p class="text-sm text-slate-400">Loading available studies…</p>
+                </div>
+
+                <!-- Error state -->
+                <div id="error-state" class="hidden text-center py-16">
+                    <div class="w-14 h-14 rounded-2xl bg-red-50 border-2 border-red-100 flex items-center justify-center mx-auto mb-4">
+                        <i data-lucide="alert-triangle" class="w-7 h-7 text-red-400"></i>
+                    </div>
+                    <p id="error-title" class="text-base font-bold text-slate-800 mb-1">Something went wrong</p>
+                    <p id="error-msg" class="text-sm text-slate-500 max-w-xs mx-auto leading-relaxed"></p>
+                </div>
+
+                <!-- Step 1: Study selection -->
+                <div id="step-panel-study" class="hidden">
+                    <div class="mb-5">
+                        <h2 class="text-xl font-bold text-slate-900">Select Clinical Study</h2>
+                        <p class="text-sm text-slate-500 mt-1">Choose the trial you will work on in this session.</p>
+                    </div>
+                    <div id="study-list" class="space-y-2.5"></div>
+                </div>
+
+                <!-- Step 2: Site selection -->
+                <div id="step-panel-site" class="hidden">
+                    <div class="mb-5">
+                        <!-- Back button + study badge -->
+                        <div class="flex items-center gap-2 mb-3">
+                            <button id="btn-back-study"
+                                class="flex items-center gap-1 text-xs text-slate-400 hover:text-blue-600 transition font-medium">
+                                <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+                                Change Study
+                            </button>
+                            <span class="text-slate-200">|</span>
+                            <div id="selected-study-badge"
+                                class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 border border-blue-100 text-xs text-blue-700 font-medium max-w-[280px] truncate">
+                                <i data-lucide="flask-conical" class="w-3 h-3 flex-shrink-0"></i>
+                                <span id="selected-study-name" class="truncate"></span>
+                            </div>
+                        </div>
+                        <h2 class="text-xl font-bold text-slate-900">Select Study Site</h2>
+                        <p class="text-sm text-slate-500 mt-1">Choose the investigational site for this session.</p>
+                    </div>
+                    <div id="site-list" class="space-y-2.5"></div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Bottom compliance bar -->
+        <div class="hidden lg:flex flex-shrink-0 items-center justify-center gap-6 py-3 border-t border-slate-200 bg-white">
+            <span class="flex items-center gap-1.5 text-xs text-slate-400">
+                <i data-lucide="shield-check" class="w-3.5 h-3.5 text-slate-300"></i>
+                FDA 21 CFR Part 11
+            </span>
+            <span class="text-slate-200">|</span>
+            <span class="flex items-center gap-1.5 text-xs text-slate-400">
+                <i data-lucide="shield-check" class="w-3.5 h-3.5 text-slate-300"></i>
+                ICH GCP E6 (R2)
+            </span>
+            <span class="text-slate-200">|</span>
+            <span class="flex items-center gap-1.5 text-xs text-slate-400">
+                <i data-lucide="lock" class="w-3.5 h-3.5 text-slate-300"></i>
+                Audit Trail Active
+            </span>
+        </div>
+    </div>
+
+    <script type="module">
+        import { api } from './src/frontend/js/modules/api.js';
+        import { getSiteContext, setSiteContext } from './src/frontend/js/modules/study-select.js';
+
+        // ── Auth guard ──────────────────────────────────────────────────────
+        const user = api.getCurrentUser();
+        if (!user) {
+            window.location.replace('login.html');
+            throw new Error('Not authenticated');
+        }
+
+        // ── If context is already fully set, skip straight to app ───────────
+        const alreadyHasStudy = !!api.getCurrentStudy();
+        const alreadyHasSite  = !!getSiteContext();
+        if (alreadyHasStudy && alreadyHasSite) {
+            window.location.replace('index.html');
+            throw new Error('Already selected');
+        }
+
+        // ── UI refs ─────────────────────────────────────────────────────────
+        const $loading      = document.getElementById('loading-state');
+        const $error        = document.getElementById('error-state');
+        const $errorTitle   = document.getElementById('error-title');
+        const $errorMsg     = document.getElementById('error-msg');
+        const $panelStudy   = document.getElementById('step-panel-study');
+        const $panelSite    = document.getElementById('step-panel-site');
+        const $studyList    = document.getElementById('study-list');
+        const $siteList     = document.getElementById('site-list');
+        const $studyBadge   = document.getElementById('selected-study-name');
+        const $progSiteDot  = document.getElementById('prog-site-dot');
+        const $progSiteLbl  = document.getElementById('prog-site-label');
+        const $progStudy    = document.getElementById('prog-study');
+        const $backBtn      = document.getElementById('btn-back-study');
+
+        // ── User chip ───────────────────────────────────────────────────────
+        const ROLE_LABELS = {
+            admin: 'Administrator', investigator: 'Investigator',
+            pi: 'Principal Investigator', cra: 'CRA / Monitor', crc: 'Study Coordinator',
+        };
+        document.getElementById('user-chip').innerHTML =
+            `<i data-lucide="user" class="w-3.5 h-3.5"></i>${user.name} &nbsp;·&nbsp; ${ROLE_LABELS[user.role] ?? user.role}`;
+        document.getElementById('btn-logout').addEventListener('click', () => api.logout());
+
+        // ── Helpers ─────────────────────────────────────────────────────────
+        function show(el)  { el.classList.remove('hidden'); }
+        function hide(el)  { el.classList.add('hidden'); }
+
+        function showError(title, msg) {
+            hide($loading); hide($panelStudy); hide($panelSite);
+            $errorTitle.textContent = title;
+            $errorMsg.textContent   = msg;
+            show($error);
+            lucide.createIcons();
+        }
+
+        function activateStudyStep() {
+            // Progress dots
+            $progStudy.querySelector('div').className =
+                'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-blue-600 text-white';
+            $progStudy.querySelector('span').className = 'text-sm font-semibold text-slate-800';
+            $progSiteDot.className =
+                'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-slate-200 text-slate-400';
+            $progSiteLbl.className = 'text-sm font-medium text-slate-400';
+            hide($panelSite);
+            show($panelStudy);
+        }
+
+        function activateSiteStep(studyTitle) {
+            // Progress dots
+            $progStudy.querySelector('div').className =
+                'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-blue-100 text-blue-600';
+            $progStudy.querySelector('span').className = 'text-sm font-medium text-slate-500';
+            $progSiteDot.className =
+                'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-emerald-600 text-white';
+            $progSiteLbl.className = 'text-sm font-semibold text-slate-800';
+            $studyBadge.textContent = studyTitle;
+            hide($panelStudy);
+            show($panelSite);
+            lucide.createIcons();
+        }
+
+        function statusBadge(status) {
+            const cls = status === 'Active'
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-slate-100 text-slate-500';
+            return `<span class="px-2 py-0.5 rounded-full text-xs font-medium ${cls}">${status}</span>`;
+        }
+
+        // ── State ───────────────────────────────────────────────────────────
+        let allStudies = [];
+        let selectedStudy = null;
+
+        // ── Step 1: load and render studies ─────────────────────────────────
+        async function loadStudies() {
+            hide($error);
+            show($loading);
+
+            try {
+                allStudies = await api.getStudies();
+            } catch (e) {
+                showError('Could not load studies', e.message || 'Server error. Please try again.');
+                return;
+            }
+
+            hide($loading);
+
+            if (allStudies.length === 0) {
+                if (user.role === 'admin') {
+                    showError('No Studies Found', 'No clinical studies have been created yet. Go to Study Management to add one.');
+                    $error.insertAdjacentHTML('beforeend', `
+                        <a href="index.html#studymgmt"
+                            class="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition">
+                            <i data-lucide="flask-conical" class="w-4 h-4"></i>
+                            Go to Study Management
+                        </a>`);
+                } else {
+                    showError('No Study Assigned', 'You have not been assigned to any clinical study. Contact your administrator to request access.');
+                }
+                lucide.createIcons();
+                return;
+            }
+
+            // Single study: auto-select and skip to site step
+            if (allStudies.length === 1) {
+                selectStudy(allStudies[0]);
+                return;
+            }
+
+            // Multiple studies: render picker
+            renderStudyList(allStudies);
+            activateStudyStep();
+        }
+
+        function renderStudyList(studies) {
+            $studyList.innerHTML = studies.map(s => `
+                <button class="study-card step-card w-full text-left px-5 py-4 rounded-xl border-2 border-slate-200 bg-white group"
+                    data-id="${s.id}" data-title="${encodeURIComponent(s.title)}"
+                    data-protocol="${encodeURIComponent(s.protocolNo ?? '')}"
+                    data-phase="${encodeURIComponent(s.phase ?? 'N/A')}"
+                    data-status="${s.status}">
+                    <div class="flex items-center gap-4">
+                        <div class="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-200 transition">
+                            <i data-lucide="flask-conical" class="w-5 h-5 text-blue-600"></i>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <p class="font-semibold text-slate-900 text-sm group-hover:text-blue-700 transition">${s.title}</p>
+                                ${statusBadge(s.status)}
+                            </div>
+                            <p class="text-xs text-slate-500 mt-1">
+                                ${s.protocolNo ?? '—'} &nbsp;·&nbsp; ${s.phase ?? 'N/A'}
+                            </p>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-5 h-5 text-slate-300 group-hover:text-blue-400 transition flex-shrink-0"></i>
+                    </div>
+                </button>`).join('');
+
+            lucide.createIcons();
+
+            $studyList.querySelectorAll('.study-card').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const s = {
+                        id:         parseInt(btn.dataset.id),
+                        title:      decodeURIComponent(btn.dataset.title),
+                        protocolNo: decodeURIComponent(btn.dataset.protocol),
+                        phase:      decodeURIComponent(btn.dataset.phase),
+                        status:     btn.dataset.status,
+                    };
+                    selectStudy(s);
+                });
+            });
+        }
+
+        async function selectStudy(study) {
+            selectedStudy = study;
+            api.setCurrentStudy(study);
+            await loadSites(study);
+        }
+
+        // ── Step 2: load and render sites ────────────────────────────────────
+        async function loadSites(study) {
+            hide($panelStudy);
+            hide($error);
+            show($loading);
+            $loading.querySelector('p').textContent = 'Loading available sites…';
+
+            let sites = [];
+            try {
+                sites = await api.getSites();
+            } catch (e) {
+                showError('Could not load sites', e.message || 'Server error. Please try again.');
+                return;
+            }
+
+            const active = sites.filter(s => s.status === 'Active' || s.status === 'active');
+            hide($loading);
+
+            if (active.length === 0) {
+                if (user.role === 'admin') {
+                    showError('No Active Sites', 'No active sites found for this study. Go to Site Management to add one.');
+                    $error.insertAdjacentHTML('beforeend', `
+                        <a href="index.html#sites"
+                            class="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition">
+                            <i data-lucide="building-2" class="w-4 h-4"></i>
+                            Go to Site Management
+                        </a>`);
+                } else {
+                    showError('No Site Assigned', 'You have not been assigned to an active site. Contact your administrator to request access.');
+                }
+                lucide.createIcons();
+                return;
+            }
+
+            // Single site: auto-select and proceed
+            if (active.length === 1) {
+                selectSite(active[0]);
+                return;
+            }
+
+            renderSiteList(study, active);
+            activateSiteStep(study.title);
+        }
+
+        function renderSiteList(study, sites) {
+            $siteList.innerHTML = sites.map(s => `
+                <button class="site-card step-card w-full text-left px-5 py-4 rounded-xl border-2 border-slate-200 bg-white group"
+                    data-id="${s.id}"
+                    data-code="${encodeURIComponent(s.site_code ?? s.code ?? '')}"
+                    data-name="${encodeURIComponent(s.site_name ?? s.name ?? '')}"
+                    data-status="${s.status ?? 'Active'}">
+                    <div class="flex items-center gap-4">
+                        <div class="w-11 h-11 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0 group-hover:bg-emerald-200 transition">
+                            <i data-lucide="building-2" class="w-5 h-5 text-emerald-600"></i>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <p class="font-semibold text-slate-900 text-sm group-hover:text-emerald-700 transition">${s.site_name ?? s.name ?? '—'}</p>
+                            <p class="text-xs text-slate-500 mt-1">
+                                ${s.site_code ?? s.code ?? '—'}
+                                &nbsp;·&nbsp; ${s.country ?? 'N/A'}
+                                ${s.pi_name ? ` &nbsp;·&nbsp; PI: ${s.pi_name}` : ''}
+                            </p>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-5 h-5 text-slate-300 group-hover:text-emerald-400 transition flex-shrink-0"></i>
+                    </div>
+                </button>`).join('');
+
+            lucide.createIcons();
+
+            $siteList.querySelectorAll('.site-card').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const site = {
+                        id:        parseInt(btn.dataset.id),
+                        site_code: decodeURIComponent(btn.dataset.code),
+                        site_name: decodeURIComponent(btn.dataset.name),
+                        status:    btn.dataset.status,
+                    };
+                    selectSite(site);
+                });
+            });
+        }
+
+        function selectSite(site) {
+            setSiteContext(site);
+            window.location.replace('index.html');
+        }
+
+        // ── Back button: return to study selection ───────────────────────────
+        $backBtn.addEventListener('click', () => {
+            // Only allow going back if there were multiple studies
+            if (allStudies.length > 1) {
+                api.setCurrentStudy(null);
+                selectedStudy = null;
+                activateStudyStep();
+                // Re-render in case list was cleared
+                renderStudyList(allStudies);
+            }
+        });
+
+        // ── Init ─────────────────────────────────────────────────────────────
+        lucide.createIcons();
+        loadStudies();
+    </script>
+</body>
+</html>

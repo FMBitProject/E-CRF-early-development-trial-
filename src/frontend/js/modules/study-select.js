@@ -292,9 +292,8 @@ function pickSite(study, sites) {
 
 // ── Manual study/site switch (from sidebar or studymgmt) ─────────────────────
 
-export async function switchStudyAndSite() {
+export function switchStudyAndSite() {
     api.setCurrentStudy(null);
     setSiteContext(null);
-    await ensureStudySelected();
-    window.dispatchEvent(new CustomEvent('study-changed'));
+    window.location.href = 'select.html';
 }

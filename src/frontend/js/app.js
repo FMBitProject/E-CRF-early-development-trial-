@@ -4,7 +4,7 @@
 
 import { api } from './modules/api.js';
 import { showToast, showModal, closeModal } from './modules/utils.js';
-import { getSiteContext, ensureStudySelected, switchStudyAndSite } from './modules/study-select.js';
+import { getSiteContext, switchStudyAndSite } from './modules/study-select.js';
 import { initSessionTimeout } from './modules/session.js';
 
 export { showToast, showModal, closeModal };
@@ -444,46 +444,12 @@ let _appReady = false;
 
 function navigateByState() {
     const { hasStudy, hasSite } = getAppState();
-    if (!hasStudy) {
-        // No study: admin goes to study management; others see "not assigned" message
-        if (user.role === 'admin') {
-            navigate('#studymgmt');
-        } else {
-            const el = document.getElementById('main-content');
-            if (el) el.innerHTML = `
-                <div class="flex items-center justify-center h-full">
-                    <div class="text-center p-8 max-w-sm">
-                        <div class="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                            <i data-lucide="flask-conical" class="w-8 h-8 text-slate-300"></i>
-                        </div>
-                        <p class="font-semibold text-slate-700 mb-2">No Study Assigned</p>
-                        <p class="text-sm text-slate-400">You have not been assigned to any clinical study. Contact your administrator to request access.</p>
-                    </div>
-                </div>`;
-            if (window.lucide) lucide.createIcons();
-        }
-    } else if (!hasSite) {
-        // Study set but no site: admin creates sites; others see "not assigned" message
-        if (user.role === 'admin') {
-            navigate('#sites');
-        } else {
-            const el = document.getElementById('main-content');
-            if (el) el.innerHTML = `
-                <div class="flex items-center justify-center h-full">
-                    <div class="text-center p-8 max-w-sm">
-                        <div class="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                            <i data-lucide="building-2" class="w-8 h-8 text-slate-300"></i>
-                        </div>
-                        <p class="font-semibold text-slate-700 mb-2">No Site Assigned</p>
-                        <p class="text-sm text-slate-400">You have not been assigned to a clinical site. Contact your administrator to request access.</p>
-                    </div>
-                </div>`;
-            if (window.lucide) lucide.createIcons();
-        }
-    } else {
-        navigate(window.location.hash || '#dashboard');
-        refreshQueryCount();
+    if (!hasStudy || !hasSite) {
+        window.location.replace('select.html');
+        return;
     }
+    navigate(window.location.hash || '#dashboard');
+    refreshQueryCount();
 }
 
 // study-changed: fired when study is created, switched, or cleared
@@ -507,8 +473,13 @@ window.addEventListener('site-context-changed', () => {
     }
 });
 
-// Await study selection before navigating — prevents 400 X-Study-ID errors on first render
-await ensureStudySelected();
+// If no study+site context yet, redirect to the selection page
+const _initState = getAppState();
+if (!_initState.hasStudy || !_initState.hasSite) {
+    window.location.replace('select.html');
+    throw new Error('Redirecting to study/site selection');
+}
+
 _appReady = true;
 const _initBasePath = parseRoute(window.location.hash).key.split('/')[0] || 'dashboard';
 renderSidebar(_initBasePath);
