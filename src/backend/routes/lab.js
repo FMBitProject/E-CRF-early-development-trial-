@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { eq, and, desc } from 'drizzle-orm';
-import { db } from '../db/connection.js';
+import { db, client } from '../db/connection.js';
 import { labResults, subjects, visits } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
@@ -10,6 +10,9 @@ const router = Router();
 // GET /api/lab — list by study, optional ?subjectId=&visitId=&status=&panel=
 router.get('/', async (req, res) => {
     try {
+        // Self-heal: add loinc_coding_status if this DB predates the migration
+        await client.unsafe(`ALTER TABLE lab_results ADD COLUMN IF NOT EXISTS loinc_coding_status TEXT NOT NULL DEFAULT 'Custom'`).catch(() => {});
+
         const { subjectId, visitId, status, panel } = req.query;
         const conditions = [eq(labResults.studyId, req.studyId)];
         if (subjectId) conditions.push(eq(labResults.subjectId, parseInt(subjectId)));
