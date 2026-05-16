@@ -113,31 +113,33 @@ router.get('/metrics', async (req, res) => {
             ? parseFloat(((consentedSubjects / activeSubjects) * 100).toFixed(2))
             : 0;
 
-        // --- Average data entry days: avg days from visit actual_date to first audit INSERT ---
-        const [avgEntryRow] = await client`
-            SELECT ROUND(AVG(diff_days), 2) AS avg_days
-            FROM (
-                SELECT
-                    v.id,
-                    v.actual_date,
-                    MIN(at2.created_at) AS first_entry_at,
-                    EXTRACT(EPOCH FROM (MIN(at2.created_at) - v.actual_date::timestamp)) / 86400 AS diff_days
-                FROM visits v
-                INNER JOIN subjects s ON s.id = v.subject_id
-                INNER JOIN audit_trails at2
-                    ON at2.table_name = 'crf_data_entries'
-                    AND at2.action = 'INSERT'
-                WHERE s.study_id = ${studyId}
-                  AND v.actual_date IS NOT NULL
-                  AND v.status = 'Completed'
-                GROUP BY v.id, v.actual_date
-                HAVING MIN(at2.created_at) IS NOT NULL
-            ) sub
-            WHERE diff_days >= 0
-        `;
-        const avgDataEntryDays = avgEntryRow?.avg_days !== null
-            ? parseFloat(parseFloat(avgEntryRow.avg_days).toFixed(2))
-            : null;
+        // --- Average data entry days: avg days from visit actual_date to first CRF entry audit ---
+        // Joins via crf_data_entries.visit_id so there is no cartesian product
+        let avgDataEntryDays = null;
+        try {
+            const [avgEntryRow] = await client`
+                SELECT ROUND(AVG(diff_days), 2) AS avg_days
+                FROM (
+                    SELECT
+                        v.id,
+                        EXTRACT(EPOCH FROM (MIN(at2.created_at) - v.actual_date::date)) / 86400 AS diff_days
+                    FROM visits v
+                    INNER JOIN subjects s        ON s.id = v.subject_id
+                    INNER JOIN crf_data_entries e ON e.visit_id = v.id
+                    INNER JOIN audit_trails at2   ON at2.table_name = 'crf_data_entries'
+                                                 AND at2.record_id = e.id::text
+                                                 AND at2.action = 'INSERT'
+                    WHERE s.study_id = ${studyId}
+                      AND v.actual_date IS NOT NULL
+                      AND v.status = 'Completed'
+                    GROUP BY v.id, v.actual_date
+                ) sub
+                WHERE diff_days >= 0
+            `;
+            avgDataEntryDays = avgEntryRow?.avg_days != null
+                ? parseFloat(parseFloat(avgEntryRow.avg_days).toFixed(2))
+                : null;
+        } catch { /* skip if audit_trails or crf_data_entries not joinable */ }
 
         // --- Compare each metric against QTL ---
         function evaluate(indicator, value) {

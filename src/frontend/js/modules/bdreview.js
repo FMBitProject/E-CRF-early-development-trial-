@@ -60,7 +60,7 @@ export async function renderBDReview(container) {
         : `<span class="badge" style="background:#D1FAE5;color:#065F46;border:1px solid #6EE7B7">Database Open</span>`;
 
     const bdrCompleted = bdrStatus?.status === 'Completed';
-    const bdrActive    = bdrStatus && bdrStatus.status === 'Active';
+    const bdrActive    = bdrStatus && bdrStatus.status === 'In Progress';
 
     container.innerHTML = `
     <div class="p-5 space-y-5">
@@ -97,7 +97,7 @@ export async function renderBDReview(container) {
         <div class="ph-card p-4 space-y-1">
             <div class="flex items-center justify-between">
                 <p class="text-sm font-semibold text-slate-700">BDR ${bdrCompleted ? 'Completed' : 'In Progress'}</p>
-                ${bdrStatus?.startedAt ? `<p class="text-xs text-slate-400">Started: ${fmtDate(bdrStatus.startedAt)}</p>` : ''}
+                ${bdrStatus?.createdAt ? `<p class="text-xs text-slate-400">Started: ${fmtDate(bdrStatus.createdAt)}</p>` : ''}
             </div>
             ${bdrStatus?.completedAt ? `<p class="text-xs text-slate-500">Completed: ${fmtDate(bdrStatus.completedAt)}</p>` : ''}
         </div>
@@ -148,7 +148,7 @@ export async function renderBDReview(container) {
                 <div class="px-4 py-3 flex items-center justify-between">
                     <div>
                         <p class="text-xs font-semibold text-slate-700">BDR #${h.id}</p>
-                        <p class="text-xs text-slate-400">${fmtDate(h.startedAt)} – ${fmtDate(h.completedAt)}</p>
+                        <p class="text-xs text-slate-400">${fmtDate(h.createdAt)} – ${fmtDate(h.completedAt)}</p>
                     </div>
                     <span class="badge" style="background:#D1FAE5;color:#065F46;border:1px solid #6EE7B7">Completed</span>
                 </div>`).join('')}

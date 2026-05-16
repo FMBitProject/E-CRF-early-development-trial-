@@ -73,6 +73,41 @@ router.get('/current', async (req, res) => {
     }
 });
 
+// GET /api/bdreview/active — alias for /current (frontend compat)
+router.get('/active', async (req, res) => {
+    try {
+        const [row] = await db
+            .select()
+            .from(blindDataReviews)
+            .where(and(
+                eq(blindDataReviews.studyId, req.studyId),
+                eq(blindDataReviews.status, 'In Progress'),
+            ))
+            .orderBy(desc(blindDataReviews.createdAt))
+            .limit(1);
+        res.json(row ?? null);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/bdreview/history — list completed reviews
+router.get('/history', async (req, res) => {
+    try {
+        const rows = await db
+            .select()
+            .from(blindDataReviews)
+            .where(and(
+                eq(blindDataReviews.studyId, req.studyId),
+                eq(blindDataReviews.status, 'Completed'),
+            ))
+            .orderBy(desc(blindDataReviews.completedAt));
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // GET /api/bdreview/:id
 router.get('/:id', async (req, res) => {
     try {
@@ -202,6 +237,51 @@ router.patch('/:id', requireRole('admin', 'cra', 'pi'), async (req, res) => {
             fieldName: 'checklist_json',
             newValue: 'Checklist sections updated',
             reason: 'BDR checklist updated',
+            user: req.user, ipAddress: req.ip,
+        });
+
+        res.json(updated);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PATCH /api/bdreview/:id/complete — frontend-compat alias (accepts checks object, ticks all then completes)
+router.patch('/:id/complete', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const [existing] = await db.select().from(blindDataReviews)
+            .where(and(
+                eq(blindDataReviews.id, id),
+                eq(blindDataReviews.studyId, req.studyId),
+            ));
+        if (!existing) return res.status(404).json({ error: 'Blind data review not found' });
+        if (existing.status !== 'In Progress') {
+            return res.status(409).json({ error: `Review is already ${existing.status}` });
+        }
+
+        // Tick all sections in checklistJson before completing
+        const checklist = existing.checklistJson ?? {};
+        const tickedAll = Object.fromEntries(
+            Object.entries(checklist).map(([k, v]) => [k, { ...v, ticked: true }])
+        );
+
+        const now = new Date();
+        const [updated] = await db.update(blindDataReviews)
+            .set({
+                checklistJson:   tickedAll,
+                status:          'Completed',
+                completedBy:     req.user.id,
+                completedByName: req.user.name,
+                completedAt:     now,
+            })
+            .where(eq(blindDataReviews.id, id))
+            .returning();
+
+        await writeAudit(db, {
+            tableName: 'blind_data_reviews', recordId: id, action: 'UPDATE',
+            fieldName: 'status', oldValue: 'In Progress', newValue: 'Completed',
+            reason: `BDR completed by ${req.user.name}`,
             user: req.user, ipAddress: req.ip,
         });
 

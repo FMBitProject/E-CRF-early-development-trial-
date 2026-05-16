@@ -1,16 +1,41 @@
 // System Validation Documentation — ICH GCP E6(R3) Appendix C.2
 import { Router } from 'express';
 import { eq, desc } from 'drizzle-orm';
-import { db } from '../db/connection.js';
+import { db, client } from '../db/connection.js';
 import { systemValidationLog } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 
 const router = Router();
 
+// GET /api/sysval/info — system metadata (app version, environment)
+router.get('/info', requireRole('admin'), (_req, res) => {
+    res.json({
+        appVersion:        process.env.npm_package_version || '1.0.0',
+        environment:       process.env.NODE_ENV === 'production' ? 'Production' : 'Development',
+        nodeVersion:       process.version,
+        uptimeSeconds:     Math.floor(process.uptime()),
+    });
+});
+
 // GET /api/sysval — list all validation records (admin only)
 router.get('/', requireRole('admin'), async (req, res) => {
     try {
+        // Self-heal: ensure table exists before querying
+        await client.unsafe(`CREATE TABLE IF NOT EXISTS system_validation_log (
+            id               SERIAL PRIMARY KEY,
+            version          TEXT NOT NULL,
+            validation_date  TEXT NOT NULL,
+            validation_type  TEXT NOT NULL,
+            status           TEXT NOT NULL DEFAULT 'Pending',
+            performed_by     TEXT,
+            summary          TEXT,
+            changes_since    TEXT,
+            approved_by      TEXT,
+            approved_at      TIMESTAMP,
+            created_by       TEXT REFERENCES "user"(id),
+            created_at       TIMESTAMP NOT NULL DEFAULT NOW()
+        )`);
         const rows = await db.select().from(systemValidationLog)
             .orderBy(desc(systemValidationLog.createdAt));
         res.json(rows);
@@ -94,6 +119,27 @@ router.patch('/:id/approve', requireRole('admin'), async (req, res) => {
             user: req.user, ipAddress: req.ip,
         });
         res.json(row);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE /api/sysval/:id — delete validation record (admin only)
+router.delete('/:id', requireRole('admin'), async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const [row] = await db.delete(systemValidationLog)
+            .where(eq(systemValidationLog.id, id))
+            .returning();
+        if (!row) return res.status(404).json({ error: 'Record not found' });
+
+        await writeAudit(db, {
+            tableName: 'system_validation_log', recordId: String(id), action: 'DELETE',
+            oldValue: `v${row.version} (${row.validationType})`,
+            reason: `Validation record deleted by ${req.user.name}`,
+            user: req.user, ipAddress: req.ip,
+        });
+        res.json({ success: true, deleted: id });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

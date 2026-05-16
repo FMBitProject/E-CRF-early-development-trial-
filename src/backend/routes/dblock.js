@@ -88,6 +88,17 @@ async function runPreLockChecks(studyId) {
     return { checks, allPassed, runAt: new Date().toISOString() };
 }
 
+// GET /api/dblock — alias for /status (frontend compat)
+router.get('/', async (req, res) => {
+    try {
+        const locks = await db.select().from(studyDbLock).where(eq(studyDbLock.studyId, req.studyId)).orderBy(studyDbLock.createdAt);
+        const current = locks[locks.length - 1] || null;
+        res.json({ isLocked: current?.status === 'Locked', status: current?.status ?? null, current, history: locks });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // GET /api/dblock/status — current DB lock state
 router.get('/status', async (req, res) => {
     try {
