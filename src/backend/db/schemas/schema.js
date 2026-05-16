@@ -79,6 +79,182 @@ export const studyUsers = pgTable('study_users', {
     assignedBy:  text('assigned_by').references(() => user.id),
 });
 
+// ─── Phase 1: Core Clinical Modules ─────────────────────────────────────────
+
+export const medicalHistory = pgTable('medical_history', {
+    id:                    integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:               integer('study_id').references(() => studies.id),
+    subjectId:             integer('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
+    condition:             text('condition').notNull(),
+    icdCode:               text('icd_code'),
+    icdVersion:            text('icd_version').default('ICD-10'),
+    onsetDate:             text('onset_date'),
+    resolutionDate:        text('resolution_date'),
+    status:                text('status').notNull().default('Active'), // Active | Resolved | Unknown
+    severity:              text('severity'),                            // Mild | Moderate | Severe | Unknown
+    isRelatedToIndication: boolean('is_related_to_indication').notNull().default(false),
+    notes:                 text('notes'),
+    createdBy:             text('created_by').references(() => user.id),
+    createdByName:         text('created_by_name'),
+    createdAt:             timestamp('created_at').notNull().defaultNow(),
+    updatedBy:             text('updated_by').references(() => user.id),
+    updatedAt:             timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const concomitantMeds = pgTable('concomitant_meds', {
+    id:               integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:          integer('study_id').references(() => studies.id),
+    subjectId:        integer('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
+    drugName:         text('drug_name').notNull(),
+    whoDrugName:      text('who_drug_name'),
+    whoDrugCode:      text('who_drug_code'),
+    atcCode:          text('atc_code'),
+    indication:       text('indication'),
+    dose:             text('dose'),
+    doseUnit:         text('dose_unit'),
+    frequency:        text('frequency'),   // QD | BID | TID | QID | PRN | Other
+    route:            text('route'),       // Oral | IV | IM | SC | Topical | Inhaled | Other
+    startDate:        text('start_date'),
+    stopDate:         text('stop_date'),
+    isOngoing:        boolean('is_ongoing').notNull().default(true),
+    notes:            text('notes'),
+    createdBy:        text('created_by').references(() => user.id),
+    createdByName:    text('created_by_name'),
+    createdAt:        timestamp('created_at').notNull().defaultNow(),
+    updatedBy:        text('updated_by').references(() => user.id),
+    updatedAt:        timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const vitalSigns = pgTable('vital_signs', {
+    id:               integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:          integer('study_id').references(() => studies.id),
+    subjectId:        integer('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
+    visitId:          integer('visit_id').references(() => visits.id),
+    assessmentDate:   text('assessment_date').notNull(),
+    assessmentTime:   text('assessment_time'),
+    position:         text('position').default('Sitting'), // Supine | Sitting | Standing
+    systolicBp:       integer('systolic_bp'),
+    diastolicBp:      integer('diastolic_bp'),
+    heartRate:        integer('heart_rate'),
+    respiratoryRate:  integer('respiratory_rate'),
+    temperature:      text('temperature'),
+    temperatureUnit:  text('temperature_unit').default('C'),
+    weight:           text('weight'),
+    weightUnit:       text('weight_unit').default('kg'),
+    height:           text('height'),
+    heightUnit:       text('height_unit').default('cm'),
+    bmi:              text('bmi'),
+    oxygenSaturation: text('oxygen_saturation'),
+    notes:            text('notes'),
+    createdBy:        text('created_by').references(() => user.id),
+    createdByName:    text('created_by_name'),
+    createdAt:        timestamp('created_at').notNull().defaultNow(),
+    updatedBy:        text('updated_by').references(() => user.id),
+    updatedAt:        timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const labResults = pgTable('lab_results', {
+    id:                   integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:              integer('study_id').references(() => studies.id),
+    subjectId:            integer('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
+    visitId:              integer('visit_id').references(() => visits.id),
+    panelName:            text('panel_name'),          // Hematology | Chemistry | Urinalysis | Coagulation
+    testName:             text('test_name').notNull(),
+    testCode:             text('test_code'),
+    specimenType:         text('specimen_type'),
+    specimenCollectedAt:  text('specimen_collected_at'),
+    labName:              text('lab_name'),
+    valueNumeric:         text('value_numeric'),
+    valueText:            text('value_text'),
+    unit:                 text('unit'),
+    refRangeLow:          text('ref_range_low'),
+    refRangeHigh:         text('ref_range_high'),
+    refRangeText:         text('ref_range_text'),
+    abnormalityFlag:      text('abnormality_flag'),    // L | H | LL | HH | A (abnormal) | null
+    clinicalSignificance: text('clinical_significance').default('NCS'), // CS | NCS | NA
+    isAbnormal:           boolean('is_abnormal').notNull().default(false),
+    assessedBy:           text('assessed_by').references(() => user.id),
+    assessedByName:       text('assessed_by_name'),
+    assessmentDate:       text('assessment_date'),
+    status:               text('status').notNull().default('Pending'), // Pending | Verified | Queried
+    notes:                text('notes'),
+    createdBy:            text('created_by').references(() => user.id),
+    createdByName:        text('created_by_name'),
+    createdAt:            timestamp('created_at').notNull().defaultNow(),
+    updatedBy:            text('updated_by').references(() => user.id),
+    updatedAt:            timestamp('updated_at').notNull().defaultNow(),
+});
+
+// ─── Phase 2: Regulatory & Quality ──────────────────────────────────────────
+
+export const protocolAmendments = pgTable('protocol_amendments', {
+    id:              integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:         integer('study_id').notNull().references(() => studies.id, { onDelete: 'cascade' }),
+    amendmentNo:     text('amendment_no').notNull(),   // e.g. "Amendment 1", "v2.0"
+    effectiveDate:   text('effective_date').notNull(),
+    summary:         text('summary').notNull(),
+    changes:         text('changes'),                  // detailed description
+    requiresReconsent: boolean('requires_reconsent').notNull().default(false),
+    reconsentReason: text('reconsent_reason'),
+    irbApprovalDate: text('irb_approval_date'),
+    irbRefNo:        text('irb_ref_no'),
+    status:          text('status').notNull().default('Draft'), // Draft | Approved | Implemented
+    createdBy:       text('created_by').references(() => user.id),
+    createdByName:   text('created_by_name'),
+    createdAt:       timestamp('created_at').notNull().defaultNow(),
+    updatedAt:       timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const blindDataReviews = pgTable('blind_data_reviews', {
+    id:              integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:         integer('study_id').notNull().references(() => studies.id, { onDelete: 'cascade' }),
+    reviewDate:      text('review_date').notNull(),
+    status:          text('status').notNull().default('In Progress'), // In Progress | Completed | Rejected
+    checklistJson:   jsonb('checklist_json').notNull().default('{}'),
+    openQueries:     integer('open_queries').default(0),
+    missingCritical: integer('missing_critical').default(0),
+    openDeviations:  integer('open_deviations').default(0),
+    pendingSaes:     integer('pending_saes').default(0),
+    notes:           text('notes'),
+    completedBy:     text('completed_by').references(() => user.id),
+    completedByName: text('completed_by_name'),
+    completedAt:     timestamp('completed_at'),
+    createdBy:       text('created_by').references(() => user.id),
+    createdByName:   text('created_by_name'),
+    createdAt:       timestamp('created_at').notNull().defaultNow(),
+});
+
+// ─── Phase 3: Quality Management ────────────────────────────────────────────
+
+export const qualityToleranceLimits = pgTable('quality_tolerance_limits', {
+    id:            integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:       integer('study_id').notNull().references(() => studies.id, { onDelete: 'cascade' }),
+    indicator:     text('indicator').notNull(),   // missing_data_rate | query_rate | ae_rate | deviation_rate | consent_rate
+    label:         text('label').notNull(),
+    threshold:     text('threshold').notNull(),   // numeric, stored as text (%)
+    unit:          text('unit').default('%'),
+    alertLevel:    text('alert_level').default('warning'), // warning | critical
+    description:   text('description'),
+    createdBy:     text('created_by').references(() => user.id),
+    createdAt:     timestamp('created_at').notNull().defaultNow(),
+    updatedAt:     timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const systemValidationLog = pgTable('system_validation_log', {
+    id:              integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    version:         text('version').notNull(),
+    validationDate:  text('validation_date').notNull(),
+    validationType:  text('validation_type').notNull(), // IQ | OQ | PQ | Re-validation
+    status:          text('status').notNull().default('Pending'), // Validated | Pending | Failed
+    performedBy:     text('performed_by'),
+    summary:         text('summary'),
+    changesSince:    text('changes_since'),
+    approvedBy:      text('approved_by'),
+    approvedAt:      timestamp('approved_at'),
+    createdBy:       text('created_by').references(() => user.id),
+    createdAt:       timestamp('created_at').notNull().defaultNow(),
+});
+
 // Multi-site assignment: one user can work at multiple sites across studies
 export const userSites = pgTable('user_sites', {
     id:         integer('id').primaryKey().generatedAlwaysAsIdentity(),
@@ -225,7 +401,11 @@ export const adverseEvents = pgTable('adverse_events', {
     subjectId:               integer('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
     aeTerm:                  text('ae_term').notNull(),
     meddraPt:                text('meddra_pt'),
+    meddraPtCode:            text('meddra_pt_code'),
     meddraSoc:               text('meddra_soc'),
+    meddraSocCode:           text('meddra_soc_code'),
+    meddraVersion:           text('meddra_version'),
+    codingStatus:            text('coding_status').notNull().default('Uncoded'),
     onsetDate:               text('onset_date'),
     resolutionDate:          text('resolution_date'),
     outcome:                 text('outcome'),

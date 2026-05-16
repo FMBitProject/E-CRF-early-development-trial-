@@ -19,7 +19,9 @@
     "drizzle-orm": "^0.45.2",
     "express": "^4.21.2",
     "nodemailer": "^8.0.7",
-    "postgres": "^3.4.5"
+    "otplib": "^13.4.0",
+    "postgres": "^3.4.5",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.4"

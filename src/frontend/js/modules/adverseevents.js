@@ -239,8 +239,9 @@ function renderAERows(aes, user) {
                     <p class="text-xs font-medium text-slate-800">${esc(ae.aeTerm)}</p>
                     ${saeTag}
                 </div>
-                ${ae.meddraPt ? `<p class="text-xs text-slate-400 mt-0.5 font-mono">PT: ${esc(ae.meddraPt)}</p>` : ''}
+                ${ae.meddraPt ? `<p class="text-xs text-slate-400 mt-0.5 font-mono">PT: ${esc(ae.meddraPt)}${ae.meddraPtCode ? ` (${esc(ae.meddraPtCode)})` : ''}</p>` : ''}
                 ${ae.meddraSoc ? `<p class="text-xs text-slate-400 font-mono">SOC: ${esc(ae.meddraSoc)}</p>` : ''}
+                ${{Coded:'<span class="text-xs px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">Coded</span>','Pending Review':'<span class="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">Pending Review</span>','Uncoded':'<span class="text-xs px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">Uncoded</span>'}[ae.codingStatus] ?? ''}
             </td>
             <td>${severityBadge(ae.severity)}</td>
             <td class="text-xs text-slate-600 whitespace-nowrap">${fmtDate(ae.onsetDate)}</td>
@@ -302,17 +303,50 @@ window.openAEForm = function(aeId = null) {
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">MedDRA Preferred Term</label>
-                    <input type="text" id="ae-meddra-pt" placeholder="Coded MedDRA PT"
+            <!-- MedDRA Structured Coding Panel -->
+            <div class="border border-blue-100 bg-blue-50/60 rounded-xl p-3 space-y-2">
+                <div class="flex items-center justify-between mb-1">
+                    <p class="text-xs font-bold text-blue-800 flex items-center gap-1.5">
+                        <i data-lucide="code-2" class="w-3.5 h-3.5"></i> MedDRA Medical Coding
+                    </p>
+                    <div class="flex items-center gap-2">
+                        <select id="ae-coding-status" class="text-xs border border-blue-200 rounded-md px-2 py-0.5 bg-white text-blue-700 font-medium">
+                            <option value="Uncoded">Uncoded</option>
+                            <option value="Coded">Coded</option>
+                            <option value="Pending Review">Pending Review</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Preferred Term (PT)</label>
+                        <input type="text" id="ae-meddra-pt" placeholder="e.g. Headache"
+                            class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">PT Code</label>
+                        <input type="text" id="ae-meddra-pt-code" placeholder="e.g. 10019211"
+                            class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none font-mono">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">System Organ Class (SOC)</label>
+                        <input type="text" id="ae-meddra-soc" placeholder="e.g. Nervous system disorders"
+                            class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">SOC Code</label>
+                        <input type="text" id="ae-meddra-soc-code" placeholder="e.g. 10029205"
+                            class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none font-mono">
+                    </div>
+                </div>
+                <div class="w-40">
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">MedDRA Version</label>
+                    <input type="text" id="ae-meddra-version" placeholder="e.g. 26.1"
                         class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
                 </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">MedDRA SOC</label>
-                    <input type="text" id="ae-meddra-soc" placeholder="System Organ Class"
-                        class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
-                </div>
+                <p class="text-xs text-blue-500 italic">MedDRA is a registered trademark of ICH. Coding requires a valid MedDRA license and trained medical coder.</p>
             </div>
 
             <div class="grid grid-cols-3 gap-3">
@@ -415,6 +449,37 @@ window.openAEForm = function(aeId = null) {
     document.getElementById('ae-is-serious').addEventListener('change', function() {
         document.getElementById('sae-criteria-panel').classList.toggle('hidden', !this.checked);
     });
+
+    // Pre-fill if editing
+    if (isEdit) {
+        const ae = _aes.find(a => a.id === aeId);
+        if (ae) {
+            const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+            set('ae-subject',       ae.subjectCode);
+            set('ae-term',          ae.aeTerm);
+            set('ae-meddra-pt',     ae.meddraPt);
+            set('ae-meddra-pt-code',ae.meddraPtCode);
+            set('ae-meddra-soc',    ae.meddraSoc);
+            set('ae-meddra-soc-code',ae.meddraSocCode);
+            set('ae-meddra-version',ae.meddraVersion);
+            set('ae-coding-status', ae.codingStatus ?? 'Uncoded');
+            set('ae-onset',         ae.onsetDate);
+            set('ae-resolution',    ae.resolutionDate);
+            set('ae-outcome',       ae.outcome);
+            set('ae-severity',      ae.severity);
+            set('ae-causality',     ae.causality);
+            set('ae-action',        ae.actionTaken);
+            set('ae-narrative',     ae.narrative);
+            if (ae.isSerious) {
+                document.getElementById('ae-is-serious').checked = true;
+                document.getElementById('sae-criteria-panel').classList.remove('hidden');
+                (ae.seriousCriteria ?? []).forEach(v => {
+                    const cb = document.querySelector(`input[name="sae-criteria"][value="${v}"]`);
+                    if (cb) cb.checked = true;
+                });
+            }
+        }
+    }
 };
 
 window.submitAEForm = async function(aeId) {
@@ -450,8 +515,12 @@ window.submitAEForm = async function(aeId) {
     const payload = {
         subjectId,
         aeTerm:        term,
-        meddraPt:      document.getElementById('ae-meddra-pt').value.trim()  || null,
-        meddraSoc:     document.getElementById('ae-meddra-soc').value.trim() || null,
+        meddraPt:       document.getElementById('ae-meddra-pt')?.value.trim()       || null,
+        meddraPtCode:   document.getElementById('ae-meddra-pt-code')?.value.trim()  || null,
+        meddraSoc:      document.getElementById('ae-meddra-soc')?.value.trim()      || null,
+        meddraSocCode:  document.getElementById('ae-meddra-soc-code')?.value.trim() || null,
+        meddraVersion:  document.getElementById('ae-meddra-version')?.value.trim()  || null,
+        codingStatus:   document.getElementById('ae-coding-status')?.value          || 'Uncoded',
         onsetDate:     document.getElementById('ae-onset').value      || null,
         resolutionDate:document.getElementById('ae-resolution').value || null,
         outcome:       document.getElementById('ae-outcome').value    || null,

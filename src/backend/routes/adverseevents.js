@@ -123,7 +123,8 @@ router.get('/:id', async (req, res) => {
 router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
     try {
         const {
-            subjectId, aeTerm, meddraPt, meddraSoc,
+            subjectId, aeTerm,
+            meddraPt, meddraPtCode, meddraSoc, meddraSocCode, meddraVersion, codingStatus,
             onsetDate, resolutionDate, outcome,
             severity, isSerious, seriousCriteria,
             causality, actionTaken, narrative,
@@ -142,8 +143,12 @@ router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) =>
             studyId:                 req.studyId,
             subjectId:               parseInt(subjectId),
             aeTerm,
-            meddraPt:                meddraPt ?? null,
-            meddraSoc:               meddraSoc ?? null,
+            meddraPt:                meddraPt       ?? null,
+            meddraPtCode:            meddraPtCode   ?? null,
+            meddraSoc:               meddraSoc      ?? null,
+            meddraSocCode:           meddraSocCode  ?? null,
+            meddraVersion:           meddraVersion  ?? null,
+            codingStatus:            codingStatus   ?? 'Uncoded',
             onsetDate:               onsetDate ?? null,
             resolutionDate:          resolutionDate ?? null,
             outcome:                 outcome ?? null,
@@ -194,7 +199,11 @@ router.patch('/:id', requireRole('investigator', 'pi', 'admin'), async (req, res
         const updates = {
             aeTerm:                  fields.aeTerm          ?? existing.aeTerm,
             meddraPt:                fields.meddraPt        ?? existing.meddraPt,
+            meddraPtCode:            fields.meddraPtCode    ?? existing.meddraPtCode,
             meddraSoc:               fields.meddraSoc       ?? existing.meddraSoc,
+            meddraSocCode:           fields.meddraSocCode   ?? existing.meddraSocCode,
+            meddraVersion:           fields.meddraVersion   ?? existing.meddraVersion,
+            codingStatus:            fields.codingStatus    ?? existing.codingStatus,
             onsetDate:               fields.onsetDate       ?? existing.onsetDate,
             resolutionDate:          fields.resolutionDate  ?? existing.resolutionDate,
             outcome:                 fields.outcome         ?? existing.outcome,

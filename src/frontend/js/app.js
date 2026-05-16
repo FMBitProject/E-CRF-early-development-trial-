@@ -18,24 +18,38 @@ if (!user) {
 
 // ---- Navigation Config ----
 const NAV_ITEMS = [
-    { id: 'dashboard',      label: 'Dashboard',     icon: 'layout-dashboard', roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
-    { id: 'subjects',       label: 'Subjects',      icon: 'users',            roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
-    { id: 'ae',             label: 'Adverse Events',icon: 'activity',         roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
-    { id: 'deviations',     label: 'Deviations',    icon: 'alert-triangle',   roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
-    { id: 'consents',       label: 'Consent',       icon: 'file-check',       roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
-    { id: 'randomization',  label: 'Randomization', icon: 'shuffle',          roles: ['admin', 'investigator', 'pi'] },
-    { id: 'queries',        label: 'Queries',       icon: 'message-square',   roles: ['admin', 'cra', 'investigator', 'pi', 'crc'] },
-    { id: 'audit',          label: 'Audit Trail',   icon: 'shield-check',     roles: ['admin', 'cra', 'pi'] },
-    { id: 'dblock',         label: 'DB Lock',       icon: 'lock',             roles: ['admin', 'cra', 'pi'] },
-    { id: 'delegation',     label: 'Delegation',    icon: 'user-check',       roles: ['admin', 'cra', 'pi'] },
-    { id: 'saereports',     label: 'SAE Reports',   icon: 'alert-octagon',    roles: ['admin', 'cra', 'pi'] },
-    { id: 'monitoring',     label: 'Monitoring',    icon: 'clipboard-check',  roles: ['admin', 'cra', 'pi'] },
-    { id: 'datastatus',     label: 'Data Status',   icon: 'table-2',          roles: ['admin', 'cra', 'pi'] },
-    { id: 'sites',          label: 'Sites',          icon: 'building-2',       roles: ['admin'] },
-    { id: 'studymgmt',     label: 'Studies',        icon: 'flask-conical',    roles: ['admin'] },
-    { id: 'formbuilder',   label: 'Form Builder',   icon: 'clipboard-edit',   roles: ['admin'] },
-    { id: 'visittemplates',label: 'Visit Templates',icon: 'calendar-check',   roles: ['admin', 'pi'] },
-    { id: 'usermgmt',      label: 'Users',          icon: 'users-round',      roles: ['admin'] },
+    { id: 'dashboard',      label: 'Dashboard',       icon: 'layout-dashboard', roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
+    { id: 'subjects',       label: 'Subjects',        icon: 'users',            roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
+    // ── Phase 1: Core Clinical Modules ────────────────────────────────────────
+    { id: 'medhistory',     label: 'Medical History', icon: 'file-heart',       roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
+    { id: 'conmeds',        label: 'Con. Medications',icon: 'pill',             roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
+    { id: 'vitalsigns',     label: 'Vital Signs',     icon: 'heart-pulse',      roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
+    { id: 'lab',            label: 'Laboratory',      icon: 'test-tube-2',      roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
+    // ── Safety & Compliance ───────────────────────────────────────────────────
+    { id: 'ae',             label: 'Adverse Events',  icon: 'activity',         roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
+    { id: 'deviations',     label: 'Deviations',      icon: 'alert-triangle',   roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
+    { id: 'consents',       label: 'Consent',         icon: 'file-check',       roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
+    { id: 'randomization',  label: 'Randomization',   icon: 'shuffle',          roles: ['admin', 'investigator', 'pi'] },
+    { id: 'queries',        label: 'Queries',         icon: 'message-square',   roles: ['admin', 'cra', 'investigator', 'pi', 'crc'] },
+    // ── Phase 2: Regulatory ───────────────────────────────────────────────────
+    { id: 'amendments',     label: 'Amendments',      icon: 'file-pen',         roles: ['admin', 'pi', 'cra'] },
+    { id: 'bdreview',       label: 'Blind Review',    icon: 'eye-off',          roles: ['admin', 'cra', 'pi'] },
+    // ── Operations ────────────────────────────────────────────────────────────
+    { id: 'audit',          label: 'Audit Trail',     icon: 'shield-check',     roles: ['admin', 'cra', 'pi'] },
+    { id: 'dblock',         label: 'DB Lock',         icon: 'lock',             roles: ['admin', 'cra', 'pi'] },
+    { id: 'delegation',     label: 'Delegation',      icon: 'user-check',       roles: ['admin', 'cra', 'pi'] },
+    { id: 'saereports',     label: 'SAE Reports',     icon: 'alert-octagon',    roles: ['admin', 'cra', 'pi'] },
+    { id: 'monitoring',     label: 'Monitoring',      icon: 'clipboard-check',  roles: ['admin', 'cra', 'pi'] },
+    { id: 'datastatus',     label: 'Data Status',     icon: 'table-2',          roles: ['admin', 'cra', 'pi'] },
+    // ── Phase 3: Quality Management ───────────────────────────────────────────
+    { id: 'csm',            label: 'CSM / KRI',       icon: 'bar-chart-3',      roles: ['admin', 'cra', 'pi'] },
+    // ── Admin ─────────────────────────────────────────────────────────────────
+    { id: 'sites',          label: 'Sites',           icon: 'building-2',       roles: ['admin'] },
+    { id: 'studymgmt',      label: 'Studies',         icon: 'flask-conical',    roles: ['admin'] },
+    { id: 'formbuilder',    label: 'Form Builder',    icon: 'clipboard-edit',   roles: ['admin'] },
+    { id: 'visittemplates', label: 'Visit Templates', icon: 'calendar-check',   roles: ['admin', 'pi'] },
+    { id: 'usermgmt',       label: 'Users',           icon: 'users-round',      roles: ['admin'] },
+    { id: 'sysval',         label: 'System Validation',icon: 'shield-plus',     roles: ['admin'] },
 ];
 
 const ROLE_CONFIG = {
@@ -119,6 +133,10 @@ function renderSidebar(currentRoute) {
                 <p class="text-blue-300 text-xs leading-none mt-0.5">${rc.label}</p>
                 ${siteLine}
             </div>
+            <button onclick="window.appSecuritySettings()" title="Security Settings"
+                class="p-1.5 text-blue-300 hover:text-white hover:bg-white/10 rounded-md transition flex-shrink-0">
+                <i data-lucide="shield" class="w-3.5 h-3.5"></i>
+            </button>
             <button onclick="window.appLogout()" title="Sign Out"
                 class="p-1.5 text-blue-300 hover:text-white hover:bg-white/10 rounded-md transition flex-shrink-0">
                 <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
@@ -228,6 +246,50 @@ const routes = {
         ]);
         const { renderDataEntry } = await import('./modules/forms.js');
         await renderDataEntry({ subjectId: id, visitId: vid, formId: fid });
+    },
+    // ── Phase 1: Core Clinical Modules ────────────────────────────────────────
+    'medhistory': async () => {
+        renderBreadcrumb([{ label: 'Medical History', route: 'medhistory' }]);
+        const el = document.getElementById('main-content');
+        if (el) { const { renderMedHistory } = await import('./modules/medhistory.js'); await renderMedHistory(el); }
+    },
+    'conmeds': async () => {
+        renderBreadcrumb([{ label: 'Concomitant Medications', route: 'conmeds' }]);
+        const el = document.getElementById('main-content');
+        if (el) { const { renderConMeds } = await import('./modules/conmeds.js'); await renderConMeds(el); }
+    },
+    'vitalsigns': async () => {
+        renderBreadcrumb([{ label: 'Vital Signs', route: 'vitalsigns' }]);
+        const el = document.getElementById('main-content');
+        if (el) { const { renderVitalSigns } = await import('./modules/vitalsigns.js'); await renderVitalSigns(el); }
+    },
+    'lab': async () => {
+        renderBreadcrumb([{ label: 'Laboratory Results', route: 'lab' }]);
+        const el = document.getElementById('main-content');
+        if (el) { const { renderLab } = await import('./modules/lab.js'); await renderLab(el); }
+    },
+    // ── Phase 2: Regulatory ────────────────────────────────────────────────────
+    'amendments': async () => {
+        renderBreadcrumb([{ label: 'Protocol Amendments', route: 'amendments' }]);
+        const el = document.getElementById('main-content');
+        if (el) { const { renderAmendments } = await import('./modules/amendments.js'); await renderAmendments(el); }
+    },
+    'bdreview': async () => {
+        renderBreadcrumb([{ label: 'Blind Data Review', route: 'bdreview' }]);
+        const el = document.getElementById('main-content');
+        if (el) { const { renderBDReview } = await import('./modules/bdreview.js'); await renderBDReview(el); }
+    },
+    // ── Phase 3: Quality Management ───────────────────────────────────────────
+    'csm': async () => {
+        renderBreadcrumb([{ label: 'Central Statistical Monitoring', route: 'csm' }]);
+        const el = document.getElementById('main-content');
+        if (el) { const { renderCSM } = await import('./modules/csm.js'); await renderCSM(el); }
+    },
+    'sysval': async () => {
+        if (user.role !== 'admin') { window.location.hash = '#dashboard'; return; }
+        renderBreadcrumb([{ label: 'System Validation', route: 'sysval' }]);
+        const el = document.getElementById('main-content');
+        if (el) { const { renderSysVal } = await import('./modules/sysval.js'); await renderSysVal(el); }
     },
     'audit': async () => {
         renderBreadcrumb([{ label: 'Audit Trail', route: 'audit' }]);
@@ -372,6 +434,10 @@ async function navigate(hash) {
 window.navigate        = (path) => { window.location.hash = path; };
 window.appLogout       = () => { api.logout(); };
 window.appSwitchStudy  = () => { switchStudyAndSite(); };
+window.appSecuritySettings = async () => {
+    const { renderSecuritySettings } = await import('./modules/security-settings.js');
+    renderSecuritySettings();
+};
 
 // ── Notification Bell ─────────────────────────────────────────────────────────
 let _notifOpen = false;

@@ -33,6 +33,17 @@ import studiesRouter         from './routes/studies.js';
 import visitTemplatesRouter  from './routes/visittemplates.js';
 import userMgmtRouter        from './routes/usermgmt.js';
 import notificationsRouter   from './routes/notifications.js';
+// Phase 1 — Core Clinical Modules
+import medHistoryRouter      from './routes/medhistory.js';
+import conMedsRouter         from './routes/conmeds.js';
+import vitalSignsRouter      from './routes/vitalsigns.js';
+import labRouter             from './routes/lab.js';
+// Phase 2 — Regulatory & Quality
+import amendmentsRouter      from './routes/amendments.js';
+import bdReviewRouter        from './routes/bdreview.js';
+// Phase 3 — Quality Management & Validation
+import qtlRouter             from './routes/qtl.js';
+import sysValRouter          from './routes/sysval.js';
 import { requireStudy }      from './middleware/study.js';
 import { rateLimitAuth }     from './middleware/ratelimit.js';
 
@@ -401,6 +412,208 @@ async function runMigrations() {
             notes               TEXT
         )`,
         `CREATE INDEX IF NOT EXISTS idx_visit_items_tmpl ON visit_schedule_items (template_id)`,
+
+        // ── Phase 1: Core Clinical Modules ──────────────────────────────────────
+        `CREATE TABLE IF NOT EXISTS medical_history (
+            id                       SERIAL PRIMARY KEY,
+            study_id                 INTEGER REFERENCES studies(id),
+            subject_id               INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+            condition                TEXT NOT NULL,
+            icd_code                 TEXT,
+            icd_version              TEXT DEFAULT 'ICD-10',
+            onset_date               TEXT,
+            resolution_date          TEXT,
+            status                   TEXT NOT NULL DEFAULT 'Active',
+            severity                 TEXT,
+            is_related_to_indication BOOLEAN NOT NULL DEFAULT FALSE,
+            notes                    TEXT,
+            created_by               TEXT REFERENCES "user"(id),
+            created_by_name          TEXT,
+            created_at               TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_by               TEXT REFERENCES "user"(id),
+            updated_at               TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_mh_subject ON medical_history (subject_id)`,
+
+        `CREATE TABLE IF NOT EXISTS concomitant_meds (
+            id             SERIAL PRIMARY KEY,
+            study_id       INTEGER REFERENCES studies(id),
+            subject_id     INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+            drug_name      TEXT NOT NULL,
+            who_drug_name  TEXT,
+            who_drug_code  TEXT,
+            atc_code       TEXT,
+            indication     TEXT,
+            dose           TEXT,
+            dose_unit      TEXT,
+            frequency      TEXT,
+            route          TEXT,
+            start_date     TEXT,
+            stop_date      TEXT,
+            is_ongoing     BOOLEAN NOT NULL DEFAULT TRUE,
+            notes          TEXT,
+            created_by     TEXT REFERENCES "user"(id),
+            created_by_name TEXT,
+            created_at     TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_by     TEXT REFERENCES "user"(id),
+            updated_at     TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_cm_subject ON concomitant_meds (subject_id)`,
+
+        `CREATE TABLE IF NOT EXISTS vital_signs (
+            id                SERIAL PRIMARY KEY,
+            study_id          INTEGER REFERENCES studies(id),
+            subject_id        INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+            visit_id          INTEGER REFERENCES visits(id),
+            assessment_date   TEXT NOT NULL,
+            assessment_time   TEXT,
+            position          TEXT DEFAULT 'Sitting',
+            systolic_bp       INTEGER,
+            diastolic_bp      INTEGER,
+            heart_rate        INTEGER,
+            respiratory_rate  INTEGER,
+            temperature       TEXT,
+            temperature_unit  TEXT DEFAULT 'C',
+            weight            TEXT,
+            weight_unit       TEXT DEFAULT 'kg',
+            height            TEXT,
+            height_unit       TEXT DEFAULT 'cm',
+            bmi               TEXT,
+            oxygen_saturation TEXT,
+            notes             TEXT,
+            created_by        TEXT REFERENCES "user"(id),
+            created_by_name   TEXT,
+            created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_by        TEXT REFERENCES "user"(id),
+            updated_at        TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_vs_subject ON vital_signs (subject_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_vs_visit   ON vital_signs (visit_id)`,
+
+        `CREATE TABLE IF NOT EXISTS lab_results (
+            id                    SERIAL PRIMARY KEY,
+            study_id              INTEGER REFERENCES studies(id),
+            subject_id            INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+            visit_id              INTEGER REFERENCES visits(id),
+            panel_name            TEXT,
+            test_name             TEXT NOT NULL,
+            test_code             TEXT,
+            specimen_type         TEXT,
+            specimen_collected_at TEXT,
+            lab_name              TEXT,
+            value_numeric         TEXT,
+            value_text            TEXT,
+            unit                  TEXT,
+            ref_range_low         TEXT,
+            ref_range_high        TEXT,
+            ref_range_text        TEXT,
+            abnormality_flag      TEXT,
+            clinical_significance TEXT DEFAULT 'NCS',
+            is_abnormal           BOOLEAN NOT NULL DEFAULT FALSE,
+            assessed_by           TEXT REFERENCES "user"(id),
+            assessed_by_name      TEXT,
+            assessment_date       TEXT,
+            status                TEXT NOT NULL DEFAULT 'Pending',
+            notes                 TEXT,
+            created_by            TEXT REFERENCES "user"(id),
+            created_by_name       TEXT,
+            created_at            TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_by            TEXT REFERENCES "user"(id),
+            updated_at            TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_lab_subject ON lab_results (subject_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_lab_visit   ON lab_results (visit_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_lab_status  ON lab_results (status)`,
+
+        // ── Phase 2: Regulatory & Quality ───────────────────────────────────────
+        `CREATE TABLE IF NOT EXISTS protocol_amendments (
+            id                  SERIAL PRIMARY KEY,
+            study_id            INTEGER NOT NULL REFERENCES studies(id) ON DELETE CASCADE,
+            amendment_no        TEXT NOT NULL,
+            effective_date      TEXT NOT NULL,
+            summary             TEXT NOT NULL,
+            changes             TEXT,
+            requires_reconsent  BOOLEAN NOT NULL DEFAULT FALSE,
+            reconsent_reason    TEXT,
+            irb_approval_date   TEXT,
+            irb_ref_no          TEXT,
+            status              TEXT NOT NULL DEFAULT 'Draft',
+            created_by          TEXT REFERENCES "user"(id),
+            created_by_name     TEXT,
+            created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_amendments_study ON protocol_amendments (study_id)`,
+
+        `CREATE TABLE IF NOT EXISTS blind_data_reviews (
+            id                SERIAL PRIMARY KEY,
+            study_id          INTEGER NOT NULL REFERENCES studies(id) ON DELETE CASCADE,
+            review_date       TEXT NOT NULL,
+            status            TEXT NOT NULL DEFAULT 'In Progress',
+            checklist_json    JSONB NOT NULL DEFAULT '{}',
+            open_queries      INTEGER DEFAULT 0,
+            missing_critical  INTEGER DEFAULT 0,
+            open_deviations   INTEGER DEFAULT 0,
+            pending_saes      INTEGER DEFAULT 0,
+            notes             TEXT,
+            completed_by      TEXT REFERENCES "user"(id),
+            completed_by_name TEXT,
+            completed_at      TIMESTAMP,
+            created_by        TEXT REFERENCES "user"(id),
+            created_by_name   TEXT,
+            created_at        TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_bdr_study ON blind_data_reviews (study_id)`,
+
+        // ── Phase 3: Quality Management ─────────────────────────────────────────
+        `CREATE TABLE IF NOT EXISTS quality_tolerance_limits (
+            id          SERIAL PRIMARY KEY,
+            study_id    INTEGER NOT NULL REFERENCES studies(id) ON DELETE CASCADE,
+            indicator   TEXT NOT NULL,
+            label       TEXT NOT NULL,
+            threshold   TEXT NOT NULL,
+            unit        TEXT DEFAULT '%',
+            alert_level TEXT DEFAULT 'warning',
+            description TEXT,
+            created_by  TEXT REFERENCES "user"(id),
+            created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at  TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_qtl_study_indicator ON quality_tolerance_limits (study_id, indicator)`,
+
+        // Phase 2 — MedDRA structured coding fields on adverse_events
+        `ALTER TABLE adverse_events ADD COLUMN IF NOT EXISTS meddra_pt_code    TEXT`,
+        `ALTER TABLE adverse_events ADD COLUMN IF NOT EXISTS meddra_soc_code   TEXT`,
+        `ALTER TABLE adverse_events ADD COLUMN IF NOT EXISTS meddra_version     TEXT`,
+        `ALTER TABLE adverse_events ADD COLUMN IF NOT EXISTS coding_status      TEXT NOT NULL DEFAULT 'Uncoded'`,
+        `ALTER TABLE adverse_events ADD COLUMN IF NOT EXISTS coded_by           TEXT`,
+        `ALTER TABLE adverse_events ADD COLUMN IF NOT EXISTS coded_at           TIMESTAMP`,
+
+        `CREATE TABLE IF NOT EXISTS system_validation_log (
+            id               SERIAL PRIMARY KEY,
+            version          TEXT NOT NULL,
+            validation_date  TEXT NOT NULL,
+            validation_type  TEXT NOT NULL,
+            status           TEXT NOT NULL DEFAULT 'Pending',
+            performed_by     TEXT,
+            summary          TEXT,
+            changes_since    TEXT,
+            approved_by      TEXT,
+            approved_at      TIMESTAMP,
+            created_by       TEXT REFERENCES "user"(id),
+            created_at       TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+
+        // Phase 3 — TOTP (authenticator app) per-user 2FA
+        `CREATE TABLE IF NOT EXISTS user_totp (
+            id           SERIAL PRIMARY KEY,
+            user_id      TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+            secret       TEXT NOT NULL,
+            is_enabled   BOOLEAN NOT NULL DEFAULT FALSE,
+            enabled_at   TIMESTAMPTZ,
+            backup_codes JSONB NOT NULL DEFAULT '[]',
+            UNIQUE(user_id)
+        )`,
     ];
     for (const stmt of stmts) {
         await client.unsafe(stmt);
@@ -456,6 +669,17 @@ app.use('/api/delegation',                ...studyAuth, delegationRouter);
 app.use('/api/saereports',                ...studyAuth, saeReportsRouter);
 app.use('/api/monitoring',                ...studyAuth, monitoringRouter);
 app.use('/api/visit-templates',           ...studyAuth, visitTemplatesRouter);
+// Phase 1 — Core Clinical Modules
+app.use('/api/medhistory',               ...studyAuth, medHistoryRouter);
+app.use('/api/conmeds',                  ...studyAuth, conMedsRouter);
+app.use('/api/vitalsigns',               ...studyAuth, vitalSignsRouter);
+app.use('/api/lab',                      ...studyAuth, labRouter);
+// Phase 2 — Regulatory & Quality
+app.use('/api/amendments',               ...studyAuth, amendmentsRouter);
+app.use('/api/bdreview',                 ...studyAuth, bdReviewRouter);
+// Phase 3 — Quality Management & Validation
+app.use('/api/qtl',                      ...studyAuth, qtlRouter);
+app.use('/api/sysval',                   requireAuth,  sysValRouter);
 
 // Serve all static frontend files from project root
 app.use(express.static(rootDir));
