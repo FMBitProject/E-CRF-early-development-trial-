@@ -176,6 +176,7 @@ export const labResults = pgTable('lab_results', {
     assessedBy:           text('assessed_by').references(() => user.id),
     assessedByName:       text('assessed_by_name'),
     assessmentDate:       text('assessment_date'),
+    loincCodingStatus:    text('loinc_coding_status').notNull().default('Custom'), // LOINC | Custom | Pending
     status:               text('status').notNull().default('Pending'), // Pending | Verified | Queried
     notes:                text('notes'),
     createdBy:            text('created_by').references(() => user.id),

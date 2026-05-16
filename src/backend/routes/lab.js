@@ -27,6 +27,7 @@ router.get('/', async (req, res) => {
                 panelName:            labResults.panelName,
                 testName:             labResults.testName,
                 testCode:             labResults.testCode,
+                loincCodingStatus:    labResults.loincCodingStatus,
                 specimenType:         labResults.specimenType,
                 specimenCollectedAt:  labResults.specimenCollectedAt,
                 labName:              labResults.labName,
@@ -78,7 +79,9 @@ router.get('/:id', async (req, res) => {
 router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, res) => {
     try {
         const {
-            subjectId, visitId, panelName, testName, testCode,
+            subjectId, visitId,
+            panelName, panel,           // accept both for compat
+            testName, testCode, loincCodingStatus,
             specimenType, specimenCollectedAt, labName,
             valueNumeric, valueText, unit,
             refRangeLow, refRangeHigh, refRangeText,
@@ -89,13 +92,16 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
             return res.status(400).json({ error: 'subjectId and testName are required' });
         }
 
+        const resolvedPanel = panelName ?? panel ?? null;
+
         const [created] = await db.insert(labResults).values({
             studyId:              req.studyId,
             subjectId:            parseInt(subjectId),
             visitId:              visitId             ? parseInt(visitId) : null,
-            panelName:            panelName           ?? null,
+            panelName:            resolvedPanel,
             testName,
             testCode:             testCode            ?? null,
+            loincCodingStatus:    loincCodingStatus   ?? 'Custom',
             specimenType:         specimenType        ?? null,
             specimenCollectedAt:  specimenCollectedAt ?? null,
             labName:              labName             ?? null,
@@ -153,10 +159,12 @@ router.patch('/:id', requireRole('investigator', 'pi', 'admin', 'crc'), async (r
             return res.status(400).json({ error: 'reason is required for all edits (ICH GCP)' });
         }
 
+        const resolvedPanel = fields.panelName ?? fields.panel ?? existing.panelName;
         const updates = {
-            panelName:            fields.panelName           ?? existing.panelName,
+            panelName:            resolvedPanel,
             testName:             fields.testName            ?? existing.testName,
             testCode:             fields.testCode            ?? existing.testCode,
+            loincCodingStatus:    fields.loincCodingStatus   ?? existing.loincCodingStatus,
             specimenType:         fields.specimenType        ?? existing.specimenType,
             specimenCollectedAt:  fields.specimenCollectedAt ?? existing.specimenCollectedAt,
             labName:              fields.labName             ?? existing.labName,
