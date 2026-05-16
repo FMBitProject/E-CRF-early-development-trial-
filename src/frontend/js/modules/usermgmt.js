@@ -110,7 +110,9 @@ function renderList(users) {
                 ? `<button onclick="window.umDeactivate('${u.id}','${u.name.replace(/'/g, "\\'")}')" class="ph-btn ph-btn-ghost text-xs text-red-500" title="Deactivate">
                     <i data-lucide="user-x" class="w-3.5 h-3.5"></i>
                    </button>`
-                : ''}
+                : `<button onclick="window.umDeleteUser('${u.id}','${u.name.replace(/'/g, "\\'")}')" class="ph-btn ph-btn-ghost text-xs text-red-600" title="Delete permanently">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                   </button>`}
           </div>
         </div>`;
       }).join('')}
@@ -435,6 +437,24 @@ window.umToggleStudy = async (userId, studyId, add) => {
             await api.request(`/api/users/${userId}/studies/${studyId}`, { method: 'DELETE' });
             showToast('User removed from study', 'success');
         }
+        _users = await api.request('/api/users');
+        renderList(_users);
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+};
+
+// ── Delete permanently ────────────────────────────────────────────────────────
+window.umDeleteUser = async (userId, userName) => {
+    if (!confirm(`Permanently delete "${userName}"?\n\nThis removes the account from the database and cannot be undone.`)) return;
+    const reason = prompt('Reason for deletion (required — retained in audit log):');
+    if (!reason) return;
+    try {
+        await api.request(`/api/users/${userId}`, {
+            method: 'DELETE',
+            body: JSON.stringify({ reason }),
+        });
+        showToast(`${userName} deleted permanently`, 'success');
         _users = await api.request('/api/users');
         renderList(_users);
     } catch (err) {

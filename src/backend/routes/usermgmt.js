@@ -468,4 +468,41 @@ router.patch('/:id/deactivate', requireRole('admin'), async (req, res) => {
     }
 });
 
+// DELETE /api/users/:id — permanently erase a deactivated user (admin only)
+router.delete('/:id', requireRole('admin'), async (req, res) => {
+    try {
+        const targetId = req.params.id;
+        const { reason } = req.body;
+        if (!reason) return res.status(400).json({ error: 'reason is required for user deletion' });
+        if (targetId === req.user.id) return res.status(400).json({ error: 'Cannot delete your own account' });
+
+        const [target] = await db.select({ id: user.id, name: user.name, email: user.email, role: user.role, isActive: user.isActive })
+            .from(user).where(eq(user.id, targetId));
+        if (!target) return res.status(404).json({ error: 'User not found' });
+        if (target.isActive !== false) {
+            return res.status(409).json({ error: 'Deactivate the user before deleting' });
+        }
+
+        // Audit before deletion so the record is preserved
+        await writeAudit(db, {
+            tableName: 'user', recordId: targetId, action: 'DELETE',
+            oldValue: `${target.name} | ${target.email} | ${target.role}`,
+            reason,
+            user: req.user, ipAddress: req.ip,
+        });
+
+        // Remove in dependency order
+        await db.delete(session).where(eq(session.userId, targetId));
+        await client.unsafe(`DELETE FROM password_meta WHERE user_id = $1`, [targetId]).catch(() => {});
+        await client.unsafe(`DELETE FROM user_sites  WHERE user_id = $1`, [targetId]).catch(() => {});
+        await client.unsafe(`DELETE FROM user_totp   WHERE user_id = $1`, [targetId]).catch(() => {});
+        await db.delete(studyUsers).where(eq(studyUsers.userId, targetId));
+        await db.delete(user).where(eq(user.id, targetId));
+
+        res.json({ deleted: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 export default router;
