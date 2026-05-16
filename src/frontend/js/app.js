@@ -42,7 +42,8 @@ const NAV_ITEMS = [
     { id: 'monitoring',     label: 'Monitoring',      icon: 'clipboard-check',  roles: ['admin', 'cra', 'pi'] },
     { id: 'datastatus',     label: 'Data Status',     icon: 'table-2',          roles: ['admin', 'cra', 'pi'] },
     // ── Phase 3: Quality Management ───────────────────────────────────────────
-    { id: 'csm',            label: 'CSM / KRI',       icon: 'bar-chart-3',      roles: ['admin', 'cra', 'pi'] },
+    { id: 'csm',            label: 'CSM / KRI',         icon: 'bar-chart-3',      roles: ['admin', 'cra', 'pi'] },
+    { id: 'qtl',            label: 'QTL Thresholds',    icon: 'sliders-horizontal',roles: ['admin', 'cra', 'pi'] },
     // ── Admin ─────────────────────────────────────────────────────────────────
     { id: 'sites',          label: 'Sites',           icon: 'building-2',       roles: ['admin'] },
     { id: 'studymgmt',      label: 'Studies',         icon: 'flask-conical',    roles: ['admin'] },
@@ -284,6 +285,11 @@ const routes = {
         renderBreadcrumb([{ label: 'Central Statistical Monitoring', route: 'csm' }]);
         const el = document.getElementById('main-content');
         if (el) { const { renderCSM } = await import('./modules/csm.js'); await renderCSM(el); }
+    },
+    'qtl': async () => {
+        renderBreadcrumb([{ label: 'QTL Thresholds', route: 'qtl' }]);
+        const el = document.getElementById('main-content');
+        if (el) { const { renderQTL } = await import('./modules/qtl.js'); await renderQTL(el); }
     },
     'sysval': async () => {
         if (user.role !== 'admin') { window.location.hash = '#dashboard'; return; }
