@@ -4,6 +4,7 @@
 
 import { api } from './api.js';
 import { showToast, showModal, closeModal } from './utils.js';
+import { getSiteContext } from './study-select.js';
 
 const SPINNER = `<div class="flex items-center justify-center h-32">
     <div class="w-7 h-7 rounded-full border-2 border-blue-700 border-t-transparent animate-spin"></div>
@@ -208,22 +209,62 @@ function renderConsentRows(consents, user) {
     }).join('');
 }
 
-window.openConsentForm = function(prefillSubjectCode = '') {
+window.openConsentForm = async function(prefillSubjectId = null) {
+    // Show modal immediately with loading state
     showModal({
         title: 'Record Informed Consent',
         size: 'md',
-        body: `
+        body: `<div id="ic-form-body" class="py-10 text-center text-slate-400 text-sm">Loading subjects…</div>`,
+        footer: `
+        <button onclick="closeModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition">Cancel</button>
+        <button onclick="submitConsentForm()" class="px-4 py-2 text-sm font-semibold bg-blue-700 hover:bg-blue-800 text-white rounded-md transition flex items-center gap-2">
+            <i data-lucide="file-check" class="w-4 h-4"></i> Record Consent
+        </button>`,
+    });
+
+    const siteCtx = getSiteContext();
+    let allSubjects = [];
+    try {
+        allSubjects = await api.getSubjects({ status: 'Active' });
+    } catch { /* proceed with empty list */ }
+
+    // Filter to active site's subjects; if admin with no site context show all
+    const siteSubjects = siteCtx
+        ? allSubjects.filter(s => s.site_id === siteCtx.id)
+        : allSubjects;
+
+    const siteBanner = siteCtx ? `
+        <div class="flex items-center gap-2 px-3 py-2 rounded-md text-xs font-medium"
+             style="background:#F0FDF4;border:1px solid #BBF7D0;color:#166534;">
+            <i data-lucide="building-2" class="w-3.5 h-3.5 flex-shrink-0"></i>
+            Aktif di site: <strong>${esc(siteCtx.siteCode)}${siteCtx.siteName ? ' — ' + esc(siteCtx.siteName) : ''}</strong>
+            &nbsp;·&nbsp; ${siteSubjects.length} subjek aktif
+        </div>` : '';
+
+    const subjectOptions = siteSubjects.length
+        ? siteSubjects.map(s =>
+            `<option value="${s.id}" ${prefillSubjectId === s.id ? 'selected' : ''}>${esc(s.subject_code)}</option>`
+          ).join('')
+        : `<option value="" disabled>— Tidak ada subjek aktif di site ini —</option>`;
+
+    const slot = document.getElementById('ic-form-body');
+    if (!slot) return;
+    slot.innerHTML = `
         <div class="space-y-4">
             <div class="flex items-start gap-2.5 p-3 rounded-md border text-xs" style="background:#EFF6FF;border-color:#BFDBFE;color:#1D4ED8">
                 <i data-lucide="shield" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
                 UU PDP Pasal 22: informed consent must be documented before any personal health data is collected or processed.
             </div>
 
+            ${siteBanner}
+
             <div class="grid grid-cols-2 gap-3">
                 <div>
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Subject Code <span class="text-red-500">*</span></label>
-                    <input type="text" id="ic-subject" value="${esc(prefillSubjectCode)}" placeholder="e.g. SITE01-001"
-                        class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Subject <span class="text-red-500">*</span></label>
+                    <select id="ic-subject" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
+                        <option value="">— Pilih Subjek —</option>
+                        ${subjectOptions}
+                    </select>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Consent Type <span class="text-red-500">*</span></label>
@@ -258,7 +299,7 @@ window.openConsentForm = function(prefillSubjectCode = '') {
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Witness Name</label>
-                    <input type="text" id="ic-witness" placeholder="Name of consent witness (if applicable)"
+                    <input type="text" id="ic-witness" placeholder="Name of consent witness"
                         class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
                 </div>
             </div>
@@ -268,31 +309,19 @@ window.openConsentForm = function(prefillSubjectCode = '') {
                 <textarea id="ic-notes" rows="2" placeholder="Any relevant notes about consent process…"
                     class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none resize-none"></textarea>
             </div>
-        </div>`,
-        footer: `
-        <button onclick="closeModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition">Cancel</button>
-        <button onclick="submitConsentForm()" class="px-4 py-2 text-sm font-semibold bg-blue-700 hover:bg-blue-800 text-white rounded-md transition flex items-center gap-2">
-            <i data-lucide="file-check" class="w-4 h-4"></i> Record Consent
-        </button>`,
-    });
+        </div>`;
+
+    if (window.lucide) lucide.createIcons();
 };
 
 window.submitConsentForm = async function() {
-    const subjectCode = document.getElementById('ic-subject').value.trim();
-    const version     = document.getElementById('ic-version').value.trim();
-    const date        = document.getElementById('ic-date').value;
+    const subjectId = parseInt(document.getElementById('ic-subject').value);
+    const version   = document.getElementById('ic-version').value.trim();
+    const date      = document.getElementById('ic-date').value;
 
-    if (!subjectCode || !version || !date) {
-        showToast('Subject code, ICF version, and date are required.', 'error'); return;
+    if (!subjectId || !version || !date) {
+        showToast('Subject, ICF version, and date are required.', 'error'); return;
     }
-
-    let subjectId;
-    try {
-        const subjects = await api.getSubjects({ search: subjectCode });
-        const match = subjects.find(s => s.subject_code === subjectCode);
-        if (!match) { showToast(`Subject "${subjectCode}" not found.`, 'error'); return; }
-        subjectId = match.id;
-    } catch { showToast('Could not resolve subject.', 'error'); return; }
 
     try {
         await api.createConsent({
@@ -361,7 +390,7 @@ export async function renderSubjectConsentSection(subjectId, container) {
         <div class="space-y-3">
             <div class="flex items-center justify-between">
                 <p class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Consent Records</p>
-                ${canCreate ? `<button onclick="openConsentForm()" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition border border-blue-200">
+                ${canCreate ? `<button onclick="openConsentForm(${subjectId})" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition border border-blue-200">
                     <i data-lucide="plus" class="w-3 h-3"></i> Add
                 </button>` : ''}
             </div>
