@@ -46,6 +46,12 @@ export async function renderQueries(filters = {}) {
                 <h2 class="text-xl font-bold text-slate-900">Data Queries</h2>
                 <p class="text-xs text-slate-500 mt-0.5">Discrepancy management between CRAs and Investigators</p>
             </div>
+            ${['cra','admin'].includes(user.role) ? `
+            <button onclick="openRaiseQueryModal()"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-lg transition"
+                style="background:#1e3a5f">
+                <i data-lucide="plus" class="w-4 h-4"></i> Raise Query
+            </button>` : ''}
         </div>
 
         <!-- KPI row -->
@@ -224,6 +230,80 @@ window.closeQueryAction = async function (queryId) {
     try {
         await api.closeQuery(queryId);
         showToast('Query closed.', 'success');
+        await renderQueries();
+    } catch (err) { showToast(err.message, 'error'); }
+};
+
+window.openRaiseQueryModal = async function () {
+    let subjects = [];
+    try { subjects = await api.getSubjects(); } catch {}
+
+    const subjectOptions = subjects.map(s =>
+        `<option value="${s.id}">${esc(s.subject_code)}${s.initials ? ' — ' + esc(s.initials) : ''}</option>`
+    ).join('');
+
+    showModal({
+        title: 'Raise Query',
+        size: 'md',
+        body: `
+        <div class="space-y-4">
+            <div class="flex items-start gap-2.5 p-3 rounded-md border text-sm" style="background:#FFF8ED;border-color:#F5C97A;color:#92400E">
+                <i data-lucide="alert-triangle" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
+                Query akan dikirimkan ke Investigator/CRC untuk dijawab. Tulis dengan jelas dan spesifik.
+            </div>
+            <div>
+                <label class="ph-label">Subject <span class="text-red-500">*</span></label>
+                <select id="rq-subject" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
+                    <option value="">— Pilih Subjek —</option>
+                    ${subjectOptions}
+                </select>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="ph-label">Form / Modul</label>
+                    <input type="text" id="rq-form" placeholder="e.g. Vital Signs, Lab Results"
+                        class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                </div>
+                <div>
+                    <label class="ph-label">Field yang Dipermasalahkan</label>
+                    <input type="text" id="rq-field" placeholder="e.g. Systolic BP, Visit Date"
+                        class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                </div>
+            </div>
+            <div>
+                <label class="ph-label">Isi Query <span class="text-red-500">*</span></label>
+                <textarea id="rq-text" rows="4"
+                    placeholder="Jelaskan ketidaksesuaian atau data yang perlu klarifikasi…"
+                    class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none resize-none"></textarea>
+                <p class="text-xs text-slate-400 mt-1">Contoh: "Nilai Systolic BP pada Visit 2 (220 mmHg) tampak tidak konsisten dengan catatan sumber. Mohon verifikasi."</p>
+            </div>
+        </div>`,
+        footer: `
+        <button onclick="closeModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition">Batal</button>
+        <button onclick="submitRaiseQuery()" class="px-4 py-2 text-sm font-semibold text-white rounded-md transition flex items-center gap-2" style="background:#1e3a5f">
+            <i data-lucide="send" class="w-4 h-4"></i> Kirim Query
+        </button>`,
+    });
+};
+
+window.submitRaiseQuery = async function () {
+    const subjectId = document.getElementById('rq-subject').value;
+    const queryText = document.getElementById('rq-text').value.trim();
+    const fieldLabel = document.getElementById('rq-field').value.trim() || null;
+    const formName   = document.getElementById('rq-form').value.trim()  || null;
+
+    if (!subjectId) { showToast('Pilih subjek terlebih dahulu.', 'error'); return; }
+    if (!queryText) { showToast('Isi query tidak boleh kosong.', 'error'); return; }
+
+    try {
+        await api.raiseQuery({
+            subject_id:  subjectId,
+            field_label: fieldLabel,
+            field_key:   formName,
+            query_text:  queryText,
+        });
+        closeModal();
+        showToast('Query berhasil dikirim ke Investigator.', 'success');
         await renderQueries();
     } catch (err) { showToast(err.message, 'error'); }
 };
