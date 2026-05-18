@@ -127,7 +127,7 @@ router.get('/:id', async (req, res) => {
 
 // POST /api/bdreview — initiate new BDR (admin/cra/pi only)
 // Auto-populates counts from live DB
-router.post('/', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.post('/', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         // Check there is no existing In Progress review
         const [inProgress] = await db
@@ -203,7 +203,7 @@ router.post('/', requireRole('admin', 'cra', 'pi'), async (req, res) => {
 });
 
 // PATCH /api/bdreview/:id — update checklist_json sections, notes
-router.patch('/:id', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.patch('/:id', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const { checklistJson, notes } = req.body;
@@ -247,7 +247,7 @@ router.patch('/:id', requireRole('admin', 'cra', 'pi'), async (req, res) => {
 });
 
 // PATCH /api/bdreview/:id/complete — frontend-compat alias (accepts checks object, ticks all then completes)
-router.patch('/:id/complete', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.patch('/:id/complete', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const [existing] = await db.select().from(blindDataReviews)
@@ -292,7 +292,7 @@ router.patch('/:id/complete', requireRole('admin', 'cra', 'pi'), async (req, res
 });
 
 // POST /api/bdreview/:id/complete — mark completed, validates all checklist sections ticked
-router.post('/:id/complete', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.post('/:id/complete', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
 

@@ -115,7 +115,7 @@ router.get('/status', async (req, res) => {
 });
 
 // POST /api/dblock/check — run pre-lock checks without initiating (CRA, admin)
-router.post('/check', requireRole('cra', 'pi', 'admin'), async (req, res) => {
+router.post('/check', requireRole('cra', 'pi', 'admin', 'data_manager'), async (req, res) => {
     try {
         const result = await runPreLockChecks(req.studyId);
         res.json(result);
@@ -125,7 +125,7 @@ router.post('/check', requireRole('cra', 'pi', 'admin'), async (req, res) => {
 });
 
 // POST /api/dblock/initiate — Data Manager/PI initiates the DBL process
-router.post('/initiate', requireRole('pi', 'admin'), async (req, res) => {
+router.post('/initiate', requireRole('pi', 'admin', 'data_manager'), async (req, res) => {
     try {
         const { notes } = req.body;
 
@@ -186,7 +186,7 @@ router.post('/initiate', requireRole('pi', 'admin'), async (req, res) => {
 });
 
 // POST /api/dblock/:id/sign-cra — CRA electronic signature (password re-entry)
-router.post('/:id/sign-cra', requireRole('cra', 'pi', 'admin'), async (req, res) => {
+router.post('/:id/sign-cra', requireRole('cra', 'pi', 'admin', 'data_manager'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const { password } = req.body;

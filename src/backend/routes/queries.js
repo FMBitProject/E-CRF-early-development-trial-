@@ -53,7 +53,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/queries — CRA raises a query
-router.post('/', requireRole('cra', 'admin'), async (req, res) => {
+router.post('/', requireRole('cra', 'admin', 'data_manager'), async (req, res) => {
     try {
         const { subjectId, visitId, formId, entryId, fieldKey, fieldLabel, queryText } = req.body;
         if (!subjectId || !queryText) {
@@ -162,7 +162,7 @@ router.patch('/:id/resolve', requireRole('investigator', 'pi', 'admin', 'crc'), 
 });
 
 // PATCH /api/queries/:id/close — CRA closes a resolved query
-router.patch('/:id/close', requireRole('cra', 'admin'), async (req, res) => {
+router.patch('/:id/close', requireRole('cra', 'admin', 'data_manager'), async (req, res) => {
     try {
         const [q] = await db.select().from(queries).where(eq(queries.id, parseInt(req.params.id)));
         if (!q) return res.status(404).json({ error: 'Query not found' });

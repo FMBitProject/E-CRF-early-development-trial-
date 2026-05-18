@@ -43,7 +43,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET /api/subjects/status-overview — PI/admin/CRA aggregate view: entries, signatures, queries, randomization per subject
-router.get('/status-overview', requireRole('pi', 'admin', 'cra'), async (req, res) => {
+router.get('/status-overview', requireRole('pi', 'admin', 'cra', 'data_manager'), async (req, res) => {
     try {
         const studySubjects = await db
             .select({

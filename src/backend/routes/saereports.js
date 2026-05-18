@@ -34,7 +34,7 @@ function calcDeadline(day0Date, deadlineDays) {
 }
 
 // GET /api/saereports — list all SAE reports with AE + subject info
-router.get('/', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.get('/', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const { aeId, status } = req.query;
         const conditions = [eq(adverseEvents.studyId, req.studyId)];
@@ -75,7 +75,7 @@ router.get('/', requireRole('admin', 'cra', 'pi'), async (req, res) => {
 });
 
 // GET /api/saereports/overdue — reports past deadline not yet submitted
-router.get('/overdue', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.get('/overdue', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const now = new Date();
         const rows = await db
@@ -104,7 +104,7 @@ router.get('/overdue', requireRole('admin', 'cra', 'pi'), async (req, res) => {
 });
 
 // GET /api/saereports/:id — single SAE report
-router.get('/:id', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.get('/:id', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const [row] = await db.select().from(saeReports)
             .where(eq(saeReports.id, parseInt(req.params.id)));
@@ -116,7 +116,7 @@ router.get('/:id', requireRole('admin', 'cra', 'pi'), async (req, res) => {
 });
 
 // POST /api/saereports — create SAE report (pi/cra/admin)
-router.post('/', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.post('/', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const { aeId, reportType, day0Date, deadlineDays, submittedTo, narrative } = req.body;
 
@@ -210,7 +210,7 @@ router.patch('/:id/sign', requireRole('investigator', 'pi', 'admin'), async (req
 });
 
 // PATCH /api/saereports/:id/submit — mark SAE report as submitted
-router.patch('/:id/submit', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.patch('/:id/submit', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const { submissionRef, narrative } = req.body;

@@ -17,33 +17,35 @@ if (!user) {
 }
 
 // ---- Navigation Config ----
+const DM = 'data_manager';
+
 const NAV_ITEMS = [
-    { id: 'dashboard',      label: 'Dashboard',       icon: 'layout-dashboard', roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
-    { id: 'subjects',       label: 'Subjects',        icon: 'users',            roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
+    { id: 'dashboard',      label: 'Dashboard',       icon: 'layout-dashboard', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+    { id: 'subjects',       label: 'Subjects',        icon: 'users',            roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
     // ── Phase 1: Core Clinical Modules ────────────────────────────────────────
-    { id: 'medhistory',     label: 'Medical History', icon: 'file-heart',       roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
-    { id: 'conmeds',        label: 'Con. Medications',icon: 'pill',             roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
-    { id: 'vitalsigns',     label: 'Vital Signs',     icon: 'heart-pulse',      roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
-    { id: 'lab',            label: 'Laboratory',      icon: 'test-tube-2',      roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
+    { id: 'medhistory',     label: 'Medical History', icon: 'file-heart',       roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+    { id: 'conmeds',        label: 'Con. Medications',icon: 'pill',             roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+    { id: 'vitalsigns',     label: 'Vital Signs',     icon: 'heart-pulse',      roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+    { id: 'lab',            label: 'Laboratory',      icon: 'test-tube-2',      roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
     // ── Safety & Compliance ───────────────────────────────────────────────────
-    { id: 'ae',             label: 'Adverse Events',  icon: 'activity',         roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
-    { id: 'deviations',     label: 'Deviations',      icon: 'alert-triangle',   roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
-    { id: 'consents',       label: 'Consent',         icon: 'file-check',       roles: ['admin', 'investigator', 'pi', 'cra', 'crc'] },
+    { id: 'ae',             label: 'Adverse Events',  icon: 'activity',         roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+    { id: 'deviations',     label: 'Deviations',      icon: 'alert-triangle',   roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+    { id: 'consents',       label: 'Consent',         icon: 'file-check',       roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
     { id: 'randomization',  label: 'Randomization',   icon: 'shuffle',          roles: ['admin', 'investigator', 'pi'] },
-    { id: 'queries',        label: 'Queries',         icon: 'message-square',   roles: ['admin', 'cra', 'investigator', 'pi', 'crc'] },
+    { id: 'queries',        label: 'Queries',         icon: 'message-square',   roles: ['admin', 'cra', 'investigator', 'pi', 'crc', DM] },
     // ── Phase 2: Regulatory ───────────────────────────────────────────────────
-    { id: 'amendments',     label: 'Amendments',      icon: 'file-pen',         roles: ['admin', 'pi', 'cra'] },
-    { id: 'bdreview',       label: 'Blind Review',    icon: 'eye-off',          roles: ['admin', 'cra', 'pi'] },
+    { id: 'amendments',     label: 'Amendments',      icon: 'file-pen',         roles: ['admin', 'pi', 'cra', DM] },
+    { id: 'bdreview',       label: 'Blind Review',    icon: 'eye-off',          roles: ['admin', 'cra', 'pi', DM] },
     // ── Operations ────────────────────────────────────────────────────────────
-    { id: 'audit',          label: 'Audit Trail',     icon: 'shield-check',     roles: ['admin', 'cra', 'pi'] },
-    { id: 'dblock',         label: 'DB Lock',         icon: 'lock',             roles: ['admin', 'cra', 'pi'] },
-    { id: 'delegation',     label: 'Delegation',      icon: 'user-check',       roles: ['admin', 'cra', 'pi'] },
-    { id: 'saereports',     label: 'SAE Reports',     icon: 'alert-octagon',    roles: ['admin', 'cra', 'pi'] },
-    { id: 'monitoring',     label: 'Monitoring',      icon: 'clipboard-check',  roles: ['admin', 'cra', 'pi'] },
-    { id: 'datastatus',     label: 'Data Status',     icon: 'table-2',          roles: ['admin', 'cra', 'pi'] },
+    { id: 'audit',          label: 'Audit Trail',     icon: 'shield-check',     roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'dblock',         label: 'DB Lock',         icon: 'lock',             roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'delegation',     label: 'Delegation',      icon: 'user-check',       roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'saereports',     label: 'SAE Reports',     icon: 'alert-octagon',    roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'monitoring',     label: 'Monitoring',      icon: 'clipboard-check',  roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'datastatus',     label: 'Data Status',     icon: 'table-2',          roles: ['admin', 'cra', 'pi', DM] },
     // ── Phase 3: Quality Management ───────────────────────────────────────────
-    { id: 'csm',            label: 'CSM / KRI',         icon: 'bar-chart-3',      roles: ['admin', 'cra', 'pi'] },
-    { id: 'qtl',            label: 'QTL Thresholds',    icon: 'sliders-horizontal',roles: ['admin', 'cra', 'pi'] },
+    { id: 'csm',            label: 'CSM / KRI',         icon: 'bar-chart-3',      roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'qtl',            label: 'QTL Thresholds',    icon: 'sliders-horizontal',roles: ['admin', 'cra', 'pi', DM] },
     // ── Admin ─────────────────────────────────────────────────────────────────
     { id: 'sites',          label: 'Sites',           icon: 'building-2',       roles: ['admin'] },
     { id: 'studymgmt',      label: 'Studies',         icon: 'flask-conical',    roles: ['admin'] },
@@ -54,11 +56,12 @@ const NAV_ITEMS = [
 ];
 
 const ROLE_CONFIG = {
-    admin:        { label: 'Administrator',        cls: 'bg-indigo-600' },
-    investigator: { label: 'Investigator',         cls: 'bg-blue-600' },
+    admin:        { label: 'Administrator',          cls: 'bg-indigo-600' },
+    investigator: { label: 'Investigator',           cls: 'bg-blue-600' },
     pi:           { label: 'Principal Investigator', cls: 'bg-purple-600' },
-    cra:          { label: 'CRA / Monitor',        cls: 'bg-amber-600' },
-    crc:          { label: 'Study Coordinator',     cls: 'bg-emerald-600' },
+    cra:          { label: 'CRA / Monitor',          cls: 'bg-amber-600' },
+    crc:          { label: 'Study Coordinator',      cls: 'bg-emerald-600' },
+    data_manager: { label: 'Data Manager',           cls: 'bg-teal-600' },
 };
 
 // ---- App state helpers ----

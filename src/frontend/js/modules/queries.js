@@ -46,7 +46,7 @@ export async function renderQueries(filters = {}) {
                 <h2 class="text-xl font-bold text-slate-900">Data Queries</h2>
                 <p class="text-xs text-slate-500 mt-0.5">Discrepancy management between CRAs and Investigators</p>
             </div>
-            ${['cra','admin'].includes(user.role) ? `
+            ${['cra','admin','data_manager'].includes(user.role) ? `
             <button onclick="openRaiseQueryModal()"
                 class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-lg transition"
                 style="background:#1e3a5f">
@@ -150,7 +150,7 @@ function renderQueryRows(queries, user) {
     if (queries.length === 0) return '';
     return queries.map(q => {
         const canResolve = q.status === 'Open'     && ['investigator', 'pi', 'admin'].includes(user.role);
-        const canClose   = q.status === 'Resolved' && ['cra', 'admin'].includes(user.role);
+        const canClose   = q.status === 'Resolved' && ['cra', 'admin', 'data_manager'].includes(user.role);
 
         return `<tr>
             <td class="text-xs text-slate-400 font-mono">#${q.id}</td>

@@ -192,7 +192,7 @@ router.patch('/:id/approve', requireRole('admin', 'pi'), async (req, res) => {
 });
 
 // GET /api/amendments/:id/reconsent-status — which active subjects still need re-consent
-router.get('/:id/reconsent-status', requireRole('admin', 'pi', 'cra'), async (req, res) => {
+router.get('/:id/reconsent-status', requireRole('admin', 'pi', 'cra', 'data_manager'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const [amendment] = await db.select().from(protocolAmendments)

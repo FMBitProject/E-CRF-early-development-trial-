@@ -22,7 +22,7 @@ function isMissingTable(err) {
 }
 
 // GET /api/delegation — list all delegation entries
-router.get('/', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.get('/', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const { userId, status } = req.query;
         const base = eq(delegationLog.studyId, req.studyId);
@@ -46,7 +46,7 @@ router.get('/', requireRole('admin', 'cra', 'pi'), async (req, res) => {
 // ---------------------------------------------------------------------------
 
 // GET /api/delegation/training/records — list training records
-router.get('/training/records', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.get('/training/records', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const { userId, trainingType } = req.query;
         const rows = await db.select().from(trainingRecords)
@@ -102,7 +102,7 @@ router.post('/training/records', requireRole('admin', 'pi'), async (req, res) =>
 });
 
 // GET /api/delegation/training/expiring — training expiring within N days (default 30)
-router.get('/training/expiring', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.get('/training/expiring', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const days = parseInt(req.query.days ?? '30');
         const now = new Date();
@@ -146,7 +146,7 @@ router.delete('/training/records/:id', requireRole('admin', 'pi'), async (req, r
 // ---------------------------------------------------------------------------
 
 // GET /api/delegation/:id — single entry
-router.get('/:id', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.get('/:id', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const [row] = await db.select().from(delegationLog).where(eq(delegationLog.id, id));

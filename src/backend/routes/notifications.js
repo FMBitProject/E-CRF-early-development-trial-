@@ -113,7 +113,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/notifications/send-sae-deadline-emails — trigger SAE deadline emails (admin/cra)
-router.post('/send-sae-deadline-emails', requireRole('admin', 'cra'), async (req, res) => {
+router.post('/send-sae-deadline-emails', requireRole('admin', 'cra', 'data_manager'), async (req, res) => {
     try {
         const studyId = req.studyId;
         const now     = new Date();

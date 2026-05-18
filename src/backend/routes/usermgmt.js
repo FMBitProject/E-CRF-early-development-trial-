@@ -26,7 +26,7 @@ ensureUserSitesTable().catch(() => {});
 
 const router = Router();
 
-const VALID_ROLES = ['admin', 'investigator', 'pi', 'cra', 'crc'];
+const VALID_ROLES = ['admin', 'investigator', 'pi', 'cra', 'crc', 'data_manager'];
 
 // ── GET /api/users — list all users (admin only)
 router.get('/', requireRole('admin'), async (req, res) => {

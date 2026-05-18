@@ -19,7 +19,7 @@ function isMissingTable(err) {
 }
 
 // GET /api/monitoring — list monitoring visits
-router.get('/', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.get('/', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const { status, siteId } = req.query;
         const conditions = [eq(monitoringVisits.studyId, req.studyId)];
@@ -38,7 +38,7 @@ router.get('/', requireRole('admin', 'cra', 'pi'), async (req, res) => {
 });
 
 // GET /api/monitoring/:id — single monitoring visit with SDV records
-router.get('/:id', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.get('/:id', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const [visit] = await db.select().from(monitoringVisits)
@@ -57,7 +57,7 @@ router.get('/:id', requireRole('admin', 'cra', 'pi'), async (req, res) => {
 });
 
 // POST /api/monitoring — create monitoring visit (cra/admin)
-router.post('/', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.post('/', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const {
             visitDate, siteId, visitType, findings,
@@ -105,7 +105,7 @@ router.post('/', requireRole('admin', 'cra', 'pi'), async (req, res) => {
 });
 
 // PATCH /api/monitoring/:id — update draft visit
-router.patch('/:id', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.patch('/:id', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const [existing] = await db.select().from(monitoringVisits)
@@ -142,7 +142,7 @@ router.patch('/:id', requireRole('admin', 'cra', 'pi'), async (req, res) => {
 });
 
 // POST /api/monitoring/:id/submit — CRA submits the visit report for PI review
-router.post('/:id/submit', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.post('/:id/submit', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const [existing] = await db.select().from(monitoringVisits)
@@ -204,7 +204,7 @@ router.post('/:id/acknowledge', requireRole('admin', 'pi'), async (req, res) => 
 });
 
 // GET /api/monitoring/:id/sdv — list SDV records for a visit
-router.get('/:id/sdv', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.get('/:id/sdv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const rows = await db.select().from(sdvRecords)
@@ -218,7 +218,7 @@ router.get('/:id/sdv', requireRole('admin', 'cra', 'pi'), async (req, res) => {
 });
 
 // POST /api/monitoring/:id/sdv — add or update an SDV record
-router.post('/:id/sdv', requireRole('admin', 'cra', 'pi'), async (req, res) => {
+router.post('/:id/sdv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const monitoringVisitId = parseInt(req.params.id);
         const {

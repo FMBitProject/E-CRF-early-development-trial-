@@ -13,6 +13,7 @@ const ROLE_CONFIG = {
     pi:           { label: 'Principal Investigator', cls: 'bg-purple-100 text-purple-700' },
     cra:          { label: 'CRA / Monitor',          cls: 'bg-amber-100 text-amber-700' },
     crc:          { label: 'Study Coordinator',      cls: 'bg-emerald-100 text-emerald-700' },
+    data_manager: { label: 'Data Manager',           cls: 'bg-teal-100 text-teal-700' },
 };
 
 // ── Main render ──────────────────────────────────────────────────────────────
