@@ -123,6 +123,18 @@ function amendmentCard(r, canWrite, canAdvance) {
             ${r.irbRefNo ? `<span class="flex items-center gap-1"><i data-lucide="hash" class="w-3.5 h-3.5"></i> ${esc(r.irbRefNo)}</span>` : ''}
         </div>` : ''}
 
+        ${r.status === 'Approved' && r.requiresReconsent ? `
+        <div class="p-3 rounded-md bg-amber-50 border border-amber-200 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+                <i data-lucide="users" class="w-4 h-4 text-amber-600 flex-shrink-0"></i>
+                <span class="text-xs font-semibold text-amber-700">Re-consent tracking required for active subjects</span>
+            </div>
+            <button onclick="viewReconsentStatus(${r.id})"
+                class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-amber-700 bg-amber-100 hover:bg-amber-200 rounded-md transition flex-shrink-0">
+                <i data-lucide="eye" class="w-3 h-3"></i> View Status
+            </button>
+        </div>` : ''}
+
         <div class="flex items-center gap-2 pt-1 border-t border-slate-100">
             ${canWrite ? `
             <button onclick="openAmendmentForm(${r.id})"
@@ -262,11 +274,27 @@ window.submitAmendmentForm = async function(recordId) {
 };
 
 window.advanceAmendmentStatus = async function(recordId, newStatus) {
-    const label = newStatus === 'Approved' ? 'approve this amendment' : 'mark this amendment as implemented';
-    if (!confirm(`Confirm: ${label}?`)) return;
+    const label = newStatus === 'Approved' ? 'approving this amendment' : 'marking this amendment as implemented';
+    const reason = prompt(`Reason for ${label} (required, ICH GCP):`);
+    if (!reason?.trim()) return;
     try {
-        await api.request(`/api/amendments/${recordId}/status`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) });
-        showToast(`Amendment status updated to ${newStatus}.`, 'success');
+        if (newStatus === 'Approved') {
+            const result = await api.request(`/api/amendments/${recordId}/approve`, {
+                method: 'PATCH',
+                body: JSON.stringify({ reason }),
+            });
+            let msg = 'Amendment approved.';
+            if (result.reconsentsRequired > 0) {
+                msg += ` Re-consent required for ${result.reconsentsRequired} active subject(s).`;
+            }
+            showToast(msg, 'success');
+        } else {
+            await api.request(`/api/amendments/${recordId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ status: newStatus, reason }),
+            });
+            showToast(`Amendment marked as ${newStatus}.`, 'success');
+        }
         await renderAmendments(document.getElementById('main-content'));
     } catch (err) {
         showToast(err.message, 'error');
@@ -282,5 +310,69 @@ window.deleteAmendment = async function(recordId) {
         await renderAmendments(document.getElementById('main-content'));
     } catch (err) {
         showToast(err.message, 'error');
+    }
+};
+
+window.viewReconsentStatus = async function(recordId) {
+    showModal({
+        title: 'Re-consent Status',
+        size: 'md',
+        body: `<div id="reconsent-modal-body" class="py-8 text-center text-slate-400 text-sm">Loading…</div>`,
+        footer: `<button onclick="closeModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition">Close</button>`,
+    });
+
+    try {
+        const data = await api.request(`/api/amendments/${recordId}/reconsent-status`);
+        const slot = document.getElementById('reconsent-modal-body');
+        if (!slot) return;
+
+        if (!data.requiresReconsent) {
+            slot.innerHTML = `<p class="text-sm text-slate-600 text-center py-4">This amendment does not require re-consent.</p>`;
+            return;
+        }
+
+        const pending       = data.pending      ?? [];
+        const reconsentDone = data.reconsentDone ?? [];
+
+        const pendingRows = pending.length
+            ? pending.map(s => `
+                <div class="flex items-center gap-2 py-1.5 border-b border-slate-100 last:border-0">
+                    <span class="w-2 h-2 rounded-full bg-red-400 flex-shrink-0"></span>
+                    <span class="text-sm text-slate-700 font-medium">${esc(s.subjectCode)}</span>
+                    <span class="ml-auto text-xs text-red-600 font-semibold">Pending</span>
+                </div>`).join('')
+            : '';
+
+        const doneRows = reconsentDone.length
+            ? reconsentDone.map(s => `
+                <div class="flex items-center gap-2 py-1.5 border-b border-slate-100 last:border-0">
+                    <span class="w-2 h-2 rounded-full bg-green-400 flex-shrink-0"></span>
+                    <span class="text-sm text-slate-700 font-medium">${esc(s.subjectCode)}</span>
+                    <span class="ml-auto text-xs text-green-700 font-semibold">&#10003; Done</span>
+                </div>`).join('')
+            : '';
+
+        slot.innerHTML = `
+            <div class="space-y-3">
+                <div class="flex items-center gap-3">
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-100 text-red-700 font-semibold text-xs">${pending.length} Pending</span>
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-100 text-green-700 font-semibold text-xs">${reconsentDone.length} Done</span>
+                    <span class="text-slate-500 text-xs ml-auto">Amendment: ${esc(data.amendmentNo)}</span>
+                </div>
+                ${pending.length > 0 ? `
+                <div class="p-3 rounded-md bg-red-50 border border-red-200">
+                    <p class="text-xs font-semibold text-red-600 uppercase tracking-wide mb-2">Awaiting Re-consent</p>
+                    ${pendingRows}
+                </div>` : ''}
+                ${reconsentDone.length > 0 ? `
+                <div class="p-3 rounded-md bg-green-50 border border-green-200">
+                    <p class="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2">Re-consent Complete</p>
+                    ${doneRows}
+                </div>` : ''}
+                ${pending.length === 0 ? `<p class="text-sm text-green-700 text-center py-2 font-semibold">&#10003; All active subjects have re-consented for this amendment.</p>` : ''}
+            </div>`;
+    } catch (err) {
+        showToast(err.message, 'error');
+        closeModal();
     }
 };

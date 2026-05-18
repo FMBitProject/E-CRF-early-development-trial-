@@ -779,6 +779,13 @@ export const api = {
         });
     },
 
+    async signSAEReport(id, payload) {
+        return apiFetch(`/api/saereports/${id}/sign`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+        });
+    },
+
     // ── Monitoring Visits & SDV (ICH GCP §5.18) ───────────
     async getMonitoringVisits(filters = {}) {
         const params = new URLSearchParams();
