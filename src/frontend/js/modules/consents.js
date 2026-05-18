@@ -223,9 +223,12 @@ window.openConsentForm = async function(prefillSubjectId = null) {
     });
 
     const siteCtx = getSiteContext();
-    let allSubjects = [];
+    let allSubjects = [], amendments = [];
     try {
-        allSubjects = await api.getSubjects({ status: 'Active' });
+        [allSubjects, amendments] = await Promise.all([
+            api.getSubjects({ status: 'Active' }),
+            api.request('/api/amendments').catch(() => []),
+        ]);
     } catch { /* proceed with empty list */ }
 
     // Filter to active site; fall back to all study subjects if site_id not set on enrolled subjects
@@ -278,16 +281,39 @@ window.openConsentForm = async function(prefillSubjectId = null) {
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">ICF Version <span class="text-red-500">*</span></label>
-                    <input type="text" id="ic-version" placeholder="e.g. v2.1 dated 2025-01-15"
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">ICF Version <span class="text-red-500">*</span></label>
+                <select id="ic-version-select" onchange="icfVersionChanged()"
+                    class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
+                    <option value="">— Pilih versi ICF —</option>
+                    <option value="v1.0 — Initial ICF (Pre-Amendment)" data-amendment-id="">v1.0 — Initial ICF (sebelum amendment)</option>
+                    ${amendments
+                        .filter(a => a.status === 'Approved' || a.status === 'Implemented')
+                        .map(a => {
+                            const effDate = a.effectiveDate
+                                ? new Date(a.effectiveDate).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })
+                                : '—';
+                            const irb = a.irbRefNo ? ` | IRB: ${a.irbRefNo}` : '';
+                            const label = `${a.amendmentNo} — Berlaku ${effDate}${irb}`;
+                            return `<option value="${esc(label)}" data-amendment-id="${a.id}">${esc(label)}</option>`;
+                        }).join('')}
+                    <option value="__custom__" data-amendment-id="">Kustom / Lainnya…</option>
+                </select>
+                <div id="ic-version-custom-wrap" class="hidden mt-1.5">
+                    <input type="text" id="ic-version-custom" placeholder="Tulis versi ICF secara manual…"
                         class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
                 </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Date Signed <span class="text-red-500">*</span></label>
-                    <input type="date" id="ic-date" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
-                </div>
+                ${amendments.filter(a => a.status === 'Approved' || a.status === 'Implemented').length === 0
+                    ? `<p class="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                           <i data-lucide="info" class="w-3 h-3"></i>
+                           Belum ada amendment Approved/Implemented — pilih "Initial ICF" atau "Kustom".
+                       </p>`
+                    : ''}
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Date Signed <span class="text-red-500">*</span></label>
+                <input type="date" id="ic-date" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
             </div>
 
             <div class="grid grid-cols-2 gap-3">
@@ -316,10 +342,28 @@ window.openConsentForm = async function(prefillSubjectId = null) {
     if (window.lucide) lucide.createIcons();
 };
 
+window.icfVersionChanged = function() {
+    const sel = document.getElementById('ic-version-select');
+    const wrap = document.getElementById('ic-version-custom-wrap');
+    if (!sel || !wrap) return;
+    wrap.classList.toggle('hidden', sel.value !== '__custom__');
+    if (sel.value === '__custom__') {
+        document.getElementById('ic-version-custom')?.focus();
+    }
+};
+
 window.submitConsentForm = async function() {
     const subjectId = parseInt(document.getElementById('ic-subject').value);
-    const version   = document.getElementById('ic-version').value.trim();
     const date      = document.getElementById('ic-date').value;
+
+    const sel = document.getElementById('ic-version-select');
+    const isCustom = sel?.value === '__custom__';
+    const version = isCustom
+        ? (document.getElementById('ic-version-custom')?.value.trim() ?? '')
+        : (sel?.value ?? '');
+    const amendmentId = (!isCustom && sel)
+        ? (parseInt(sel.options[sel.selectedIndex]?.dataset.amendmentId) || null)
+        : null;
 
     if (!subjectId || !version || !date) {
         showToast('Subject, ICF version, and date are required.', 'error'); return;
@@ -334,6 +378,7 @@ window.submitConsentForm = async function() {
             language:       document.getElementById('ic-language').value,
             witnessName:    document.getElementById('ic-witness').value.trim() || null,
             notes:          document.getElementById('ic-notes').value.trim()   || null,
+            amendmentId,
         });
         closeModal();
         showToast('Informed consent recorded.', 'success');
