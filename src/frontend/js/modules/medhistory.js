@@ -4,6 +4,7 @@
 
 import { api } from './api.js';
 import { showToast, showModal, closeModal } from './utils.js';
+import { ICD_VERSIONS } from './icd-codes.js';
 
 const SPINNER = `<div class="flex items-center justify-center h-32">
     <div class="w-7 h-7 rounded-full border-2 border-blue-700 border-t-transparent animate-spin"></div>
@@ -164,6 +165,77 @@ function renderMedHistRows(records, user, canWrite) {
         </tr>`).join('');
 }
 
+function initICDWidget(existingCode, existingVersion) {
+    const searchEl  = document.getElementById('mh-icd-search');
+    const hiddenEl  = document.getElementById('mh-icd-code');
+    const dropdown  = document.getElementById('mh-icd-dropdown');
+    const versionEl = document.getElementById('mh-icd-version');
+    if (!searchEl || !hiddenEl || !dropdown || !versionEl) return;
+
+    if (existingCode) {
+        const codes = ICD_VERSIONS[existingVersion] || [];
+        const found = codes.find(c => c.code === existingCode);
+        searchEl.value = found ? `${found.code} — ${found.description}` : existingCode;
+    }
+
+    function getVersionCodes() {
+        return ICD_VERSIONS[versionEl.value] || [];
+    }
+
+    function renderDropdown(filter) {
+        const codes = getVersionCodes();
+        if (!codes.length) {
+            dropdown.innerHTML = `<p class="text-xs text-slate-400 text-center py-3 px-3">Select an ICD version first</p>`;
+            dropdown.classList.remove('hidden');
+            return;
+        }
+        const q = filter.toLowerCase().trim();
+        const matches = q
+            ? codes.filter(c => c.code.toLowerCase().includes(q) || c.description.toLowerCase().includes(q)).slice(0, 60)
+            : codes.slice(0, 60);
+        if (!matches.length) {
+            dropdown.innerHTML = `<p class="text-xs text-slate-400 text-center py-3">No codes match "${filter}"</p>`;
+        } else {
+            dropdown.innerHTML = matches.map(c => `
+                <button type="button" data-code="${c.code.replace(/"/g,'&quot;')}" data-desc="${c.description.replace(/"/g,'&quot;')}"
+                    class="w-full text-left px-3 py-2 hover:bg-blue-50 transition flex items-start gap-2 border-b border-slate-50 last:border-0">
+                    <span class="font-mono font-semibold text-blue-700 shrink-0 w-16 text-xs">${c.code}</span>
+                    <span class="text-slate-700 text-xs leading-snug">${c.description}</span>
+                </button>`).join('');
+        }
+        dropdown.classList.remove('hidden');
+    }
+
+    function hideDropdown() { dropdown.classList.add('hidden'); }
+
+    searchEl.addEventListener('focus', () => renderDropdown(searchEl.value));
+    searchEl.addEventListener('input', () => {
+        hiddenEl.value = '';
+        renderDropdown(searchEl.value);
+    });
+
+    dropdown.addEventListener('mousedown', e => {
+        const btn = e.target.closest('button[data-code]');
+        if (!btn) return;
+        e.preventDefault();
+        const code = btn.dataset.code;
+        const desc = btn.dataset.desc;
+        hiddenEl.value = code;
+        searchEl.value = `${code} — ${desc}`;
+        const condEl = document.getElementById('mh-condition');
+        if (condEl && !condEl.value.trim()) condEl.value = desc;
+        hideDropdown();
+    });
+
+    searchEl.addEventListener('blur', () => setTimeout(hideDropdown, 150));
+
+    versionEl.addEventListener('change', () => {
+        hiddenEl.value = '';
+        searchEl.value = '';
+        hideDropdown();
+    });
+}
+
 window.openMedHistForm = async function(recordId = null) {
     const isEdit = recordId !== null;
 
@@ -200,11 +272,6 @@ window.openMedHistForm = async function(recordId = null) {
             </div>
             <div class="grid grid-cols-2 gap-3">
                 <div>
-                    <label class="ph-label">ICD Code</label>
-                    <input type="text" id="mh-icd-code" value="${esc(rec.icdCode)}" placeholder="e.g. E11"
-                        class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
-                </div>
-                <div>
                     <label class="ph-label">ICD Version</label>
                     <select id="mh-icd-version" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
                         <option value="">— Select —</option>
@@ -212,6 +279,18 @@ window.openMedHistForm = async function(recordId = null) {
                         <option ${rec.icdVersion === 'ICD-11' ? 'selected' : ''}>ICD-11</option>
                         <option ${rec.icdVersion === 'ICD-9' ? 'selected' : ''}>ICD-9</option>
                     </select>
+                </div>
+                <div>
+                    <label class="ph-label">ICD Code</label>
+                    <div class="relative" id="mh-icd-wrapper">
+                        <input type="text" id="mh-icd-search" autocomplete="off"
+                            placeholder="Search code or diagnosis…"
+                            class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                        <input type="hidden" id="mh-icd-code" value="${esc(rec.icdCode || '')}">
+                        <div id="mh-icd-dropdown"
+                            class="hidden absolute z-[200] left-0 right-0 top-full mt-0.5 bg-white border border-slate-200 rounded-lg shadow-xl max-h-52 overflow-y-auto">
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="grid grid-cols-2 gap-3">
@@ -271,6 +350,8 @@ window.openMedHistForm = async function(recordId = null) {
             <i data-lucide="${isEdit ? 'save' : 'plus'}" class="w-4 h-4"></i> ${isEdit ? 'Save Changes' : 'Add Record'}
         </button>`,
     });
+
+    initICDWidget(rec.icdCode || null, rec.icdVersion || null);
 };
 
 window.submitMedHistForm = async function(recordId) {
@@ -284,7 +365,12 @@ window.submitMedHistForm = async function(recordId) {
     const payload = {
         subjectId: Number(subjectId),
         condition,
-        icdCode:               document.getElementById('mh-icd-code').value.trim() || null,
+        icdCode:               (() => {
+            const hidden = document.getElementById('mh-icd-code').value.trim();
+            if (hidden) return hidden;
+            const raw = (document.getElementById('mh-icd-search').value || '').split('—')[0].trim();
+            return raw || null;
+        })(),
         icdVersion:            document.getElementById('mh-icd-version').value || null,
         onsetDate:             document.getElementById('mh-onset').value || null,
         resolutionDate:        document.getElementById('mh-resolution').value || null,
