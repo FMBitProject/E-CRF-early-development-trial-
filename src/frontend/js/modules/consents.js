@@ -228,24 +228,26 @@ window.openConsentForm = async function(prefillSubjectId = null) {
         allSubjects = await api.getSubjects({ status: 'Active' });
     } catch { /* proceed with empty list */ }
 
-    // Filter to active site's subjects; if admin with no site context show all
-    const siteSubjects = siteCtx
+    // Filter to active site; fall back to all study subjects if site_id not set on enrolled subjects
+    const siteFiltered = (siteCtx && siteCtx.id)
         ? allSubjects.filter(s => s.site_id === siteCtx.id)
         : allSubjects;
+    const displaySubjects = siteFiltered.length > 0 ? siteFiltered : allSubjects;
+    const isFallback = siteFiltered.length === 0 && allSubjects.length > 0;
 
     const siteBanner = siteCtx ? `
         <div class="flex items-center gap-2 px-3 py-2 rounded-md text-xs font-medium"
              style="background:#F0FDF4;border:1px solid #BBF7D0;color:#166534;">
             <i data-lucide="building-2" class="w-3.5 h-3.5 flex-shrink-0"></i>
             Aktif di site: <strong>${esc(siteCtx.siteCode)}${siteCtx.siteName ? ' — ' + esc(siteCtx.siteName) : ''}</strong>
-            &nbsp;·&nbsp; ${siteSubjects.length} subjek aktif
+            &nbsp;·&nbsp; ${displaySubjects.length} subjek aktif${isFallback ? ' (semua study)' : ''}
         </div>` : '';
 
-    const subjectOptions = siteSubjects.length
-        ? siteSubjects.map(s =>
+    const subjectOptions = displaySubjects.length
+        ? displaySubjects.map(s =>
             `<option value="${s.id}" ${prefillSubjectId === s.id ? 'selected' : ''}>${esc(s.subject_code)}</option>`
           ).join('')
-        : `<option value="" disabled>— Tidak ada subjek aktif di site ini —</option>`;
+        : `<option value="" disabled>— Tidak ada subjek aktif —</option>`;
 
     const slot = document.getElementById('ic-form-body');
     if (!slot) return;

@@ -87,6 +87,25 @@ function renderSidebar(currentRoute) {
         visible = NAV_ITEMS.filter(item => item.roles.includes(user.role));
     }
 
+    // Populate site chip between logo and nav
+    const siteChipEl = document.getElementById('sidebar-site-context');
+    if (siteChipEl) {
+        const siteCtxForChip = getSiteContext();
+        if (siteCtxForChip && siteCtxForChip.status !== 'Inactive') {
+            siteChipEl.innerHTML = `
+            <div style="background:rgba(34,197,94,0.13);border:1px solid rgba(34,197,94,0.28);border-radius:7px;padding:0.45rem 0.6rem;">
+                <div style="display:flex;align-items:center;gap:0.4rem;">
+                    <i data-lucide="building-2" style="width:0.75rem;height:0.75rem;color:#4ade80;flex-shrink:0;"></i>
+                    <span style="color:#86efac;font-size:0.7rem;font-weight:700;letter-spacing:0.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${siteCtxForChip.siteCode ?? ''}</span>
+                </div>
+                ${siteCtxForChip.siteName ? `<p style="color:#bbf7d0;font-size:0.68rem;margin-top:0.15rem;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${siteCtxForChip.siteName}</p>` : ''}
+            </div>`;
+            lucide.createIcons({ nodes: [siteChipEl] });
+        } else {
+            siteChipEl.innerHTML = '';
+        }
+    }
+
     nav.innerHTML = visible.map(item => {
         const isActive = currentRoute === item.id;
         const badge = item.id === 'queries' ? getOpenQueryBadge() : '';
