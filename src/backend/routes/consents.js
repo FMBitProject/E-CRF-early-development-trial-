@@ -67,7 +67,7 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
     try {
         const {
             subjectId, consentVersion, consentDate,
-            consentType, language, witnessName, notes,
+            consentType, language, witnessName, notes, amendmentId,
         } = req.body;
 
         if (!subjectId || !consentVersion || !consentDate) {
@@ -89,6 +89,7 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
             language:       language    ?? 'Indonesian',
             witnessName:    witnessName ?? null,
             notes:          notes       ?? null,
+            amendmentId:    amendmentId ? parseInt(amendmentId) : null,
             isWithdrawn,
             withdrawnAt:    isWithdrawn ? new Date() : null,
             createdBy:      req.user.id,

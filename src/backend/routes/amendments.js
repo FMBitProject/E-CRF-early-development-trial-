@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { eq, and, desc } from 'drizzle-orm';
 import { db } from '../db/connection.js';
-import { protocolAmendments } from '../db/schemas/schema.js';
+import { protocolAmendments, subjects, informedConsents } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 
@@ -131,6 +131,96 @@ router.patch('/:id', requireRole('admin', 'pi'), async (req, res) => {
         });
 
         res.json(updated);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PATCH /api/amendments/:id/approve — approve and enforce re-consent if required (admin/pi)
+router.patch('/:id/approve', requireRole('admin', 'pi'), async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const { reason } = req.body;
+        if (!reason) return res.status(400).json({ error: 'reason is required' });
+
+        const [existing] = await db.select().from(protocolAmendments)
+            .where(and(
+                eq(protocolAmendments.id, id),
+                eq(protocolAmendments.studyId, req.studyId),
+            ));
+        if (!existing) return res.status(404).json({ error: 'Protocol amendment not found' });
+        if (existing.status === 'Approved' || existing.status === 'Implemented') {
+            return res.status(409).json({ error: `Amendment already ${existing.status.toLowerCase()}` });
+        }
+
+        const [updated] = await db.update(protocolAmendments)
+            .set({ status: 'Approved', updatedAt: new Date() })
+            .where(eq(protocolAmendments.id, id))
+            .returning();
+
+        // Count active subjects who still need re-consent for this amendment
+        let reconsentsRequired = 0;
+        if (existing.requiresReconsent) {
+            const activeSubjects = await db.select({ id: subjects.id })
+                .from(subjects)
+                .where(and(eq(subjects.studyId, req.studyId), eq(subjects.status, 'Active')));
+
+            const reconsentedIds = (await db.select({ subjectId: informedConsents.subjectId })
+                .from(informedConsents)
+                .where(and(
+                    eq(informedConsents.studyId, req.studyId),
+                    eq(informedConsents.amendmentId, id),
+                    eq(informedConsents.isWithdrawn, false),
+                ))).map(r => r.subjectId);
+
+            reconsentsRequired = activeSubjects.filter(s => !reconsentedIds.includes(s.id)).length;
+        }
+
+        await writeAudit(db, {
+            tableName: 'protocol_amendments', recordId: id, action: 'UPDATE',
+            fieldName: 'status', oldValue: existing.status, newValue: 'Approved',
+            reason: existing.requiresReconsent
+                ? `${reason} | RE-CONSENT REQUIRED for ${reconsentsRequired} active subject(s) — amendment_id=${id}`
+                : reason,
+            user: req.user, ipAddress: req.ip,
+        });
+
+        res.json({ ...updated, reconsentsRequired });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/amendments/:id/reconsent-status — which active subjects still need re-consent
+router.get('/:id/reconsent-status', requireRole('admin', 'pi', 'cra'), async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const [amendment] = await db.select().from(protocolAmendments)
+            .where(and(
+                eq(protocolAmendments.id, id),
+                eq(protocolAmendments.studyId, req.studyId),
+            ));
+        if (!amendment) return res.status(404).json({ error: 'Amendment not found' });
+        if (!amendment.requiresReconsent) {
+            return res.json({ requiresReconsent: false, pending: [], reconsentDone: [] });
+        }
+
+        const activeSubjects = await db.select({ id: subjects.id, subjectCode: subjects.subjectCode })
+            .from(subjects)
+            .where(and(eq(subjects.studyId, req.studyId), eq(subjects.status, 'Active')));
+
+        const reconsentedSubjectIds = (await db.select({ subjectId: informedConsents.subjectId })
+            .from(informedConsents)
+            .where(and(
+                eq(informedConsents.studyId, req.studyId),
+                eq(informedConsents.amendmentId, id),
+                eq(informedConsents.isWithdrawn, false),
+            ))).map(r => r.subjectId);
+
+        const reconsentDone = activeSubjects.filter(s => reconsentedSubjectIds.includes(s.id));
+        const pending       = activeSubjects.filter(s => !reconsentedSubjectIds.includes(s.id));
+
+        res.json({ requiresReconsent: true, amendmentNo: amendment.amendmentNo, pending, reconsentDone });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

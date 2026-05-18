@@ -3,10 +3,20 @@
 
 import { Router } from 'express';
 import { eq, and, desc, lt } from 'drizzle-orm';
+import { verifyPassword } from '@better-auth/utils/password';
 import { db } from '../db/connection.js';
-import { saeReports, adverseEvents, subjects } from '../db/schemas/schema.js';
+import { saeReports, adverseEvents, subjects, account } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
+
+async function checkPassword(userId, password) {
+    const [acct] = await db
+        .select({ password: account.password })
+        .from(account)
+        .where(and(eq(account.userId, userId), eq(account.providerId, 'credential')));
+    if (!acct?.password) return false;
+    return verifyPassword(acct.password, password);
+}
 
 const router = Router();
 
@@ -158,6 +168,47 @@ router.post('/', requireRole('admin', 'cra', 'pi'), async (req, res) => {
     }
 });
 
+// PATCH /api/saereports/:id/sign — e-sign by investigator (ICH GCP E6(R3) C.4.4)
+router.patch('/:id/sign', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const { password, meaning } = req.body;
+        if (!password || !meaning) {
+            return res.status(400).json({ error: 'password and meaning are required' });
+        }
+
+        const [existing] = await db.select().from(saeReports).where(eq(saeReports.id, id));
+        if (!existing) return res.status(404).json({ error: 'SAE report not found' });
+        if (existing.signedAt) {
+            return res.status(409).json({ error: 'Already signed' });
+        }
+
+        const ok = await checkPassword(req.user.id, password);
+        if (!ok) return res.status(401).json({ error: 'Invalid password' });
+
+        const now = new Date();
+        const [updated] = await db.update(saeReports).set({
+            signedBy:       req.user.id,
+            signedByName:   req.user.name,
+            signedAt:       now,
+            signingMeaning: meaning,
+            updatedAt:      now,
+        }).where(eq(saeReports.id, id)).returning();
+
+        await writeAudit(db, {
+            tableName: 'sae_reports', recordId: id, action: 'UPDATE',
+            fieldName: 'signed_at',
+            newValue: `Signed by ${req.user.name} | Meaning: ${meaning}`,
+            reason: `SAE report e-signed — ${meaning}`,
+            user: req.user, ipAddress: req.ip,
+        });
+
+        res.json(updated);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // PATCH /api/saereports/:id/submit — mark SAE report as submitted
 router.patch('/:id/submit', requireRole('admin', 'cra', 'pi'), async (req, res) => {
     try {
@@ -166,11 +217,22 @@ router.patch('/:id/submit', requireRole('admin', 'cra', 'pi'), async (req, res) 
 
         const [existing] = await db.select().from(saeReports).where(eq(saeReports.id, id));
         if (!existing) return res.status(404).json({ error: 'SAE report not found' });
-        if (existing.status === 'Submitted') return res.status(409).json({ error: 'Already submitted' });
+        if (existing.status === 'Submitted' || existing.status === 'Late Submission') {
+            return res.status(409).json({ error: 'Already submitted' });
+        }
+        if (!existing.signedAt) {
+            return res.status(400).json({ error: 'SAE report must be signed by an investigator before submission (ICH GCP E6(R3) C.4.4)' });
+        }
 
         const now = new Date();
+        const isLate = now > new Date(existing.deadlineDate);
+        const newStatus = isLate ? 'Late Submission' : 'Submitted';
+        const daysLate = isLate
+            ? Math.ceil((now - new Date(existing.deadlineDate)) / 86400000)
+            : 0;
+
         const [updated] = await db.update(saeReports).set({
-            status:          'Submitted',
+            status:          newStatus,
             submittedAt:     now,
             submissionRef:   submissionRef ?? existing.submissionRef,
             narrative:       narrative ?? existing.narrative,
@@ -179,10 +241,14 @@ router.patch('/:id/submit', requireRole('admin', 'cra', 'pi'), async (req, res) 
             updatedAt:       now,
         }).where(eq(saeReports.id, id)).returning();
 
+        const auditReason = isLate
+            ? `LATE SUBMISSION — ${daysLate} day(s) past ${existing.deadlineDays}-day deadline${submissionRef ? ` | ref: ${submissionRef}` : ''}`
+            : `SAE submitted within ${existing.deadlineDays}-day deadline${submissionRef ? ` | ref: ${submissionRef}` : ''}`;
+
         await writeAudit(db, {
             tableName: 'sae_reports', recordId: id, action: 'UPDATE',
-            fieldName: 'status', oldValue: 'Pending', newValue: 'Submitted',
-            reason: `SAE expedited report submitted${submissionRef ? ` — ref: ${submissionRef}` : ''}`,
+            fieldName: 'status', oldValue: existing.status, newValue: newStatus,
+            reason: auditReason,
             user: req.user, ipAddress: req.ip,
         });
 

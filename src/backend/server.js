@@ -584,6 +584,15 @@ async function runMigrations() {
         // Phase 1 — LOINC coding status on lab_results
         `ALTER TABLE lab_results ADD COLUMN IF NOT EXISTS loinc_coding_status TEXT NOT NULL DEFAULT 'Custom'`,
 
+        // ICH GCP E6(R3) C.4.4 — e-signature fields on sae_reports
+        `ALTER TABLE sae_reports ADD COLUMN IF NOT EXISTS signed_by       TEXT REFERENCES "user"(id)`,
+        `ALTER TABLE sae_reports ADD COLUMN IF NOT EXISTS signed_by_name  TEXT`,
+        `ALTER TABLE sae_reports ADD COLUMN IF NOT EXISTS signed_at       TIMESTAMPTZ`,
+        `ALTER TABLE sae_reports ADD COLUMN IF NOT EXISTS signing_meaning TEXT`,
+
+        // ICH GCP E6(R3) 4.8 — link re-consent records to their triggering amendment
+        `ALTER TABLE informed_consents ADD COLUMN IF NOT EXISTS amendment_id INTEGER REFERENCES protocol_amendments(id)`,
+
         // Phase 2 — MedDRA structured coding fields on adverse_events
         `ALTER TABLE adverse_events ADD COLUMN IF NOT EXISTS meddra_pt_code    TEXT`,
         `ALTER TABLE adverse_events ADD COLUMN IF NOT EXISTS meddra_soc_code   TEXT`,

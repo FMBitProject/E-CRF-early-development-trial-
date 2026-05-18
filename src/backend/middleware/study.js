@@ -1,7 +1,7 @@
 // Study context middleware — validates X-Study-ID header and user access
 import { eq, and } from 'drizzle-orm';
 import { db } from '../db/connection.js';
-import { studyUsers, studies } from '../db/schemas/schema.js';
+import { studyUsers, studies, studyDbLock } from '../db/schemas/schema.js';
 
 const CLOSED_STATUSES = new Set(['Terminated', 'Completed', 'Suspended']);
 
@@ -38,14 +38,28 @@ export async function requireStudy(req, res, next) {
         req.studyId     = id;
         req.studyStatus = study.status;
 
-        if (CLOSED_STATUSES.has(study.status) && req.method !== 'GET') {
+        if (req.method !== 'GET') {
             const url = req.originalUrl.split('?')[0];
             const isExempt = EXEMPT_WRITE_PATTERNS.some(p => p.test(url));
             if (!isExempt) {
-                return res.status(423).json({
-                    error: `Study is ${study.status}. Data modifications are not permitted.`,
-                    studyStatus: study.status,
-                });
+                if (CLOSED_STATUSES.has(study.status)) {
+                    return res.status(423).json({
+                        error: `Study is ${study.status}. Data modifications are not permitted.`,
+                        studyStatus: study.status,
+                    });
+                }
+                // ICH GCP E6(R3) §5.5.7 — enforce database lock
+                const [lock] = await db
+                    .select({ status: studyDbLock.status })
+                    .from(studyDbLock)
+                    .where(and(eq(studyDbLock.studyId, id), eq(studyDbLock.status, 'Locked')))
+                    .limit(1);
+                if (lock) {
+                    return res.status(423).json({
+                        error: 'Database is locked. No data modifications are permitted (ICH GCP E6(R3) §5.5.7).',
+                        dbLocked: true,
+                    });
+                }
             }
         }
 

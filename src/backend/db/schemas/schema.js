@@ -464,6 +464,7 @@ export const informedConsents = pgTable('informed_consents', {
     language:        text('language').notNull().default('Indonesian'),
     witnessName:     text('witness_name'),
     notes:           text('notes'),
+    amendmentId:     integer('amendment_id').references(() => protocolAmendments.id),
     isWithdrawn:     boolean('is_withdrawn').notNull().default(false),
     withdrawnAt:     timestamp('withdrawn_at'),
     withdrawnReason: text('withdrawn_reason'),
@@ -612,6 +613,10 @@ export const saeReports = pgTable('sae_reports', {
     status:           text('status').notNull().default('Pending'), // Pending | Submitted | Overdue
     submittedBy:      text('submitted_by').references(() => user.id),
     submittedByName:  text('submitted_by_name'),
+    signedBy:         text('signed_by').references(() => user.id),
+    signedByName:     text('signed_by_name'),
+    signedAt:         timestamp('signed_at'),
+    signingMeaning:   text('signing_meaning'),
     createdBy:        text('created_by').references(() => user.id),
     createdByName:    text('created_by_name'),
     createdAt:        timestamp('created_at').notNull().defaultNow(),
