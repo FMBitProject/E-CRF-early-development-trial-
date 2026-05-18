@@ -145,7 +145,7 @@ function renderVitalRows(records, user, canWrite) {
             <td class="text-xs text-slate-600">${r.respiratoryRate != null ? `${r.respiratoryRate} /min` : '—'}</td>
             <td class="text-xs text-slate-600 whitespace-nowrap">${r.temperature != null ? `${r.temperature} ${esc(r.temperatureUnit || '°C')}` : '—'}</td>
             <td class="text-xs text-slate-600 whitespace-nowrap">${r.weight != null ? `${r.weight} ${esc(r.weightUnit || 'kg')}` : '—'}</td>
-            <td class="text-xs text-slate-600">${r.bmi != null ? r.bmi.toFixed(1) : '—'}</td>
+            <td class="text-xs text-slate-600">${r.bmi != null ? parseFloat(r.bmi).toFixed(1) : '—'}</td>
             <td class="text-xs text-slate-600">${r.oxygenSaturation != null ? `${r.oxygenSaturation}%` : '—'}</td>
             <td class="text-right">
                 <div class="flex items-center justify-end gap-1.5">
