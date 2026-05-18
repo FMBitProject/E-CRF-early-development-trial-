@@ -3,6 +3,7 @@
 
 import { api } from './api.js';
 import { showToast } from './utils.js';
+import { setSiteContext } from './study-select.js';
 
 export async function renderStudyMgmt(container) {
     container.innerHTML = `<div class="flex items-center justify-center p-10 text-slate-400 text-sm">Loading studies…</div>`;
@@ -373,14 +374,21 @@ function attachEvents(container, studies, allUsers) {
     // ─── Switch Study ────────────────────────────────────────
     container.querySelectorAll('.btn-switch-study').forEach(btn => {
         btn.addEventListener('click', () => {
+            const newId = parseInt(btn.dataset.id);
+            const current = api.getCurrentStudy();
             api.setCurrentStudy({
-                id:         parseInt(btn.dataset.id),
+                id:         newId,
                 title:      decodeURIComponent(btn.dataset.title),
                 protocolNo: decodeURIComponent(btn.dataset.protocol),
                 status:     btn.dataset.status,
             });
+            // Clear site context when switching to a different study
+            if (current?.id !== newId) {
+                setSiteContext(null);
+                window.dispatchEvent(new CustomEvent('site-context-changed'));
+            }
             window.dispatchEvent(new CustomEvent('study-changed'));
-            showToast('Study switched', 'success');
+            showToast('Study switched — please select a site', 'success');
             renderStudyMgmt(container);
         });
     });
