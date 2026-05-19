@@ -186,11 +186,12 @@
 
         function completeLogin(data) {
             localStorage.setItem('ecrf_session', JSON.stringify({
-                id:      data.user.id,
-                email:   document.getElementById('email').value.trim().toLowerCase(),
-                name:    data.user.name,
-                role:    data.user.role || 'investigator',
-                loginAt: new Date().toISOString(),
+                id:          data.user.id,
+                email:       document.getElementById('email').value.trim().toLowerCase(),
+                name:        data.user.name,
+                displayName: data.user.displayName ?? null,
+                role:        data.user.role || 'investigator',
+                loginAt:     new Date().toISOString(),
             }));
             window.location.href = 'select.html';
         }

@@ -23,12 +23,13 @@ export async function requireAuth(req, res, next) {
     try {
         const [row] = await db
             .select({
-                expiresAt: sessionTable.expiresAt,
-                userId:    user.id,
-                name:      user.name,
-                email:     user.email,
-                role:      user.role,
-                siteId:    user.siteId,
+                expiresAt:   sessionTable.expiresAt,
+                userId:      user.id,
+                name:        user.name,
+                displayName: user.displayName,
+                email:       user.email,
+                role:        user.role,
+                siteId:      user.siteId,
             })
             .from(sessionTable)
             .innerJoin(user, eq(sessionTable.userId, user.id))
@@ -51,11 +52,12 @@ export async function requireAuth(req, res, next) {
         } catch { /* migration pending — skip lock check */ }
 
         req.user = {
-            id:     row.userId,
-            name:   row.name,
-            email:  row.email,
-            role:   row.role,
-            siteId: row.siteId ?? null,
+            id:          row.userId,
+            name:        row.name,
+            displayName: row.displayName ?? null,
+            email:       row.email,
+            role:        row.role,
+            siteId:      row.siteId ?? null,
         };
         next();
     } catch (err) {

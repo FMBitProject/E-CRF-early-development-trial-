@@ -34,7 +34,7 @@ router.get('/', requireRole('admin'), async (req, res) => {
         // Self-healing: if is_active column doesn't exist yet (first startup race),
         // add it inline and retry rather than returning 500.
         const fetchUsers = () => client`
-            SELECT u.id, u.name, u.email, u.role,
+            SELECT u.id, u.name, u.display_name AS "displayName", u.email, u.role,
                    u.site_id    AS "siteId",
                    u.created_at AS "createdAt",
                    u.is_active  AS "isActive"
@@ -500,6 +500,63 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
         await db.delete(user).where(eq(user.id, targetId));
 
         res.json({ deleted: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── PATCH /api/users/me/profile — any authenticated user updates their own display name ──
+router.patch('/me/profile', async (req, res) => {
+    try {
+        const { displayName } = req.body;
+        if (!displayName || !displayName.trim()) {
+            return res.status(400).json({ error: 'displayName is required' });
+        }
+        const trimmed = displayName.trim();
+        if (trimmed.length > 120) return res.status(400).json({ error: 'Display name must be 120 characters or fewer' });
+
+        await client.unsafe(
+            `UPDATE "user" SET display_name = $1 WHERE id = $2`,
+            [trimmed, req.user.id]
+        );
+
+        await writeAudit(db, {
+            tableName: 'user', recordId: req.user.id, action: 'UPDATE',
+            fieldName: 'display_name', oldValue: null, newValue: trimmed,
+            reason: 'User set their display name',
+            user: req.user, ipAddress: req.ip,
+        });
+
+        res.json({ displayName: trimmed });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── DELETE /api/users/:id/display-name — admin resets a user's display name ──
+router.delete('/:id/display-name', requireRole('admin'), async (req, res) => {
+    try {
+        const targetId = req.params.id;
+        const { reason } = req.body;
+        if (!reason) return res.status(400).json({ error: 'reason is required' });
+
+        const [target] = await db.select({ id: user.id, name: user.name }).from(user)
+            .where(eq(user.id, targetId));
+        if (!target) return res.status(404).json({ error: 'User not found' });
+
+        await client.unsafe(
+            `UPDATE "user" SET display_name = NULL WHERE id = $1`,
+            [targetId]
+        );
+
+        await writeAudit(db, {
+            tableName: 'user', recordId: targetId, action: 'UPDATE',
+            fieldName: 'display_name', oldValue: '(set)', newValue: null,
+            reason,
+            user: req.user, ipAddress: req.ip,
+        });
+
+        res.json({ reset: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

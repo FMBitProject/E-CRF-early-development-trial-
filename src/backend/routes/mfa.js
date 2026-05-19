@@ -135,6 +135,15 @@ router.post('/initiate', async (req, res) => {
 
         const { token, user } = signIn;
 
+        // Fetch displayName from our custom column (Better Auth doesn't know about it)
+        let displayName = null;
+        try {
+            const [uRow] = await client.unsafe(
+                `SELECT display_name FROM "user" WHERE id = $1`, [user.id]
+            );
+            displayName = uRow?.display_name ?? null;
+        } catch { /* column may not exist yet on first boot; safe to ignore */ }
+
         // Check if TOTP is enabled for this user
         const totpRow = await getTotpRow(user.id);
         if (totpRow?.is_enabled) {
@@ -151,10 +160,11 @@ router.post('/initiate', async (req, res) => {
                 identifier: `mfa:${normalizedEmail}`,
                 value:      JSON.stringify({
                     tempToken,
-                    authToken: token,
-                    userId:    user.id,
-                    name:      user.name,
-                    role:      user.role ?? 'investigator',
+                    authToken:   token,
+                    userId:      user.id,
+                    name:        user.name,
+                    displayName,
+                    role:        user.role ?? 'investigator',
                 }),
                 expiresAt,
             });
@@ -175,7 +185,7 @@ router.post('/initiate', async (req, res) => {
         res.json({
             status: 'authenticated',
             token,
-            user: { id: user.id, name: user.name, role: user.role ?? 'investigator' },
+            user: { id: user.id, name: user.name, displayName, role: user.role ?? 'investigator' },
         });
 
     } catch (err) {
@@ -203,7 +213,7 @@ router.post('/totp-verify', async (req, res) => {
             return res.status(401).json({ error: 'Session expired. Please sign in again.' });
         }
 
-        const { authToken, userId, name, role } = JSON.parse(record.value);
+        const { authToken, userId, name, displayName, role } = JSON.parse(record.value);
 
         // Fetch TOTP secret
         const totpRow = await getTotpRow(userId);
@@ -248,7 +258,7 @@ router.post('/totp-verify', async (req, res) => {
             maxAge:   SESSION_MAX_AGE * 1000,
         });
 
-        res.json({ token: authToken, user: { id: userId, name, role: role ?? 'investigator' } });
+        res.json({ token: authToken, user: { id: userId, name, displayName: displayName ?? null, role: role ?? 'investigator' } });
 
     } catch (err) {
         console.error('TOTP verify error:', err.message);

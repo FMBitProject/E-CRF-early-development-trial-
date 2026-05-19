@@ -125,7 +125,9 @@ function renderSidebar(currentRoute) {
         </a>`;
     }).join('');
 
-    const initials = user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+    const displayName = user.displayName || user.name;
+    const firstName   = displayName.split(' ')[0];
+    const initials    = displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
     const rc = ROLE_CONFIG[user.role] || { label: user.role, cls: 'bg-slate-500' };
     const siteCtx = getSiteContext();
     const siteLine = (siteCtx && siteCtx.status !== 'Inactive')
@@ -152,7 +154,8 @@ function renderSidebar(currentRoute) {
                 ${initials}
             </div>
             <div class="min-w-0 flex-1">
-                <p class="text-white text-xs font-semibold truncate leading-tight">${user.name}</p>
+                <p class="text-blue-200 text-xs leading-none">Hello,</p>
+                <p class="text-white text-xs font-semibold truncate leading-tight mt-0.5">${firstName}</p>
                 <p class="text-blue-300 text-xs leading-none mt-0.5">${rc.label}</p>
                 ${siteLine}
             </div>
@@ -538,7 +541,7 @@ let _appReady = false;
 
 function navigateByState() {
     const { hasStudy, hasSite } = getAppState();
-    if (!hasStudy || !hasSite) {
+    if (!hasStudy || !hasSite || !user.displayName) {
         window.location.replace('select.html');
         return;
     }
@@ -567,9 +570,9 @@ window.addEventListener('site-context-changed', () => {
     }
 });
 
-// If no study+site context yet, redirect to the selection page
+// If no study+site context, or display name not yet set → redirect to selection/name page
 const _initState = getAppState();
-if (!_initState.hasStudy || !_initState.hasSite) {
+if (!_initState.hasStudy || !_initState.hasSite || !user.displayName) {
     window.location.replace('select.html');
     throw new Error('Redirecting to study/site selection');
 }

@@ -82,8 +82,11 @@ function renderList(users) {
               ${initials}
             </div>
             <div class="min-w-0">
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 flex-wrap">
                 <p class="font-semibold text-slate-800 text-sm truncate">${u.name}</p>
+                ${u.displayName && u.displayName !== u.name
+                    ? `<span class="text-xs text-slate-400 italic truncate max-w-[140px]" title="Display name">"${u.displayName}"</span>`
+                    : ''}
                 <span class="text-xs px-1.5 py-0.5 rounded-full font-medium ${rc.cls}">${rc.label}</span>
                 ${u.isActive === false ? '<span class="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">Deactivated</span>' : ''}
               </div>
@@ -232,6 +235,24 @@ window.umEditUser = async (userId) => {
         body: `
       <div class="space-y-5">
         <p class="text-xs text-slate-400">${u.email}</p>
+        <!-- Display Name -->
+        <div class="border border-slate-100 rounded-lg p-4 space-y-2">
+          <p class="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+            <i data-lucide="badge-check" class="w-4 h-4 text-blue-500"></i> Display Name
+          </p>
+          ${u.displayName
+            ? `<div class="flex items-center gap-3">
+                 <p class="text-sm text-slate-700 flex-1">
+                   <span class="font-medium">${u.displayName}</span>
+                   <span class="text-xs text-slate-400 ml-1">— set by user</span>
+                 </p>
+                 <button onclick="window.umResetDisplayName('${u.id}','${(u.displayName ?? '').replace(/'/g, "\\'")}')"
+                   class="ph-btn ph-btn-ghost text-xs text-amber-600 hover:bg-amber-50 flex items-center gap-1">
+                   <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Reset
+                 </button>
+               </div>`
+            : `<p class="text-xs text-slate-400 italic">No display name set — user will be prompted on next login session.</p>`}
+        </div>
         <!-- Role -->
         <div class="border border-slate-100 rounded-lg p-4 space-y-3">
           <p class="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
@@ -474,6 +495,24 @@ window.umDeactivate = async (userId, userName) => {
             body: JSON.stringify({ reason }),
         });
         showToast(`${userName} deactivated`, 'success');
+        _users = await api.request('/api/users');
+        renderList(_users);
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+};
+
+// ── Reset display name (admin clears it; user will be prompted again next session) ──
+window.umResetDisplayName = async (userId, currentName) => {
+    const reason = prompt(`Reset display name for this user?\n\nCurrent name: "${currentName}"\n\nThe user will be prompted to re-enter their name on next login.\n\nReason (required):`);
+    if (!reason) return;
+    try {
+        await api.request(`/api/users/${userId}/display-name`, {
+            method: 'DELETE',
+            body: JSON.stringify({ reason }),
+        });
+        showToast('Display name reset — user will be prompted on next login', 'success');
+        closeModal();
         _users = await api.request('/api/users');
         renderList(_users);
     } catch (err) {
