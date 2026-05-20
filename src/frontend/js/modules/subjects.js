@@ -559,8 +559,13 @@ export async function renderSubjectDetail(id) {
         const titleEl = document.getElementById('crf-panel-title');
         const bodyEl  = document.getElementById('crf-panel-body');
         const entries = (window._allEntries || []).filter(e => e.visit_id === Number(visitId));
-        const fms     = window._availableForms || [];
         const u       = api.getCurrentUser();
+
+        // Filter forms to only those assigned to this visit; fallback to all if none assigned
+        const visit     = (window._currentSubject?.visits || []).find(v => v.id === Number(visitId));
+        const assignedIds = visit?.form_ids?.length ? visit.form_ids : null;
+        const allForms  = window._availableForms || [];
+        const fms       = assignedIds ? allForms.filter(f => assignedIds.includes(f.id)) : allForms;
 
         titleEl.textContent = `${visitName} — Case Report Forms`;
         panelEl.classList.remove('hidden');
@@ -572,6 +577,18 @@ export async function renderSubjectDetail(id) {
             Draft:         'badge badge-draft',
             'Not Started': 'badge bg-slate-100 text-slate-500',
         };
+
+        if (fms.length === 0) {
+            bodyEl.innerHTML = `
+            <div class="py-10 text-center text-slate-400 text-sm">
+                <i data-lucide="clipboard-x" class="w-8 h-8 mx-auto mb-2 opacity-30"></i>
+                <p class="font-medium text-slate-500">No CRF forms assigned to this visit.</p>
+                <p class="text-xs mt-1">Assign forms via Visit Templates or the visit settings.</p>
+            </div>`;
+            lucide.createIcons();
+            panelEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            return;
+        }
 
         bodyEl.innerHTML = `<div class="overflow-x-auto">
         <table class="min-w-full">
@@ -637,8 +654,9 @@ export async function renderSubjectDetail(id) {
 
 function renderVisitRow(v, forms, allEntries, canManageVisit) {
     const visitEntries   = allEntries.filter(e => e.visit_id === v.id);
-    const completedCount = visitEntries.filter(e => e.status === 'Submitted' || e.status === 'Locked').length;
-    const total          = forms.length;
+    const visitForms     = v.form_ids?.length ? forms.filter(f => v.form_ids.includes(f.id)) : forms;
+    const completedCount = visitEntries.filter(e => (e.status === 'Submitted' || e.status === 'Locked') && visitForms.some(f => f.id === e.form_id)).length;
+    const total          = visitForms.length;
     const crfColor       = completedCount === 0
         ? 'text-slate-400'
         : completedCount === total
@@ -779,6 +797,23 @@ window.openAddVisitModal = function () {
             </div>
 
             <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Assign CRF Forms</label>
+                ${(() => {
+                    const availForms = window._availableForms || [];
+                    if (!availForms.length) return `<p class="text-xs text-slate-400 italic">No active CRF forms available. Create forms in Form Builder first.</p>`;
+                    return `<div class="border border-slate-200 rounded-md overflow-hidden divide-y divide-slate-100 max-h-36 overflow-y-auto">
+                        ${availForms.map(f => `
+                        <label class="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm">
+                            <input type="checkbox" name="av-form" value="${f.id}" class="rounded border-slate-300 text-blue-600">
+                            <span class="flex-1 text-slate-700">${esc(f.form_name)}</span>
+                            <span class="text-xs text-slate-400 font-mono">v${esc(f.version)}</span>
+                        </label>`).join('')}
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1">Leave all unchecked to show all available forms for this visit.</p>`;
+                })()}
+            </div>
+
+            <div>
                 <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Investigator Notes</label>
                 <textarea id="av-notes" rows="2"
                     placeholder="Optional: clinical observations, protocol deviations noted, etc."
@@ -861,6 +896,8 @@ window.submitAddVisit = async function () {
 
     const visit_name  = code === 'CUS' ? nameIn : (tpl?.name || 'Unscheduled Visit');
     const visit_order = tpl?.order ?? 99;
+    const formIds     = [...document.querySelectorAll('input[name="av-form"]:checked')]
+                            .map(el => Number(el.value));
 
     try {
         await api.createVisit(subject.id, {
@@ -873,6 +910,7 @@ window.submitAddVisit = async function () {
             status,
             missed_reason: missedR || null,
             notes:         notes   || null,
+            formIds,
         });
         closeModal();
         showToast(`Visit "${visit_name}" added to schedule.`, 'success');

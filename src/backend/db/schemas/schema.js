@@ -316,6 +316,7 @@ export const visits = pgTable('visits', {
     missedReason:     text('missed_reason'),
     notes:            text('notes'),
     createdByName:    text('created_by_name'),
+    formIds:          integer('form_ids').array().notNull().default([]),
     status:           visitStatusEnum('status').notNull().default('Scheduled'),
     createdAt:        timestamp('created_at').notNull().defaultNow(),
     updatedAt:        timestamp('updated_at').notNull().defaultNow(),

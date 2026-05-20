@@ -44,7 +44,7 @@ router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) =>
         const subjectId = parseInt(req.params.subjectId);
         const {
             visitName, visitOrder, visitType, plannedDate, actualDate,
-            windowDays, status, missedReason, notes,
+            windowDays, status, missedReason, notes, formIds,
         } = req.body;
         if (!visitName) return res.status(400).json({ error: 'visitName is required' });
 
@@ -68,6 +68,7 @@ router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) =>
             missedReason:    missedReason ?? null,
             notes:           notes        ?? null,
             createdByName:   req.user.name,
+            formIds:         Array.isArray(formIds) ? formIds.map(Number) : [],
             status:          status ?? 'Scheduled',
         }).returning();
 
@@ -88,7 +89,7 @@ router.patch('/:id', requireRole('investigator', 'cra', 'pi', 'admin'), async (r
     try {
         const {
             visitName, visitOrder, visitType, plannedDate, actualDate,
-            windowDays, status, missedReason, notes, reason,
+            windowDays, status, missedReason, notes, reason, formIds,
         } = req.body;
 
         const [existing] = await db.select().from(visits)
@@ -118,6 +119,7 @@ router.patch('/:id', requireRole('investigator', 'cra', 'pi', 'admin'), async (r
                 windowCompliance,
                 missedReason:    missedReason    ?? existing.missedReason,
                 notes:           notes           ?? existing.notes,
+                formIds:         Array.isArray(formIds) ? formIds.map(Number) : existing.formIds,
                 status:          status          ?? existing.status,
                 updatedAt:       new Date(),
             })

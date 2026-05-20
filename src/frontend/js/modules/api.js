@@ -93,6 +93,7 @@ function mapVisit(v) {
         missed_reason:    v.missedReason ?? null,
         notes:            v.notes       ?? null,
         status,
+        form_ids:         Array.isArray(v.formIds) ? v.formIds : [],
         created_by_name:  v.createdByName ?? '',
         created_at:       v.createdAt,
         updated_at:       v.updatedAt,
@@ -317,6 +318,7 @@ export const api = {
             status,
             missedReason: payload.missed_reason,
             notes:        payload.notes,
+            formIds:      payload.formIds ?? [],
         };
         const created = await apiFetch(`/api/subjects/${subjectId}/visits`, {
             method: 'POST',

@@ -219,14 +219,15 @@ router.post('/:id/generate/:subjectId', requireRole('admin', 'pi', 'investigator
 
             const windowDays = (item.window_days_before ?? 3) + (item.window_days_after ?? 3);
 
+            const itemFormIds = Array.isArray(item.form_ids) ? item.form_ids.filter(Boolean) : [];
             const [visit] = await client`
                 INSERT INTO visits
                     (subject_id, visit_name, visit_order, visit_type, planned_date,
-                     window_days, study_day, status, created_by_name, created_at, updated_at)
+                     window_days, study_day, form_ids, status, created_by_name, created_at, updated_at)
                 VALUES (${subjectId}, ${item.visit_name}, ${item.visit_order},
                         ${item.visit_type ?? 'Scheduled'}, ${plannedDate},
                         ${windowDays}, ${item.study_day ?? null},
-                        'Scheduled', ${req.user.name}, NOW(), NOW())
+                        ${itemFormIds}, 'Scheduled', ${req.user.name}, NOW(), NOW())
                 RETURNING *`;
             created.push(visit);
         }
