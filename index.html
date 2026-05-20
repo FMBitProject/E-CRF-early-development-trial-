@@ -24,9 +24,7 @@
                 </div>
             </div>
 
-            <!-- User info -->
-            <div id="sidebar-user" class="flex-shrink-0" style="border-bottom:1px solid rgba(255,255,255,0.07)"></div>
-
+            <div id="sidebar-user" class="hidden"></div>
             <div id="sidebar-site-context" class="hidden"></div>
 
             <!-- Scroll wrapper -->
@@ -63,7 +61,10 @@
             <header class="bg-white h-14 flex items-center px-5 flex-shrink-0" style="border-bottom:1px solid #D8E0EE; box-shadow:0 1px 3px rgba(10,46,92,0.06)">
                 <div id="breadcrumb" class="flex items-center gap-1.5 text-sm text-slate-500 min-w-0">
                     </div>
-                <div class="ml-auto flex items-center gap-3" id="header-actions">
+                <div class="ml-auto flex items-center gap-2" id="header-actions">
+                    <!-- User identity -->
+                    <div id="header-user" class="flex items-center gap-2.5"></div>
+                    <div class="w-px h-5 bg-slate-200 flex-shrink-0"></div>
                     <!-- Notification Bell -->
                     <div class="relative" id="notif-bell-wrap">
                       <button id="notif-bell-btn" onclick="window.toggleNotifPanel()" title="Alerts & Notifications"

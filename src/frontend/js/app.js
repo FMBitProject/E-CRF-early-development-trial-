@@ -74,9 +74,9 @@ function getAppState() {
 
 // ---- Sidebar ----
 function renderSidebar(currentRoute) {
-    const nav      = document.getElementById('sidebar-nav');
-    const userArea = document.getElementById('sidebar-user');
-    if (!nav || !userArea) return;
+    const nav        = document.getElementById('sidebar-nav');
+    const headerUser = document.getElementById('header-user');
+    if (!nav) return;
 
     const { hasStudy, hasSite } = getAppState();
     let visible;
@@ -92,6 +92,8 @@ function renderSidebar(currentRoute) {
 
     const siteChipEl = document.getElementById('sidebar-site-context');
     if (siteChipEl) siteChipEl.innerHTML = '';
+    const userArea = document.getElementById('sidebar-user');
+    if (userArea) userArea.innerHTML = '';
 
     nav.innerHTML = visible.map(item => {
         const isActive = currentRoute === item.id;
@@ -116,45 +118,44 @@ function renderSidebar(currentRoute) {
     const siteCtx = getSiteContext();
     const study   = api.getCurrentStudy();
 
-    const contextRow = (() => {
+    if (headerUser) {
         const hasStudy = study && study.status === 'Active';
         const hasSite  = siteCtx && siteCtx.status !== 'Inactive';
-        if (!hasStudy && !hasSite) return '';
-        return `
-        <div class="mt-1 flex items-center gap-1 min-w-0">
-            ${hasStudy ? `<i data-lucide="flask-conical" class="w-2.5 h-2.5 text-emerald-400 flex-shrink-0"></i>
-            <span class="text-blue-200 text-[10px] font-medium truncate" style="max-width:90px">${study.title}</span>` : ''}
-            ${hasStudy && hasSite ? `<span class="text-blue-600 text-[10px] flex-shrink-0">·</span>` : ''}
-            ${hasSite ? `<i data-lucide="building-2" class="w-2.5 h-2.5 text-blue-400 flex-shrink-0"></i>
-            <span class="text-blue-300 text-[10px] truncate flex-shrink-0">${siteCtx.siteCode ?? siteCtx.siteName}</span>` : ''}
-            ${hasStudy && ['admin'].includes(user.role) ? `
-            <button onclick="window.appSwitchStudy()" title="Switch Study"
-                class="ml-auto p-0.5 text-blue-500 hover:text-white transition flex-shrink-0">
-                <i data-lucide="repeat-2" class="w-2.5 h-2.5"></i>
-            </button>` : ''}
-        </div>`;
-    })();
+        const siteFull = hasSite
+            ? (siteCtx.siteCode && siteCtx.siteName ? `${siteCtx.siteCode} – ${siteCtx.siteName}` : siteCtx.siteName ?? siteCtx.siteCode)
+            : '';
+        const contextPart = (hasStudy || hasSite) ? `
+            <div class="flex items-center gap-1.5 text-xs text-slate-500 leading-none">
+                ${hasStudy ? `<i data-lucide="flask-conical" class="w-3 h-3 text-emerald-500 flex-shrink-0"></i><span class="font-medium text-slate-700">${study.title}</span>` : ''}
+                ${hasStudy && hasSite ? `<span class="text-slate-300">·</span>` : ''}
+                ${hasSite ? `<i data-lucide="building-2" class="w-3 h-3 text-blue-400 flex-shrink-0"></i><span>${siteFull}</span>` : ''}
+                ${hasStudy && ['admin'].includes(user.role) ? `
+                <button onclick="window.appSwitchStudy()" title="Switch Study"
+                    class="ml-0.5 p-0.5 text-slate-400 hover:text-blue-600 rounded transition">
+                    <i data-lucide="repeat-2" class="w-3 h-3"></i>
+                </button>` : ''}
+            </div>` : '';
 
-    userArea.innerHTML = `
-    <div class="px-3 py-2.5">
-        <div class="flex items-center gap-2">
+        headerUser.innerHTML = `
+        <div class="flex items-center gap-2.5">
+            ${contextPart ? `<div class="text-right hidden md:flex flex-col gap-0.5 items-end">
+                ${contextPart}
+                <p class="text-[10px] text-slate-400 leading-none">${rc.label}</p>
+            </div>` : `<p class="text-xs text-slate-500 hidden md:block">${rc.label}</p>`}
             <div class="w-7 h-7 rounded-md ${rc.cls} flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 uppercase">${initials}</div>
-            <div class="min-w-0 flex-1">
-                <p class="text-white text-xs font-semibold leading-tight truncate">${firstName}</p>
-                <p class="text-blue-300 text-[10px] leading-tight mt-0.5">${rc.label}</p>
-                ${contextRow}
+            <div class="hidden lg:block">
+                <p class="text-xs font-semibold text-slate-700 leading-tight">${firstName}</p>
             </div>
             <button onclick="window.appSecuritySettings()" title="Security Settings"
-                class="p-1 text-blue-400 hover:text-white hover:bg-white/10 rounded transition flex-shrink-0">
-                <i data-lucide="shield" class="w-3 h-3"></i>
+                class="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition flex-shrink-0">
+                <i data-lucide="shield" class="w-3.5 h-3.5"></i>
             </button>
             <button onclick="window.appLogout()" title="Sign Out"
-                class="p-1 text-blue-400 hover:text-white hover:bg-white/10 rounded transition flex-shrink-0">
-                <i data-lucide="log-out" class="w-3 h-3"></i>
+                class="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition flex-shrink-0">
+                <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
             </button>
-        </div>
-    </div>
-    `;
+        </div>`;
+    }
 
     lucide.createIcons();
 }
