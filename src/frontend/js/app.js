@@ -148,7 +148,7 @@ function renderSidebar(currentRoute) {
         : '';
 
     userArea.innerHTML = `
-    <div class="px-2 pt-2">
+    <div class="px-2 py-2">
         <div class="flex items-center gap-2.5">
             <div class="w-8 h-8 rounded-md ${rc.cls} flex items-center justify-center text-white text-xs font-bold flex-shrink-0 uppercase">
                 ${initials}

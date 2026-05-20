@@ -22,7 +22,9 @@ router.get('/stats', async (req, res) => {
             db.select({ active: count() }).from(subjects).where(and(eq(subjects.studyId, sid), eq(subjects.status, 'Active'))),
             db.select({ pending: count() }).from(crfDataEntries).where(eq(crfDataEntries.status, 'Draft')),
             db.select({ open: count() }).from(queries).where(and(eq(queries.studyId, sid), eq(queries.status, 'Open'))),
-            db.select({ total: count() }).from(visits),
+            db.select({ total: count() }).from(visits)
+              .innerJoin(subjects, eq(visits.subjectId, subjects.id))
+              .where(eq(subjects.studyId, sid)),
             db.select({
                 id:        auditTrails.id,
                 action:    auditTrails.action,
