@@ -8,6 +8,13 @@
       "when": 1778163155864,
       "tag": "0000_daffy_carnage",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779257926747,
+      "tag": "0001_simple_next_avengers",
+      "breakpoints": true
     }
   ]
 }
