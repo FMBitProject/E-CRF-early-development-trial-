@@ -90,36 +90,20 @@ function renderSidebar(currentRoute) {
         visible = NAV_ITEMS.filter(item => item.roles.includes(user.role));
     }
 
-    // Populate site chip between logo and nav
     const siteChipEl = document.getElementById('sidebar-site-context');
-    if (siteChipEl) {
-        const siteCtxForChip = getSiteContext();
-        if (siteCtxForChip && siteCtxForChip.status !== 'Inactive') {
-            siteChipEl.innerHTML = `
-            <div style="background:rgba(34,197,94,0.13);border:1px solid rgba(34,197,94,0.28);border-radius:7px;padding:0.45rem 0.6rem;">
-                <div style="display:flex;align-items:center;gap:0.4rem;">
-                    <i data-lucide="building-2" style="width:0.75rem;height:0.75rem;color:#4ade80;flex-shrink:0;"></i>
-                    <span style="color:#86efac;font-size:0.7rem;font-weight:700;letter-spacing:0.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${siteCtxForChip.siteCode ?? ''}</span>
-                </div>
-                ${siteCtxForChip.siteName ? `<p style="color:#bbf7d0;font-size:0.68rem;margin-top:0.15rem;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${siteCtxForChip.siteName}</p>` : ''}
-            </div>`;
-            lucide.createIcons({ nodes: [siteChipEl] });
-        } else {
-            siteChipEl.innerHTML = '';
-        }
-    }
+    if (siteChipEl) siteChipEl.innerHTML = '';
 
     nav.innerHTML = visible.map(item => {
         const isActive = currentRoute === item.id;
         const badge = item.id === 'queries' ? getOpenQueryBadge() : '';
         return `
         <a href="#${item.id}"
-            class="nav-link flex items-center gap-3 px-3 py-2 rounded-md text-xs font-medium transition mb-0.5 ${
+            class="nav-link flex items-center gap-2.5 px-3 py-1.5 rounded-md text-xs font-medium transition mb-0.5 ${
                 isActive
                     ? 'nav-active text-white'
                     : 'text-blue-200 hover:text-white'
             }">
-            <i data-lucide="${item.icon}" class="w-4 h-4 flex-shrink-0 opacity-80"></i>
+            <i data-lucide="${item.icon}" class="w-3.5 h-3.5 flex-shrink-0 opacity-75"></i>
             <span class="flex-1 tracking-wide">${item.label}</span>
             ${badge}
         </a>`;
@@ -128,47 +112,47 @@ function renderSidebar(currentRoute) {
     const displayName = user.displayName || user.name;
     const firstName   = displayName.split(' ')[0];
     const initials    = displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-    const rc = ROLE_CONFIG[user.role] || { label: user.role, cls: 'bg-slate-500' };
+    const rc      = ROLE_CONFIG[user.role] || { label: user.role, cls: 'bg-slate-500' };
     const siteCtx = getSiteContext();
-    const siteLine = (siteCtx && siteCtx.status !== 'Inactive')
-        ? `<p class="text-blue-400 text-xs leading-none mt-0.5 truncate flex items-center gap-1">
-               <i data-lucide="building-2" class="w-2.5 h-2.5 inline flex-shrink-0"></i>${siteCtx.siteCode ? `${siteCtx.siteCode} – ${siteCtx.siteName}` : siteCtx.siteName}
-           </p>`
-        : '';
+    const study   = api.getCurrentStudy();
 
-    const study = api.getCurrentStudy();
-    const studyLine = (study && study.status === 'Active')
-        ? `<div class="mt-2 mx-2 mb-0 px-2 py-1.5 rounded-md bg-white/10 flex items-center gap-1.5 min-w-0">
-               <i data-lucide="flask-conical" class="w-3 h-3 text-blue-300 flex-shrink-0"></i>
-               <span class="text-blue-100 text-xs truncate flex-1 leading-tight font-medium">${study.title}</span>
-               ${['admin'].includes(user.role) ? `<button onclick="window.appSwitchStudy()" title="Switch Study" class="p-0.5 text-blue-300 hover:text-white transition flex-shrink-0">
-                   <i data-lucide="repeat-2" class="w-3 h-3"></i>
-               </button>` : ''}
-           </div>`
-        : '';
+    const contextRow = (() => {
+        const hasStudy = study && study.status === 'Active';
+        const hasSite  = siteCtx && siteCtx.status !== 'Inactive';
+        if (!hasStudy && !hasSite) return '';
+        return `
+        <div class="mt-1 flex items-center gap-1 min-w-0">
+            ${hasStudy ? `<i data-lucide="flask-conical" class="w-2.5 h-2.5 text-emerald-400 flex-shrink-0"></i>
+            <span class="text-blue-200 text-[10px] font-medium truncate" style="max-width:90px">${study.title}</span>` : ''}
+            ${hasStudy && hasSite ? `<span class="text-blue-600 text-[10px] flex-shrink-0">·</span>` : ''}
+            ${hasSite ? `<i data-lucide="building-2" class="w-2.5 h-2.5 text-blue-400 flex-shrink-0"></i>
+            <span class="text-blue-300 text-[10px] truncate flex-shrink-0">${siteCtx.siteCode ?? siteCtx.siteName}</span>` : ''}
+            ${hasStudy && ['admin'].includes(user.role) ? `
+            <button onclick="window.appSwitchStudy()" title="Switch Study"
+                class="ml-auto p-0.5 text-blue-500 hover:text-white transition flex-shrink-0">
+                <i data-lucide="repeat-2" class="w-2.5 h-2.5"></i>
+            </button>` : ''}
+        </div>`;
+    })();
 
     userArea.innerHTML = `
-    <div class="px-2 py-2">
-        <div class="flex items-center gap-2.5">
-            <div class="w-8 h-8 rounded-md ${rc.cls} flex items-center justify-center text-white text-xs font-bold flex-shrink-0 uppercase">
-                ${initials}
-            </div>
+    <div class="px-3 py-2.5">
+        <div class="flex items-center gap-2">
+            <div class="w-7 h-7 rounded-md ${rc.cls} flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 uppercase">${initials}</div>
             <div class="min-w-0 flex-1">
-                <p class="text-blue-200 text-xs leading-none">Hello,</p>
-                <p class="text-white text-xs font-semibold truncate leading-tight mt-0.5">${firstName}</p>
-                <p class="text-blue-300 text-xs leading-none mt-0.5">${rc.label}</p>
-                ${siteLine}
+                <p class="text-white text-xs font-semibold leading-tight truncate">${firstName}</p>
+                <p class="text-blue-300 text-[10px] leading-tight mt-0.5">${rc.label}</p>
+                ${contextRow}
             </div>
             <button onclick="window.appSecuritySettings()" title="Security Settings"
-                class="p-1.5 text-blue-300 hover:text-white hover:bg-white/10 rounded-md transition flex-shrink-0">
-                <i data-lucide="shield" class="w-3.5 h-3.5"></i>
+                class="p-1 text-blue-400 hover:text-white hover:bg-white/10 rounded transition flex-shrink-0">
+                <i data-lucide="shield" class="w-3 h-3"></i>
             </button>
             <button onclick="window.appLogout()" title="Sign Out"
-                class="p-1.5 text-blue-300 hover:text-white hover:bg-white/10 rounded-md transition flex-shrink-0">
-                <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+                class="p-1 text-blue-400 hover:text-white hover:bg-white/10 rounded transition flex-shrink-0">
+                <i data-lucide="log-out" class="w-3 h-3"></i>
             </button>
         </div>
-        ${studyLine}
     </div>
     `;
 
