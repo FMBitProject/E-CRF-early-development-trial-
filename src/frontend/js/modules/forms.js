@@ -302,7 +302,7 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
                     <select id="esign-meaning" class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
                         <option value="I certify that the data entered in this CRF is accurate, complete, and consistent with the source documents.">I certify the data is accurate, complete, and consistent with source documents.</option>
                         <option value="I have reviewed and approve this CRF data entry as Investigator of Record.">I have reviewed and approve this CRF data entry as Investigator of Record.</option>
-                        <option value="I certify that I entered this data in accordance with the study protocol and GCP guidelines.">I entered this data per study protocol and ICH GCP E6(R2) guidelines.</option>
+                        <option value="I certify that I entered this data in accordance with the study protocol and GCP guidelines.">I entered this data per study protocol and ICH GCP E6(R3) guidelines.</option>
                     </select>
                 </div>
                 <div>

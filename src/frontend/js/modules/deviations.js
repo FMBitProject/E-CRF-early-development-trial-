@@ -1,5 +1,5 @@
 // ============================================================
-// Protocol Deviations View — ICH GCP E6(R2) §8.3
+// Protocol Deviations View — ICH GCP E6(R3) §8.3
 // ============================================================
 
 import { api } from './api.js';
@@ -76,7 +76,7 @@ export async function renderDeviations(filters = {}) {
         <div class="flex items-center justify-between gap-3">
             <div>
                 <h2 class="text-xl font-bold text-slate-900">Protocol Deviations</h2>
-                <p class="text-xs text-slate-500 mt-0.5">ICH GCP E6(R2) — deviations, root cause analysis, CAPA tracking</p>
+                <p class="text-xs text-slate-500 mt-0.5">ICH GCP E6(R3) — deviations, root cause analysis, CAPA tracking</p>
             </div>
             ${canCreate ? `
             <button onclick="openDevForm()"
@@ -248,7 +248,7 @@ window.openDevForm = function(devId = null) {
         <div class="space-y-4">
             <div class="flex items-start gap-2.5 p-3 rounded-md border text-xs" style="background:#EBF2FD;border-color:#BFD7F5;color:#1554A0">
                 <i data-lucide="info" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
-                ICH GCP E6(R2): Major deviations must be reported to IRB/EC and Sponsor. Root cause and CAPA documentation required.
+                ICH GCP E6(R3): Major deviations must be reported to IRB/EC and Sponsor. Root cause and CAPA documentation required.
             </div>
 
             <div class="grid grid-cols-3 gap-3">

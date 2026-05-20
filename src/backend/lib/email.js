@@ -41,7 +41,7 @@ export async function sendQueryRaisedEmail(toEmail, toName, { subjectCode, query
         <p style="margin:0;color:#64748B;font-size:13px">Please log in to the E-CRF system to review and respond to this query.</p>
       </td></tr>
       <tr><td style="padding:16px 32px;border-top:1px solid #E2E8F0">
-        <p style="margin:0;color:#94A3B8;font-size:11px">FDA 21 CFR Part 11 · ICH GCP E6 (R2) · Secure & Encrypted</p>
+        <p style="margin:0;color:#94A3B8;font-size:11px">FDA 21 CFR Part 11 · ICH GCP E6 (R3) · Secure & Encrypted</p>
       </td></tr>
     </table>
   </td></tr>
@@ -76,7 +76,7 @@ export async function sendQueryResolvedEmail(toEmail, toName, { subjectCode, que
         <p style="margin:0;color:#64748B;font-size:13px">Please log in to review and close this query if the response is satisfactory.</p>
       </td></tr>
       <tr><td style="padding:16px 32px;border-top:1px solid #E2E8F0">
-        <p style="margin:0;color:#94A3B8;font-size:11px">FDA 21 CFR Part 11 · ICH GCP E6 (R2) · Secure & Encrypted</p>
+        <p style="margin:0;color:#94A3B8;font-size:11px">FDA 21 CFR Part 11 · ICH GCP E6 (R3) · Secure & Encrypted</p>
       </td></tr>
     </table>
   </td></tr>
@@ -273,7 +273,7 @@ export async function sendOTPEmail(toEmail, toName, otp) {
       </tr>
       <tr>
         <td style="padding:16px 32px;border-top:1px solid #E2E8F0">
-          <p style="margin:0;color:#94A3B8;font-size:11px">FDA 21 CFR Part 11 · ICH GCP E6 (R2) · Secure & Encrypted</p>
+          <p style="margin:0;color:#94A3B8;font-size:11px">FDA 21 CFR Part 11 · ICH GCP E6 (R3) · Secure & Encrypted</p>
         </td>
       </tr>
     </table>

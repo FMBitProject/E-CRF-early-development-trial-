@@ -20,7 +20,7 @@ const VISIT_STATUS_BADGE = {
     Missed:       'badge badge-withdrawn',
 };
 
-// GCP Protocol Visit Templates — ICH E6 (R2)
+// GCP Protocol Visit Templates — ICH E6 (R3)
 const VISIT_TEMPLATES = [
     { code: 'V01', name: 'Screening',             order: 1,  study_day: -7,  window_days: 7,  type: 'Scheduled' },
     { code: 'V02', name: 'Baseline / Day 1',       order: 2,  study_day: 1,   window_days: 0,  type: 'Scheduled' },
@@ -239,7 +239,7 @@ window.openIECriteriaModal = function openIECriteriaModal() {
         <div class="space-y-5">
             <div class="flex items-start gap-2.5 p-3 rounded-md border text-xs" style="background:#EBF2FD;border-color:#BFD7F5;color:#1554A0">
                 <i data-lucide="info" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
-                Verify all criteria before enrolling the subject. Failed criteria will automatically set status to <strong>Screen Failed</strong> per ICH GCP E6(R2) §4.3.
+                Verify all criteria before enrolling the subject. Failed criteria will automatically set status to <strong>Screen Failed</strong> per ICH GCP E6(R3) §4.3.
             </div>
             <div>
                 <p class="text-xs font-bold text-emerald-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
@@ -305,7 +305,7 @@ async function openSubjectDemographicsModal(iePasses) {
     const failWarning = !iePasses ? `
     <div class="flex items-start gap-2.5 p-3 rounded-md border text-xs" style="background:#FEF2F2;border-color:#FECACA;color:#991B1B">
         <i data-lucide="alert-triangle" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
-        <strong>Screen Failure:</strong>&nbsp;Subject failed I/E criteria. They will be enrolled with status <strong>Screen Failed</strong> for documentation purposes per ICH GCP E6(R2) §8.3.
+        <strong>Screen Failure:</strong>&nbsp;Subject failed I/E criteria. They will be enrolled with status <strong>Screen Failed</strong> for documentation purposes per ICH GCP E6(R3) §8.3.
     </div>` : `
     <div class="flex items-start gap-2.5 p-3 rounded-md border text-xs" style="background:#F0FDF4;border-color:#A7F3D0;color:#065F46">
         <i data-lucide="check-circle" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
@@ -713,7 +713,7 @@ window.openAddVisitModal = function () {
         <div class="space-y-4">
             <div class="flex items-start gap-2.5 p-3 rounded-md border text-xs" style="background:#EBF2FD;border-color:#BFD7F5;color:#1554A0">
                 <i data-lucide="info" class="w-4 h-4 flex-shrink-0 mt-0.5" style="color:#1554A0"></i>
-                Select a protocol visit template. Planned dates are auto-calculated from the subject&#39;s enrollment date (Day 1 = ${fmt(subject.enrollment_date)}). All entries are audit-logged per ICH GCP E6 (R2).
+                Select a protocol visit template. Planned dates are auto-calculated from the subject&#39;s enrollment date (Day 1 = ${fmt(subject.enrollment_date)}). All entries are audit-logged per ICH GCP E6 (R3).
             </div>
 
             <div>
@@ -854,7 +854,7 @@ window.submitAddVisit = async function () {
         return;
     }
     if (status === 'Missed' && !missedR) {
-        errEl.textContent = 'Reason is required when visit status is Missed (ICH GCP E6 R2 requirement).';
+        errEl.textContent = 'Reason is required when visit status is Missed (ICH GCP E6 R3 requirement).';
         errEl.classList.remove('hidden');
         return;
     }
@@ -1003,7 +1003,7 @@ window.submitEditVisit = async function (visitId) {
         return;
     }
     if (status === 'Missed' && !missedR) {
-        errEl.textContent = 'Missed reason is required per ICH GCP E6 (R2).';
+        errEl.textContent = 'Missed reason is required per ICH GCP E6 (R3).';
         errEl.classList.remove('hidden');
         return;
     }
