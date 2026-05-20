@@ -192,7 +192,7 @@ function renderSubjectRows(subjects) {
 // ============================================================
 // New Subject Modal
 // ============================================================
-// ── Standard I/E Criteria (ICH E6 R2 compliant) ───────────────────────────
+// ── Standard I/E Criteria (ICH E6 R3 compliant) ───────────────────────────
 const IE_CRITERIA = {
     inclusion: [
         { key: 'inc_age',       label: 'Age 18–65 years at time of screening' },
