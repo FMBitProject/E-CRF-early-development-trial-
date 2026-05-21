@@ -599,7 +599,7 @@ window.openInlineQueryModal = function (fieldKey, fieldLabel) {
         </div>`,
         footer: `
         <button onclick="closeModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition">Cancel</button>
-        <button onclick="confirmInlineQuery(${JSON.stringify(fieldKey)}, ${JSON.stringify(fieldLabel)})"
+        <button onclick="confirmInlineQuery('${fieldKey.replace(/'/g, '&#39;')}', '${fieldLabel.replace(/'/g, '&#39;')}')"
             class="px-4 py-2 text-sm font-semibold text-white rounded-md transition flex items-center gap-2" style="background:#1554A0">
             <i data-lucide="message-circle" class="w-4 h-4"></i> Raise Query
         </button>`,

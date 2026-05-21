@@ -940,7 +940,7 @@ window.openEditVisitModal = function (visitId) {
     window._inlineQueryCtx = { subjectId: subject.id, visitId, entryId: null, formId: null };
 
     const qBtn = (key, label) => `<button type="button"
-        onclick="openInlineQueryModal(${JSON.stringify(key)}, ${JSON.stringify(label)})"
+        onclick="openInlineQueryModal('${key}', '${label.replace(/'/g, '&#39;')}')"
         title="Raise a query on this field"
         class="inline-flex items-center justify-center w-4 h-4 rounded-full text-slate-300 hover:text-orange-500 hover:bg-orange-50 transition ml-1 border border-transparent hover:border-orange-200 flex-shrink-0">
         <i data-lucide="message-circle" class="w-3 h-3"></i>
