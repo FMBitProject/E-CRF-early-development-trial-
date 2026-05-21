@@ -155,7 +155,7 @@ export async function renderQueries(filters = {}) {
 function renderQueryRows(queries, user) {
     if (queries.length === 0) return '';
     return queries.map(q => {
-        const canResolve = q.status === 'Open'     && ['investigator', 'pi', 'admin'].includes(user.role);
+        const canResolve = q.status === 'Open'     && ['investigator', 'pi', 'admin', 'crc'].includes(user.role);
         const canClose   = q.status === 'Resolved' && ['cra', 'admin', 'data_manager'].includes(user.role);
 
         return `<tr>
