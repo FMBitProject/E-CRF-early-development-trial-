@@ -24,7 +24,10 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
         return;
     }
 
-    const entries       = await api.getDataEntries(subjectId, visitId);
+    const [entries, allQueries] = await Promise.all([
+        api.getDataEntries(subjectId, visitId),
+        api.getQueries(),
+    ]);
     const existingEntry = entries.find(e => e.form_id === Number(formId));
     const isLocked      = existingEntry?.status === 'Locked';
     const isSigned      = existingEntry?.status === 'Signed';
@@ -32,6 +35,15 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
     const visit         = subject.visits.find(v => v.id === Number(visitId));
     const visitName     = visit?.visit_name || `Visit #${visitId}`;
     const fields        = form.schema_json?.fields || [];
+
+    // Build per-field open-query map for inline query indicators
+    const fieldQueryMap = {};
+    allQueries
+        .filter(q => q.subject_id === Number(subjectId) && q.form_id === Number(formId) && q.status === 'Open')
+        .forEach(q => { if (q.field_key) (fieldQueryMap[q.field_key] = fieldQueryMap[q.field_key] || []).push(q); });
+
+    // Store context for inline query modal
+    window._inlineQueryCtx = { subjectId: Number(subjectId), visitId: Number(visitId), formId: Number(formId), entryId: existingEntry?.id ?? null };
 
     const entryBadge = isLocked
         ? `<span class="badge badge-locked"><i data-lucide="lock" class="w-3 h-3 inline mr-1"></i>Locked</span>`
@@ -95,7 +107,7 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
             </div>
             <form id="crf-form" class="p-6" novalidate>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
-                    ${fields.map(f => renderField(f, existingEntry?.data, isLocked || isSigned)).join('')}
+                    ${fields.map(f => renderField(f, existingEntry?.data, isLocked || isSigned, fieldQueryMap)).join('')}
                 </div>
             </form>
         </div>
@@ -396,18 +408,35 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
     };
 }
 
-function renderField(field, existingData = {}, isLocked = false) {
+function renderField(field, existingData = {}, isLocked = false, fieldQueryMap = {}) {
     const value    = existingData?.[field.key] ?? '';
     const gridCls  = field.grid || 'col-span-1';
     const disabled = isLocked ? 'disabled' : '';
     const baseCls  = `w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm outline-none transition placeholder-slate-300 ph-input
         ${isLocked ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : 'bg-white'}`;
 
-    const label = `<label for="field-${field.key}" class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">
-        ${field.label}
-        ${field.required ? '<span class="text-red-500 ml-0.5">*</span>' : '<span class="text-slate-400 normal-case font-normal text-xs ml-1">(optional)</span>'}
-        ${field.validation?.unit ? `<span class="text-slate-400 font-normal normal-case ml-1">[${field.validation.unit}]</span>` : ''}
-    </label>`;
+    const openQueries   = fieldQueryMap[field.key] || [];
+    const hasOpenQuery  = openQueries.length > 0;
+    const queryBtnTitle = hasOpenQuery ? `${openQueries.length} open query on this field` : 'Raise a query on this field';
+    const queryBtnCls   = hasOpenQuery
+        ? 'text-orange-500 bg-orange-100 hover:bg-orange-200 border border-orange-300'
+        : 'text-slate-300 hover:text-slate-500 hover:bg-slate-100 border border-transparent';
+    const queryBtn = `<button type="button"
+        onclick="openInlineQueryModal('${field.key}', '${field.label.replace(/'/g, "\\'")}')"
+        title="${queryBtnTitle}"
+        class="inline-flex items-center justify-center w-5 h-5 rounded-full transition ml-1.5 flex-shrink-0 ${queryBtnCls}">
+        <i data-lucide="message-circle" class="w-3 h-3"></i>
+    </button>`;
+
+    const label = `<div class="flex items-center mb-1.5">
+        <label for="field-${field.key}" class="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+            ${field.label}
+            ${field.required ? '<span class="text-red-500 ml-0.5">*</span>' : '<span class="text-slate-400 normal-case font-normal text-xs ml-1">(optional)</span>'}
+            ${field.validation?.unit ? `<span class="text-slate-400 font-normal normal-case ml-1">[${field.validation.unit}]</span>` : ''}
+        </label>
+        ${queryBtn}
+        ${hasOpenQuery ? `<span class="ml-1 text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded px-1">${openQueries.length} query</span>` : ''}
+    </div>`;
 
     let input = '';
     switch (field.type) {
@@ -468,3 +497,63 @@ function renderField(field, existingData = {}, isLocked = false) {
         ${hint}
     </div>`;
 }
+
+// ============================================================
+// Inline Query Modal
+// ============================================================
+window.openInlineQueryModal = function (fieldKey, fieldLabel) {
+    const ctx = window._inlineQueryCtx || {};
+    showModal({
+        title: 'Raise Query',
+        size:  'sm',
+        body: `
+        <div class="space-y-3">
+            <div class="flex items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-md">
+                <i data-lucide="tag" class="w-4 h-4 text-slate-400 flex-shrink-0"></i>
+                <span class="text-sm font-semibold text-slate-700">${fieldLabel}</span>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Query / Discrepancy <span class="text-red-500">*</span></label>
+                <textarea id="inline-query-text" rows="4"
+                    placeholder="Describe the discrepancy or question about this field value..."
+                    class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none resize-none"></textarea>
+                <p id="inline-query-err" class="text-xs text-red-500 mt-1 hidden"></p>
+            </div>
+        </div>`,
+        footer: `
+        <button onclick="closeModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition">Cancel</button>
+        <button onclick="confirmInlineQuery('${fieldKey}', '${fieldLabel.replace(/'/g, "\\'")}')"
+            class="px-4 py-2 text-sm font-semibold text-white rounded-md transition flex items-center gap-2" style="background:#1554A0">
+            <i data-lucide="message-circle" class="w-4 h-4"></i> Raise Query
+        </button>`,
+    });
+};
+
+window.confirmInlineQuery = async function (fieldKey, fieldLabel) {
+    const queryText = document.getElementById('inline-query-text')?.value?.trim();
+    const errEl     = document.getElementById('inline-query-err');
+    if (!queryText) {
+        errEl.textContent = 'Please describe the query.';
+        errEl.classList.remove('hidden');
+        return;
+    }
+    const ctx = window._inlineQueryCtx || {};
+    try {
+        await api.raiseQuery({
+            data_entry_id: ctx.entryId,
+            subject_id:    ctx.subjectId,
+            visit_id:      ctx.visitId,
+            form_id:       ctx.formId,
+            field_key:     fieldKey,
+            field_label:   fieldLabel,
+            query_text:    queryText,
+        });
+        closeModal();
+        showToast('Query raised and recorded in audit trail.', 'success');
+        // Re-render form so query indicator updates
+        await renderDataEntry({ subjectId: ctx.subjectId, visitId: ctx.visitId, formId: ctx.formId });
+    } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.remove('hidden');
+    }
+};
