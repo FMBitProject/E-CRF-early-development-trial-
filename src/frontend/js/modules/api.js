@@ -41,6 +41,23 @@ async function apiFetch(path, options = {}) {
     return res.json();
 }
 
+async function apiDownload(path, filename, mimeType) {
+    const studyId = getStudyId();
+    const studyHeader = studyId ? { 'X-Study-ID': studyId } : {};
+    const res = await fetch(path, {
+        credentials: 'include',
+        headers: { ...studyHeader },
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error || 'Export failed');
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(new Blob([await blob.arrayBuffer()], { type: mimeType }));
+    const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+}
+
 // ── Session (localStorage only for user info, auth via cookie) ──
 function currentUser() {
     const s = localStorage.getItem('ecrf_session');
@@ -636,12 +653,12 @@ export const api = {
     },
 
     // ── Export ─────────────────────────────────────────────
-    downloadODM() {
-        window.open('/api/export/odm', '_blank');
+    async downloadODM() {
+        await apiDownload('/api/export/odm', 'export-odm.xml', 'application/xml');
     },
 
-    downloadCSV(domain) {
-        window.open(`/api/export/csv?domain=${domain}`, '_blank');
+    async downloadCSV(domain) {
+        await apiDownload(`/api/export/csv?domain=${domain}`, `export-${domain}.csv`, 'text/csv');
     },
 
     // ── Security / Password ────────────────────────────────
