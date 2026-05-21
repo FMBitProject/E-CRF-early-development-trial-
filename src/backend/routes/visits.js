@@ -161,4 +161,28 @@ router.patch('/:id/status', requireRole('investigator', 'cra', 'pi', 'admin'), a
     }
 });
 
+// DELETE /api/subjects/:subjectId/visits/:id
+router.delete('/:id', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
+    try {
+        const visitId = parseInt(req.params.id);
+        const { reason } = req.body;
+        if (!reason?.trim()) return res.status(400).json({ error: 'reason is required' });
+
+        const [existing] = await db.select().from(visits).where(eq(visits.id, visitId));
+        if (!existing) return res.status(404).json({ error: 'Visit not found' });
+
+        await db.delete(visits).where(eq(visits.id, visitId));
+
+        await writeAudit(db, {
+            tableName: 'visits', recordId: visitId, action: 'DELETE',
+            oldValue: existing.visitName, reason,
+            user: req.user, ipAddress: req.ip,
+        });
+
+        res.json({ message: 'Visit deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 export default router;

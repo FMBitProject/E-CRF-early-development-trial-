@@ -352,6 +352,14 @@ export const api = {
         return mapVisit(updated);
     },
 
+    async deleteVisit(visitId, reason) {
+        const subjectId = window._subjectId || window._currentSubject?.id;
+        await apiFetch(`/api/subjects/${subjectId}/visits/${visitId}`, {
+            method: 'DELETE',
+            body: JSON.stringify({ reason }),
+        });
+    },
+
     // ── CRF Forms (templates) ──────────────────────────────
     async getCRFForms() {
         const rows = await apiFetch('/api/forms');

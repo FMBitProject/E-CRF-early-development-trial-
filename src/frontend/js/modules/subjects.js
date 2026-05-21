@@ -698,6 +698,10 @@ function renderVisitRow(v, forms, allEntries, canManageVisit) {
                 <button onclick="openEditVisitModal(${v.id})"
                     class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition">
                     <i data-lucide="edit-2" class="w-3 h-3"></i>
+                </button>
+                <button onclick="openDeleteVisitModal(${v.id}, '${esc(v.visit_name)}')"
+                    class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition border border-red-100">
+                    <i data-lucide="trash-2" class="w-3 h-3"></i>
                 </button>` : ''}
             </div>
         </td>
@@ -1060,6 +1064,58 @@ window.submitEditVisit = async function (visitId) {
         });
         closeModal();
         showToast('Visit updated. Change recorded in audit trail.', 'success');
+        await renderSubjectDetail(window._subjectId);
+    } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.remove('hidden');
+    }
+};
+
+// ============================================================
+// Delete Visit Modal
+// ============================================================
+window.openDeleteVisitModal = function (visitId, visitName) {
+    showModal({
+        title: 'Delete Visit',
+        size: 'sm',
+        body: `
+        <div class="space-y-4">
+            <div class="flex items-start gap-3 p-3 bg-red-50 rounded-md border border-red-200">
+                <i data-lucide="alert-triangle" class="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5"></i>
+                <div>
+                    <p class="text-sm font-semibold text-red-700">Delete visit <em>${esc(visitName)}</em>?</p>
+                    <p class="text-xs text-red-600 mt-0.5">This action is permanent and will be recorded in the Audit Trail per ICH GCP E6 (R3).</p>
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Reason for Deletion <span class="text-red-500">*</span></label>
+                <textarea id="del-visit-reason" rows="3"
+                    placeholder="e.g. Duplicate visit entry — created in error."
+                    class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none resize-none"></textarea>
+                <p id="del-visit-err" class="text-xs text-red-500 mt-1 hidden"></p>
+            </div>
+        </div>`,
+        footer: `
+        <button onclick="closeModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition">Cancel</button>
+        <button onclick="confirmDeleteVisit(${visitId})"
+            class="px-4 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-md transition flex items-center gap-2">
+            <i data-lucide="trash-2" class="w-4 h-4"></i> Delete Visit
+        </button>`,
+    });
+};
+
+window.confirmDeleteVisit = async function (visitId) {
+    const reason  = document.getElementById('del-visit-reason')?.value?.trim();
+    const errEl   = document.getElementById('del-visit-err');
+    if (!reason) {
+        errEl.textContent = 'Please enter a reason for deletion.';
+        errEl.classList.remove('hidden');
+        return;
+    }
+    try {
+        await api.deleteVisit(visitId, reason);
+        closeModal();
+        showToast('Visit deleted. Recorded in audit trail.', 'success');
         await renderSubjectDetail(window._subjectId);
     } catch (err) {
         errEl.textContent = err.message;
