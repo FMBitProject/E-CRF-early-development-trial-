@@ -53,7 +53,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/queries — CRA raises a query
-router.post('/', requireRole('cra', 'admin', 'data_manager'), async (req, res) => {
+router.post('/', requireRole('cra', 'admin', 'data_manager', 'pi', 'investigator'), async (req, res) => {
     try {
         const { subjectId, visitId, formId, entryId, fieldKey, fieldLabel, queryText } = req.body;
         if (!subjectId || !queryText) {
