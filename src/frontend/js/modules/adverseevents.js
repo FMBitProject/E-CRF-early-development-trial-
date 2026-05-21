@@ -253,6 +253,10 @@ function renderAERows(aes, user) {
             <td>${statusBadge(ae.reportStatus)}</td>
             <td class="text-right">
                 <div class="flex items-center justify-end gap-1.5">
+                    <button onclick="openRowInlineQuery(${ae.subjectId}, null, 'adverse_event', 'AE: ${esc(ae.aeTerm || '')}')"
+                        class="p-1.5 text-slate-400 hover:text-orange-500 hover:bg-orange-50 rounded transition" title="Raise Query">
+                        <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+                    </button>
                     ${canEdit ? `<button onclick="openAEForm(${ae.id})"
                         class="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded transition" title="Edit">
                         <i data-lucide="pencil" class="w-3.5 h-3.5"></i>

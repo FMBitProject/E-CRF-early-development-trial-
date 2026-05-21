@@ -572,3 +572,67 @@ initSessionTimeout();
 
 // Initial notification load (after study is known)
 setTimeout(() => window.refreshNotifications(), 1500);
+
+// ── Shared Inline Query Modal — available globally from all modules ──────────
+window.openRowInlineQuery = function (subjectId, visitId, fieldKey, fieldLabel) {
+    window._inlineQueryCtx = { subjectId, visitId: visitId || null, entryId: null, formId: null };
+    window.openInlineQueryModal(fieldKey, fieldLabel);
+};
+
+window.openInlineQueryModal = function (fieldKey, fieldLabel) {
+    showModal({
+        title: 'Raise Query',
+        size:  'sm',
+        body: `
+        <div class="space-y-3">
+            <div class="flex items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-md">
+                <i data-lucide="tag" class="w-4 h-4 text-slate-400 flex-shrink-0"></i>
+                <span class="text-sm font-semibold text-slate-700">${fieldLabel}</span>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Query / Discrepancy <span class="text-red-500">*</span></label>
+                <textarea id="inline-query-text" rows="4"
+                    placeholder="Describe the discrepancy or question about this field value..."
+                    class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none resize-none"></textarea>
+                <p id="inline-query-err" class="text-xs text-red-500 mt-1 hidden"></p>
+            </div>
+        </div>`,
+        footer: `
+        <button onclick="closeModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition">Cancel</button>
+        <button onclick="confirmInlineQuery(${JSON.stringify(fieldKey)}, ${JSON.stringify(fieldLabel)})"
+            class="px-4 py-2 text-sm font-semibold text-white rounded-md transition flex items-center gap-2" style="background:#1554A0">
+            <i data-lucide="message-circle" class="w-4 h-4"></i> Raise Query
+        </button>`,
+    });
+};
+
+window.confirmInlineQuery = async function (fieldKey, fieldLabel) {
+    const queryText = document.getElementById('inline-query-text')?.value?.trim();
+    const errEl     = document.getElementById('inline-query-err');
+    if (!queryText) {
+        errEl.textContent = 'Please describe the query.';
+        errEl.classList.remove('hidden');
+        return;
+    }
+    const ctx = window._inlineQueryCtx || {};
+    try {
+        await api.raiseQuery({
+            data_entry_id: ctx.entryId  || null,
+            subject_id:    ctx.subjectId,
+            visit_id:      ctx.visitId  || null,
+            form_id:       ctx.formId   || null,
+            field_key:     fieldKey,
+            field_label:   fieldLabel,
+            query_text:    queryText,
+        });
+        closeModal();
+        showToast('Query raised and recorded in audit trail.', 'success');
+        // If context has formId, re-render CRF form to refresh query indicators
+        if (ctx.subjectId && ctx.visitId && ctx.formId) {
+            const { renderDataEntry } = await import('./modules/forms.js');
+            await renderDataEntry({ subjectId: ctx.subjectId, visitId: ctx.visitId, formId: ctx.formId });
+        }
+    } catch (err) {
+        if (errEl) { errEl.textContent = err.message; errEl.classList.remove('hidden'); }
+    }
+};

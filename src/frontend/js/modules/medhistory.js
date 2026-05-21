@@ -151,6 +151,10 @@ function renderMedHistRows(records, user, canWrite) {
             </td>
             <td class="text-right">
                 <div class="flex items-center justify-end gap-1.5">
+                    <button onclick="openRowInlineQuery(${r.subjectId}, null, 'medical_history', 'Med Hx: ${esc(r.condition || '')}')"
+                        class="p-1.5 text-slate-400 hover:text-orange-500 hover:bg-orange-50 rounded transition" title="Raise Query">
+                        <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+                    </button>
                     ${canWrite ? `
                     <button onclick="openMedHistForm(${r.id})"
                         class="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded transition" title="Edit">

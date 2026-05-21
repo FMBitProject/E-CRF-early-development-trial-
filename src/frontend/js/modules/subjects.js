@@ -936,6 +936,16 @@ window.openEditVisitModal = function (visitId) {
     const today    = new Date().toISOString().split('T')[0];
     const isMissed = v.status === 'Missed';
 
+    // Set context for inline query buttons
+    window._inlineQueryCtx = { subjectId: subject.id, visitId, entryId: null, formId: null };
+
+    const qBtn = (key, label) => `<button type="button"
+        onclick="openInlineQueryModal(${JSON.stringify(key)}, ${JSON.stringify(label)})"
+        title="Raise a query on this field"
+        class="inline-flex items-center justify-center w-4 h-4 rounded-full text-slate-300 hover:text-orange-500 hover:bg-orange-50 transition ml-1 border border-transparent hover:border-orange-200 flex-shrink-0">
+        <i data-lucide="message-circle" class="w-3 h-3"></i>
+    </button>`;
+
     showModal({
         title: `Edit Visit — ${v.visit_name}`,
         size: 'lg',
@@ -943,12 +953,18 @@ window.openEditVisitModal = function (visitId) {
         <div class="space-y-4">
             <div class="grid grid-cols-2 gap-4">
                 <div class="col-span-2">
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Visit Name <span class="text-red-500">*</span></label>
+                    <div class="flex items-center mb-1.5">
+                        <label class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Visit Name <span class="text-red-500">*</span></label>
+                        ${qBtn('visit_name', 'Visit Name')}
+                    </div>
                     <input type="text" id="ev-name" value="${esc(v.visit_name)}"
                         class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Visit Type</label>
+                    <div class="flex items-center mb-1.5">
+                        <label class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Visit Type</label>
+                        ${qBtn('visit_type', 'Visit Type')}
+                    </div>
                     <select id="ev-type"
                         class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
                         <option value="Scheduled" ${v.visit_type === 'Scheduled' ? 'selected' : ''}>Scheduled</option>
@@ -956,22 +972,34 @@ window.openEditVisitModal = function (visitId) {
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Window Tolerance (±days)</label>
+                    <div class="flex items-center mb-1.5">
+                        <label class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Window Tolerance (±days)</label>
+                        ${qBtn('window_tolerance', 'Window Tolerance (±days)')}
+                    </div>
                     <input type="number" id="ev-window" min="0" value="${v.window_days ?? ''}"
                         class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Planned Visit Date</label>
+                    <div class="flex items-center mb-1.5">
+                        <label class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Planned Visit Date</label>
+                        ${qBtn('planned_date', 'Planned Visit Date')}
+                    </div>
                     <input type="date" id="ev-planned" value="${v.planned_date || ''}"
                         class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Actual Visit Date</label>
+                    <div class="flex items-center mb-1.5">
+                        <label class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Actual Visit Date</label>
+                        ${qBtn('actual_date', 'Actual Visit Date')}
+                    </div>
                     <input type="date" id="ev-actual" value="${v.actual_date || ''}" max="${today}"
                         class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Visit Status <span class="text-red-500">*</span></label>
+                    <div class="flex items-center mb-1.5">
+                        <label class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Visit Status <span class="text-red-500">*</span></label>
+                        ${qBtn('visit_status', 'Visit Status')}
+                    </div>
                     <select id="ev-status" onchange="toggleEditMissedReason()"
                         class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
                         <option value="Scheduled"   ${v.status === 'Scheduled'    ? 'selected' : ''}>Scheduled</option>
@@ -984,13 +1012,19 @@ window.openEditVisitModal = function (visitId) {
             </div>
 
             <div id="ev-missed-row" class="${isMissed ? '' : 'hidden'}">
-                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Reason Visit Was Missed <span class="text-red-500">*</span></label>
+                <div class="flex items-center mb-1.5">
+                    <label class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Reason Visit Was Missed <span class="text-red-500">*</span></label>
+                    ${qBtn('missed_reason', 'Reason Visit Was Missed')}
+                </div>
                 <textarea id="ev-missed-reason" rows="2"
                     class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none resize-none">${esc(v.missed_reason || '')}</textarea>
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Investigator Notes</label>
+                <div class="flex items-center mb-1.5">
+                    <label class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Investigator Notes</label>
+                    ${qBtn('investigator_notes', 'Investigator Notes')}
+                </div>
                 <textarea id="ev-notes" rows="2"
                     class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none resize-none">${esc(v.notes || '')}</textarea>
             </div>
