@@ -126,9 +126,15 @@ export async function renderQueries(filters = {}) {
     };
 
     async function filterQueries() {
-        const status = document.getElementById('query-status-filter').value;
-        const search = document.getElementById('query-search').value.toLowerCase();
+        const statusEl = document.getElementById('query-status-filter');
+        const searchEl = document.getElementById('query-search');
+        const tbody    = document.getElementById('query-tbody');
+        const emptyEl  = document.getElementById('query-empty');
+        if (!statusEl || !tbody || !emptyEl) return; // navigated away
+        const status = statusEl.value;
+        const search = searchEl?.value.toLowerCase() || '';
         let filtered = await api.getQueries({ status });
+        if (!document.getElementById('query-tbody')) return; // navigated away during fetch
         if (search) {
             filtered = filtered.filter(q =>
                 q.query_text?.toLowerCase().includes(search) ||
@@ -137,8 +143,8 @@ export async function renderQueries(filters = {}) {
                 q.form_name?.toLowerCase().includes(search)
             );
         }
-        document.getElementById('query-tbody').innerHTML = renderQueryRows(filtered, user);
-        document.getElementById('query-empty').classList.toggle('hidden', filtered.length > 0);
+        tbody.innerHTML = renderQueryRows(filtered, user);
+        emptyEl.classList.toggle('hidden', filtered.length > 0);
         lucide.createIcons();
     }
 
