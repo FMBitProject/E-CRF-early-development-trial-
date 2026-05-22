@@ -175,7 +175,7 @@ function renderSubjectRows(subjects) {
         </td>
         <td class="text-sm text-slate-600">${esc(s.site_name)}</td>
         <td class="text-sm text-slate-600">
-            ${s.gender === 'M' ? 'Male' : 'Female'}
+            ${s.sex === 'M' ? 'Male' : s.sex === 'F' ? 'Female' : 'Unknown'}
             <span class="text-slate-400 ml-1 text-xs">· ${fmt(s.dob)}</span>
         </td>
         <td class="text-sm text-slate-600">${fmt(s.enrollment_date)}</td>
@@ -333,12 +333,30 @@ async function openSubjectDemographicsModal(iePasses) {
                         class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Sex <span class="text-red-500">*</span></label>
-                    <select id="ns-gender"
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">
+                        Sex at Birth <span class="text-red-500">*</span>
+                        <span class="ml-1 font-normal normal-case text-slate-400">(CDISC SDTM)</span>
+                    </label>
+                    <select id="ns-sex"
                         class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
                         <option value="">— Select —</option>
-                        <option value="M">Male</option>
-                        <option value="F">Female</option>
+                        <option value="M">M — Male</option>
+                        <option value="F">F — Female</option>
+                        <option value="U">U — Unknown</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">
+                        Gender Identity
+                        <span class="ml-1 font-normal normal-case text-slate-400">(optional)</span>
+                    </label>
+                    <select id="ns-gender-identity"
+                        class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
+                        <option value="">— Prefer not to answer —</option>
+                        <option value="Man">Man</option>
+                        <option value="Woman">Woman</option>
+                        <option value="Non-binary">Non-binary</option>
+                        <option value="Other">Other</option>
                     </select>
                 </div>
                 <div>
@@ -371,16 +389,17 @@ async function openSubjectDemographicsModal(iePasses) {
 }
 
 window.submitNewSubject = async function () {
-    const codeRaw = document.getElementById('ns-code').value.trim();
-    const initial = document.getElementById('ns-initial').value.trim();
-    const gender  = document.getElementById('ns-gender').value;
-    const dob     = document.getElementById('ns-dob').value;
-    const enroll  = document.getElementById('ns-enroll').value;
-    const site_id = document.getElementById('ns-site').value;
-    const errEl   = document.getElementById('ns-error');
+    const codeRaw         = document.getElementById('ns-code').value.trim();
+    const initial         = document.getElementById('ns-initial').value.trim();
+    const sex             = document.getElementById('ns-sex').value;
+    const gender_identity = document.getElementById('ns-gender-identity').value;
+    const dob             = document.getElementById('ns-dob').value;
+    const enroll          = document.getElementById('ns-enroll').value;
+    const site_id         = document.getElementById('ns-site').value;
+    const errEl           = document.getElementById('ns-error');
 
     errEl.classList.add('hidden');
-    if (!codeRaw || !initial || !gender || !dob || !enroll || !site_id) {
+    if (!codeRaw || !initial || !sex || !dob || !enroll || !site_id) {
         errEl.textContent = 'All fields marked * are required.';
         errEl.classList.remove('hidden');
         return;
@@ -389,7 +408,7 @@ window.submitNewSubject = async function () {
     const iePasses = window._iePasses !== false;
 
     try {
-        const created = await api.createSubject({ subject_code, initial, gender, dob, enrollment_date: enroll, site_id });
+        const created = await api.createSubject({ subject_code, initial, sex, gender_identity, dob, enrollment_date: enroll, site_id });
 
         // Record I/E assessment if criteria were collected
         if (window._ieCriteriaResults?.length) {
@@ -441,7 +460,8 @@ export async function renderSubjectDetail(id) {
                     </div>
                     <div class="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500">
                         <span>Initials: <strong class="text-slate-700">${esc(subject.initial)}</strong></span>
-                        <span>${subject.gender === 'M' ? 'Male' : 'Female'}</span>
+                        <span>Sex: <strong class="text-slate-700">${subject.sex === 'M' ? 'Male' : subject.sex === 'F' ? 'Female' : 'Unknown'}</strong></span>
+                        ${subject.gender_identity ? `<span>Gender: <strong class="text-slate-700">${esc(subject.gender_identity)}</strong></span>` : ''}
                         <span>DOB: <strong class="text-slate-700">${fmt(subject.dob)}</strong></span>
                         <span>Site: <strong class="text-slate-700">${esc(subject.site_name)}</strong></span>
                         <span>Enrollment (Day 1): <strong class="text-slate-700">${fmt(subject.enrollment_date)}</strong></span>

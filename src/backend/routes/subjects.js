@@ -21,15 +21,16 @@ router.get('/', async (req, res) => {
 
         const rows = await db
             .select({
-                id:          subjects.id,
-                subjectCode: subjects.subjectCode,
-                initials:    subjects.initials,
-                sex:         subjects.sex,
-                dateOfBirth: subjects.dateOfBirth,
-                status:      subjects.status,
-                enrolledAt:  subjects.enrolledAt,
-                siteCode:    sites.code,
-                siteName:    sites.name,
+                id:             subjects.id,
+                subjectCode:    subjects.subjectCode,
+                initials:       subjects.initials,
+                sex:            subjects.sex,
+                genderIdentity: subjects.genderIdentity,
+                dateOfBirth:    subjects.dateOfBirth,
+                status:         subjects.status,
+                enrolledAt:     subjects.enrolledAt,
+                siteCode:       sites.code,
+                siteName:       sites.name,
             })
             .from(subjects)
             .leftJoin(sites, eq(subjects.siteId, sites.id))
@@ -158,6 +159,7 @@ router.get('/:id', async (req, res) => {
                 initials:       subjects.initials,
                 dateOfBirth:    subjects.dateOfBirth,
                 sex:            subjects.sex,
+                genderIdentity: subjects.genderIdentity,
                 enrolledAt:     subjects.enrolledAt,
                 status:         subjects.status,
                 withdrawnAt:    subjects.withdrawnAt,
@@ -183,17 +185,18 @@ router.get('/:id', async (req, res) => {
 // POST /api/subjects — enroll new subject (investigator, pi, admin, crc)
 router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, res) => {
     try {
-        const { subjectCode, siteId, initials, dateOfBirth, sex, enrolledAt } = req.body;
+        const { subjectCode, siteId, initials, dateOfBirth, sex, genderIdentity, enrolledAt } = req.body;
         if (!subjectCode) return res.status(400).json({ error: 'subjectCode is required' });
 
         const [created] = await db.insert(subjects).values({
             studyId:     req.studyId,
             subjectCode,
             siteId:      siteId ?? null,
-            initials:    initials ?? null,
-            dateOfBirth: dateOfBirth ?? null,
-            sex:         sex ?? null,
-            enrolledAt:  enrolledAt ? new Date(enrolledAt) : new Date(),
+            initials:       initials ?? null,
+            dateOfBirth:    dateOfBirth ?? null,
+            sex:            sex ?? null,
+            genderIdentity: genderIdentity ?? null,
+            enrolledAt:     enrolledAt ? new Date(enrolledAt) : new Date(),
             enrolledBy:  req.user.id,
         }).returning();
 

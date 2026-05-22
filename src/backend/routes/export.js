@@ -150,7 +150,8 @@ router.get('/odm', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
           <ItemGroupData ItemGroupOID="IG.DM.SUBJECT" TransactionType="Snapshot">
             <ItemData ItemOID="IT.DM.SUBJID"  Value="${xmlEsc(subj.subjectCode)}"/>
             <ItemData ItemOID="IT.DM.SITEID"  Value="${xmlEsc(site?.code || '')}"/>
-            <ItemData ItemOID="IT.DM.SEX"     Value="${xmlEsc(subj.sex || '')}"/>
+            <ItemData ItemOID="IT.DM.SEX"     Value="${xmlEsc(subj.sex || 'U')}"/>
+            <ItemData ItemOID="IT.DM.GENDERIDENTITY" Value="${xmlEsc(subj.genderIdentity || '')}"/>
             <ItemData ItemOID="IT.DM.DTHFL"   Value="${subj.status === 'Withdrawn' ? 'Y' : 'N'}"/>
             <ItemData ItemOID="IT.DM.RFSTDTC" Value="${xmlEsc(subj.enrolledAt ? new Date(subj.enrolledAt).toISOString().split('T')[0] : '')}"/>
             <ItemData ItemOID="IT.DM.DSSTDTC" Value="${xmlEsc(subj.withdrawnAt ? new Date(subj.withdrawnAt).toISOString().split('T')[0] : '')}"/>
@@ -272,14 +273,14 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
 
         const sid = req.studyId;
         if (domain === 'DM') {
-            headers = ['SUBJID','SITEID','SITE_NAME','SEX','DOB','ENRLDTC','STATUS','WDRAWDTC','WDRAWREASON'];
+            headers = ['SUBJID','SITEID','SITE_NAME','SEX','GENDER_IDENTITY','DOB','ENRLDTC','STATUS','WDRAWDTC','WDRAWREASON'];
             const data = await db.select().from(subjects).leftJoin(sites, eq(subjects.siteId, sites.id)).where(eq(subjects.studyId, sid));
             rows = data.map(r => {
                 const s = r.subjects ?? r;
                 const site = r.sites ?? null;
                 return [
                     s.subjectCode, site?.code || '', site?.name || '',
-                    s.sex || '', s.dateOfBirth || '',
+                    s.sex || 'U', s.genderIdentity || '', s.dateOfBirth || '',
                     s.enrolledAt ? new Date(s.enrolledAt).toISOString().split('T')[0] : '',
                     s.status || '',
                     s.withdrawnAt ? new Date(s.withdrawnAt).toISOString().split('T')[0] : '',
