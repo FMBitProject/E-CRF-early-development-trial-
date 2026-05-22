@@ -1,0 +1,3735 @@
+openapi: 3.0.3
+info:
+  title: E-CRF Early Development Trial API
+  description: |
+    REST API for the Electronic Case Report Form (E-CRF) clinical trial management system.
+    Most endpoints require authentication via session cookie (Better Auth).
+    Study-scoped endpoints require an active study context (x-study-id header or query param).
+  version: 1.0.0
+  contact:
+    email: renfael6@gmail.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+
+security:
+  - sessionCookie: []
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: better-auth.session_token
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+    Reason:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+
+    Study:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        protocolNo:
+          type: string
+        phase:
+          type: string
+        sponsor:
+          type: string
+        indication:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+
+    Subject:
+      type: object
+      properties:
+        id:
+          type: string
+        subjectCode:
+          type: string
+        siteId:
+          type: string
+        initials:
+          type: string
+        dateOfBirth:
+          type: string
+          format: date
+        sex:
+          type: string
+          enum: [M, F, Other]
+        enrolledAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+
+    Visit:
+      type: object
+      properties:
+        id:
+          type: string
+        subjectId:
+          type: string
+        visitName:
+          type: string
+        visitOrder:
+          type: integer
+        visitType:
+          type: string
+        plannedDate:
+          type: string
+          format: date
+        actualDate:
+          type: string
+          format: date
+        windowDays:
+          type: integer
+        status:
+          type: string
+
+    Form:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        version:
+          type: string
+        schemaJson:
+          type: object
+        isActive:
+          type: boolean
+
+    Entry:
+      type: object
+      properties:
+        id:
+          type: string
+        subjectId:
+          type: string
+        visitId:
+          type: string
+        formId:
+          type: string
+        dataJson:
+          type: object
+        isLocked:
+          type: boolean
+
+    Query:
+      type: object
+      properties:
+        id:
+          type: string
+        subjectId:
+          type: string
+        visitId:
+          type: string
+        formId:
+          type: string
+        entryId:
+          type: string
+        fieldKey:
+          type: string
+        fieldLabel:
+          type: string
+        queryText:
+          type: string
+        status:
+          type: string
+          enum: [Open, Resolved, Closed]
+
+    AdverseEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        subjectId:
+          type: string
+        aeTerm:
+          type: string
+        meddraPt:
+          type: string
+        severity:
+          type: string
+        isSerious:
+          type: boolean
+        onsetDate:
+          type: string
+          format: date
+        outcome:
+          type: string
+        status:
+          type: string
+
+    Deviation:
+      type: object
+      properties:
+        id:
+          type: string
+        subjectId:
+          type: string
+        deviationType:
+          type: string
+        category:
+          type: string
+        description:
+          type: string
+        deviationDate:
+          type: string
+          format: date
+        status:
+          type: string
+
+    Site:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        code:
+          type: string
+        country:
+          type: string
+        piName:
+          type: string
+        status:
+          type: string
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [admin, pi, investigator, cra, data_manager, crc]
+        siteId:
+          type: string
+
+paths:
+
+  # ── Health ──────────────────────────────────────────────
+  /api/health:
+    get:
+      summary: Health check
+      security: []
+      tags: [System]
+      responses:
+        "200":
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  # ── Auth / MFA ───────────────────────────────────────────
+  /api/mfa/initiate:
+    post:
+      summary: MFA step 1 — verify password
+      security: []
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Returns tempToken for step 2
+
+  /api/mfa/totp-verify:
+    post:
+      summary: MFA step 2 — verify TOTP code
+      security: []
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tempToken, totpCode]
+              properties:
+                tempToken:
+                  type: string
+                totpCode:
+                  type: string
+      responses:
+        "200":
+          description: Login successful, session created
+
+  /api/mfa/direct-login:
+    post:
+      summary: Direct login without MFA
+      security: []
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Login successful
+
+  /api/mfa/totp/status:
+    get:
+      summary: Check TOTP setup status
+      tags: [Auth]
+      responses:
+        "200":
+          description: TOTP status
+
+  /api/mfa/totp/enable:
+    post:
+      summary: Enable TOTP
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [totpCode]
+              properties:
+                totpCode:
+                  type: string
+      responses:
+        "200":
+          description: TOTP enabled
+
+  /api/mfa/totp/disable:
+    delete:
+      summary: Disable TOTP
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [totpCode]
+              properties:
+                totpCode:
+                  type: string
+      responses:
+        "200":
+          description: TOTP disabled
+
+  # ── Register ─────────────────────────────────────────────
+  /api/register:
+    post:
+      summary: Self-register new user
+      security: []
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, role]
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                role:
+                  type: string
+      responses:
+        "201":
+          description: User registered
+
+  # ── Studies ───────────────────────────────────────────────
+  /api/studies:
+    get:
+      summary: List studies
+      tags: [Studies]
+      responses:
+        "200":
+          description: Array of studies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Study"
+    post:
+      summary: Create study (admin only)
+      tags: [Studies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, protocolNo]
+              properties:
+                title:
+                  type: string
+                protocolNo:
+                  type: string
+                phase:
+                  type: string
+                sponsor:
+                  type: string
+                indication:
+                  type: string
+                startDate:
+                  type: string
+                  format: date
+                endDate:
+                  type: string
+                  format: date
+      responses:
+        "201":
+          description: Study created
+
+  /api/studies/{id}:
+    patch:
+      summary: Update study
+      tags: [Studies]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/Study"
+                - $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Study updated
+
+  /api/studies/{id}/users:
+    get:
+      summary: List users assigned to study (admin only)
+      tags: [Studies]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Array of users
+    post:
+      summary: Assign user to study (admin only)
+      tags: [Studies]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId]
+              properties:
+                userId:
+                  type: string
+      responses:
+        "201":
+          description: User assigned
+
+  /api/studies/{id}/users/{userId}:
+    delete:
+      summary: Remove user from study
+      tags: [Studies]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User removed
+
+  # ── Sites ────────────────────────────────────────────────
+  /api/sites:
+    get:
+      summary: List sites
+      tags: [Sites]
+      responses:
+        "200":
+          description: Array of sites
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Site"
+    post:
+      summary: Create site (admin only)
+      tags: [Sites]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, code]
+              properties:
+                name:
+                  type: string
+                code:
+                  type: string
+                country:
+                  type: string
+                piName:
+                  type: string
+      responses:
+        "201":
+          description: Site created
+
+  /api/sites/{id}:
+    patch:
+      summary: Update site
+      tags: [Sites]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                country:
+                  type: string
+                piName:
+                  type: string
+                status:
+                  type: string
+      responses:
+        "200":
+          description: Site updated
+
+  # ── Subjects ─────────────────────────────────────────────
+  /api/subjects:
+    get:
+      summary: List subjects
+      tags: [Subjects]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Array of subjects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Subject"
+    post:
+      summary: Enroll new subject
+      tags: [Subjects]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectCode, siteId, initials, sex]
+              properties:
+                subjectCode:
+                  type: string
+                siteId:
+                  type: string
+                initials:
+                  type: string
+                dateOfBirth:
+                  type: string
+                  format: date
+                sex:
+                  type: string
+                  enum: [M, F, Other]
+                enrolledAt:
+                  type: string
+                  format: date-time
+      responses:
+        "201":
+          description: Subject enrolled
+
+  /api/subjects/status-overview:
+    get:
+      summary: Aggregate status overview (entries, signatures, queries per subject)
+      tags: [Subjects]
+      responses:
+        "200":
+          description: Status overview
+
+  /api/subjects/{id}:
+    get:
+      summary: Get subject detail with visits
+      tags: [Subjects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Subject detail
+
+  /api/subjects/{id}/status:
+    patch:
+      summary: Withdraw or complete subject
+      tags: [Subjects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, reason]
+              properties:
+                status:
+                  type: string
+                  enum: [Withdrawn, Completed]
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Status updated
+
+  /api/subjects/{id}/ie-assessment:
+    get:
+      summary: Get I/E assessment history
+      tags: [Subjects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Assessment history
+    post:
+      summary: Record I/E assessment
+      tags: [Subjects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [criteriaJson, passed]
+              properties:
+                criteriaJson:
+                  type: array
+                  items:
+                    type: object
+                passed:
+                  type: boolean
+      responses:
+        "201":
+          description: Assessment recorded
+
+  # ── Visits ───────────────────────────────────────────────
+  /api/subjects/{subjectId}/visits:
+    get:
+      summary: List visits for subject
+      tags: [Visits]
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Array of visits
+    post:
+      summary: Create visit
+      tags: [Visits]
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [visitName, visitOrder, visitType]
+              properties:
+                visitName:
+                  type: string
+                visitOrder:
+                  type: integer
+                visitType:
+                  type: string
+                plannedDate:
+                  type: string
+                  format: date
+                actualDate:
+                  type: string
+                  format: date
+                windowDays:
+                  type: integer
+                formIds:
+                  type: array
+                  items:
+                    type: string
+                status:
+                  type: string
+                missedReason:
+                  type: string
+                notes:
+                  type: string
+      responses:
+        "201":
+          description: Visit created
+
+  /api/subjects/{subjectId}/visits/{id}:
+    patch:
+      summary: Update visit
+      tags: [Visits]
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Visit"
+      responses:
+        "200":
+          description: Visit updated
+    delete:
+      summary: Delete visit
+      tags: [Visits]
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Visit deleted
+
+  /api/subjects/{subjectId}/visits/{id}/status:
+    patch:
+      summary: Update visit status
+      tags: [Visits]
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+      responses:
+        "200":
+          description: Status updated
+
+  # ── Forms ────────────────────────────────────────────────
+  /api/forms:
+    get:
+      summary: List CRF forms
+      tags: [Forms]
+      parameters:
+        - name: all
+          in: query
+          description: "Admin only: pass 1 to include inactive"
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Array of forms
+    post:
+      summary: Create form template (admin only)
+      tags: [Forms]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, version, schemaJson]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                version:
+                  type: string
+                schemaJson:
+                  type: object
+      responses:
+        "201":
+          description: Form created
+
+  /api/forms/{id}:
+    get:
+      summary: Get form with schema
+      tags: [Forms]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Form detail
+    put:
+      summary: Update form (versioned)
+      tags: [Forms]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/Form"
+                - $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Form updated
+    delete:
+      summary: Hard delete form (only if no data entries)
+      tags: [Forms]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Form deleted
+
+  /api/forms/{id}/status:
+    patch:
+      summary: Activate or deactivate form
+      tags: [Forms]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [isActive, reason]
+              properties:
+                isActive:
+                  type: boolean
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Status updated
+
+  # ── Entries ──────────────────────────────────────────────
+  /api/entries:
+    get:
+      summary: List CRF entries
+      tags: [Entries]
+      parameters:
+        - name: subjectId
+          in: query
+          schema:
+            type: string
+        - name: visitId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Array of entries
+    post:
+      summary: Upsert CRF entry
+      tags: [Entries]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectId, visitId, formId, dataJson]
+              properties:
+                subjectId:
+                  type: string
+                visitId:
+                  type: string
+                formId:
+                  type: string
+                dataJson:
+                  type: object
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Entry upserted
+
+  /api/entries/{id}/lock:
+    patch:
+      summary: Lock entry
+      tags: [Entries]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Entry locked
+
+  /api/entries/{id}/unlock:
+    patch:
+      summary: Unlock entry (admin only)
+      tags: [Entries]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Entry unlocked
+
+  # ── Queries ──────────────────────────────────────────────
+  /api/queries:
+    get:
+      summary: List queries
+      tags: [Queries]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: subjectId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Array of queries
+    post:
+      summary: Raise query
+      tags: [Queries]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectId, queryText]
+              properties:
+                subjectId:
+                  type: string
+                visitId:
+                  type: string
+                formId:
+                  type: string
+                entryId:
+                  type: string
+                fieldKey:
+                  type: string
+                fieldLabel:
+                  type: string
+                queryText:
+                  type: string
+      responses:
+        "201":
+          description: Query raised
+
+  /api/queries/{id}/resolve:
+    patch:
+      summary: Resolve query
+      tags: [Queries]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resolutionText]
+              properties:
+                resolutionText:
+                  type: string
+      responses:
+        "200":
+          description: Query resolved
+
+  /api/queries/{id}/close:
+    patch:
+      summary: Close resolved query (CRA/admin only)
+      tags: [Queries]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Query closed
+
+  # ── Signatures ───────────────────────────────────────────
+  /api/signatures:
+    get:
+      summary: List signatures for an entry
+      tags: [Signatures]
+      parameters:
+        - name: entryId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Array of signatures
+    post:
+      summary: E-sign entry
+      tags: [Signatures]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entryId, password, meaning]
+              properties:
+                entryId:
+                  type: string
+                password:
+                  type: string
+                meaning:
+                  type: string
+      responses:
+        "201":
+          description: Signature recorded
+
+  # ── Audit ────────────────────────────────────────────────
+  /api/audit:
+    get:
+      summary: List audit trail
+      tags: [Audit]
+      parameters:
+        - name: action
+          in: query
+          schema:
+            type: string
+        - name: tableName
+          in: query
+          schema:
+            type: string
+        - name: userId
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audit records
+
+  # ── Dashboard ────────────────────────────────────────────
+  /api/dashboard/stats:
+    get:
+      summary: Dashboard statistics
+      tags: [Dashboard]
+      responses:
+        "200":
+          description: Stats object
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalSubjects:
+                    type: integer
+                  activeSubjects:
+                    type: integer
+                  pendingForms:
+                    type: integer
+                  openQueries:
+                    type: integer
+                  totalVisits:
+                    type: integer
+
+  # ── Adverse Events ───────────────────────────────────────
+  /api/ae:
+    get:
+      summary: List adverse events
+      tags: [Adverse Events]
+      parameters:
+        - name: subjectId
+          in: query
+          schema:
+            type: string
+        - name: serious
+          in: query
+          schema:
+            type: boolean
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Array of adverse events
+    post:
+      summary: Create adverse event
+      tags: [Adverse Events]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectId, aeTerm, severity, isSerious, onsetDate, causality]
+              properties:
+                subjectId:
+                  type: string
+                aeTerm:
+                  type: string
+                meddraPt:
+                  type: string
+                meddraPtCode:
+                  type: string
+                meddraSoc:
+                  type: string
+                meddraSocCode:
+                  type: string
+                severity:
+                  type: string
+                  enum: [Mild, Moderate, Severe, Life-threatening, Fatal]
+                isSerious:
+                  type: boolean
+                seriousCriteria:
+                  type: string
+                onsetDate:
+                  type: string
+                  format: date
+                resolutionDate:
+                  type: string
+                  format: date
+                outcome:
+                  type: string
+                causality:
+                  type: string
+                actionTaken:
+                  type: string
+                narrative:
+                  type: string
+      responses:
+        "201":
+          description: AE created
+
+  /api/ae/stats:
+    get:
+      summary: AE summary counts
+      tags: [Adverse Events]
+      responses:
+        "200":
+          description: Stats
+
+  /api/ae/{id}:
+    get:
+      summary: Get single adverse event
+      tags: [Adverse Events]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: AE detail
+    patch:
+      summary: Update adverse event
+      tags: [Adverse Events]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/AdverseEvent"
+                - $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: AE updated
+
+  /api/ae/{id}/report:
+    patch:
+      summary: Mark AE as reported to sponsor/IRB
+      tags: [Adverse Events]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reportedToSponsor:
+                  type: boolean
+                reportedToIrb:
+                  type: boolean
+      responses:
+        "200":
+          description: Report status updated
+
+  /api/ae/{id}/close:
+    patch:
+      summary: Close AE (PI/admin only)
+      tags: [Adverse Events]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: AE closed
+
+  # ── Deviations ───────────────────────────────────────────
+  /api/deviations:
+    get:
+      summary: List protocol deviations
+      tags: [Deviations]
+      parameters:
+        - name: subjectId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Array of deviations
+    post:
+      summary: Create deviation
+      tags: [Deviations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectId, deviationType, description, deviationDate]
+              properties:
+                subjectId:
+                  type: string
+                deviationType:
+                  type: string
+                category:
+                  type: string
+                description:
+                  type: string
+                deviationDate:
+                  type: string
+                  format: date
+                discoveryDate:
+                  type: string
+                  format: date
+                rootCause:
+                  type: string
+                impactOnSubject:
+                  type: string
+                capa:
+                  type: string
+      responses:
+        "201":
+          description: Deviation created
+
+  /api/deviations/stats:
+    get:
+      summary: Deviation summary counts
+      tags: [Deviations]
+      responses:
+        "200":
+          description: Stats
+
+  /api/deviations/{id}:
+    get:
+      summary: Get single deviation
+      tags: [Deviations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deviation detail
+    patch:
+      summary: Update deviation
+      tags: [Deviations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/Deviation"
+                - $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Deviation updated
+
+  /api/deviations/{id}/report-irb:
+    patch:
+      summary: Mark deviation as reported to IRB
+      tags: [Deviations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: IRB report status updated
+
+  /api/deviations/{id}/status:
+    patch:
+      summary: Advance deviation status (PI/admin only)
+      tags: [Deviations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Status advanced
+
+  # ── Randomization ─────────────────────────────────────────
+  /api/randomization:
+    get:
+      summary: Get randomization assignments
+      tags: [Randomization]
+      parameters:
+        - name: subjectId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Assignments (blinded for non-admin)
+    post:
+      summary: Randomize subject
+      tags: [Randomization]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectId]
+              properties:
+                subjectId:
+                  type: string
+                stratum:
+                  type: string
+      responses:
+        "201":
+          description: Subject randomized
+
+  /api/randomization/list:
+    get:
+      summary: View full randomization list (admin only)
+      tags: [Randomization]
+      responses:
+        "200":
+          description: Randomization list
+    post:
+      summary: Upload randomization list (admin only)
+      tags: [Randomization]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entries]
+              properties:
+                entries:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      randCode:
+                        type: string
+                      treatmentArm:
+                        type: string
+                      stratum:
+                        type: string
+      responses:
+        "201":
+          description: List uploaded
+
+  /api/randomization/stats:
+    get:
+      summary: Randomization statistics
+      tags: [Randomization]
+      responses:
+        "200":
+          description: Stats
+
+  /api/randomization/{id}/unblind:
+    patch:
+      summary: Emergency unblind (admin only)
+      tags: [Randomization]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Unblinded
+
+  # ── Consents ─────────────────────────────────────────────
+  /api/consents:
+    get:
+      summary: List consents
+      tags: [Consents]
+      parameters:
+        - name: subjectId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Array of consents
+    post:
+      summary: Record consent
+      tags: [Consents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectId, consentVersion, consentDate, consentType]
+              properties:
+                subjectId:
+                  type: string
+                consentVersion:
+                  type: string
+                consentDate:
+                  type: string
+                  format: date
+                consentType:
+                  type: string
+                language:
+                  type: string
+                witnessName:
+                  type: string
+                notes:
+                  type: string
+                amendmentId:
+                  type: string
+      responses:
+        "201":
+          description: Consent recorded
+
+  /api/consents/stats:
+    get:
+      summary: Consent coverage stats for dashboard
+      tags: [Consents]
+      responses:
+        "200":
+          description: Consent stats
+
+  /api/consents/{id}/withdraw:
+    patch:
+      summary: Withdraw consent
+      tags: [Consents]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Consent withdrawn
+
+  # ── DB Lock ──────────────────────────────────────────────
+  /api/dblock:
+    get:
+      summary: Get DB lock status and history
+      tags: [DB Lock]
+      responses:
+        "200":
+          description: Lock status
+
+  /api/dblock/status:
+    get:
+      summary: Current DB lock state
+      tags: [DB Lock]
+      responses:
+        "200":
+          description: Current state
+
+  /api/dblock/check:
+    post:
+      summary: Run pre-lock compliance checks (CRA/admin)
+      tags: [DB Lock]
+      responses:
+        "200":
+          description: Compliance check results
+
+  /api/dblock/initiate:
+    post:
+      summary: Initiate DB lock process
+      tags: [DB Lock]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+      responses:
+        "201":
+          description: DB lock initiated
+
+  /api/dblock/{id}/sign-cra:
+    post:
+      summary: CRA e-sign DB lock
+      tags: [DB Lock]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+      responses:
+        "200":
+          description: CRA signed
+
+  /api/dblock/{id}/sign-admin:
+    post:
+      summary: Admin e-sign and finalize DB lock
+      tags: [DB Lock]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+      responses:
+        "200":
+          description: DB locked
+
+  # ── Delegation ───────────────────────────────────────────
+  /api/delegation:
+    get:
+      summary: List delegation entries
+      tags: [Delegation]
+      parameters:
+        - name: userId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Array of delegations
+    post:
+      summary: Create delegation
+      tags: [Delegation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, siteId, delegatedTasks, delegationStart]
+              properties:
+                userId:
+                  type: string
+                siteId:
+                  type: string
+                delegatedTasks:
+                  type: array
+                  items:
+                    type: string
+                delegationStart:
+                  type: string
+                  format: date
+                delegationEnd:
+                  type: string
+                  format: date
+                notes:
+                  type: string
+      responses:
+        "201":
+          description: Delegation created
+
+  /api/delegation/{id}:
+    get:
+      summary: Get single delegation
+      tags: [Delegation]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Delegation detail
+    patch:
+      summary: Update delegation
+      tags: [Delegation]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                delegatedTasks:
+                  type: array
+                  items:
+                    type: string
+                delegationStart:
+                  type: string
+                  format: date
+                delegationEnd:
+                  type: string
+                  format: date
+                status:
+                  type: string
+                notes:
+                  type: string
+      responses:
+        "200":
+          description: Delegation updated
+
+  /api/delegation/{id}/sign:
+    post:
+      summary: Investigator e-signs their delegation
+      tags: [Delegation]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Delegation signed
+
+  /api/delegation/training/records:
+    get:
+      summary: List training records
+      tags: [Delegation]
+      parameters:
+        - name: userId
+          in: query
+          schema:
+            type: string
+        - name: trainingType
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Training records
+    post:
+      summary: Add training record
+      tags: [Delegation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, trainingType, trainingDate]
+              properties:
+                userId:
+                  type: string
+                trainingType:
+                  type: string
+                trainingDate:
+                  type: string
+                  format: date
+                expiryDate:
+                  type: string
+                  format: date
+                certificateRef:
+                  type: string
+                notes:
+                  type: string
+      responses:
+        "201":
+          description: Training record added
+
+  /api/delegation/training/expiring:
+    get:
+      summary: Expiring training records
+      tags: [Delegation]
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 30
+      responses:
+        "200":
+          description: Expiring records
+
+  /api/delegation/training/records/{id}:
+    delete:
+      summary: Delete training record
+      tags: [Delegation]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Record deleted
+
+  # ── Export ───────────────────────────────────────────────
+  /api/export/odm:
+    get:
+      summary: Export CDISC ODM-XML 1.3.2
+      tags: [Export]
+      responses:
+        "200":
+          description: ODM XML file
+          content:
+            application/xml:
+              schema:
+                type: string
+
+  /api/export/csv:
+    get:
+      summary: Export domain CSV
+      tags: [Export]
+      parameters:
+        - name: domain
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [DM, AE, DEV, IC]
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  # ── Users ────────────────────────────────────────────────
+  /api/users:
+    get:
+      summary: List all users (admin only)
+      tags: [Users]
+      responses:
+        "200":
+          description: Array of users
+
+  /api/users/invite:
+    post:
+      summary: Invite new user (admin only)
+      tags: [Users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, role]
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+                siteId:
+                  type: string
+      responses:
+        "201":
+          description: User invited
+
+  /api/users/me/profile:
+    patch:
+      summary: Update own display name
+      tags: [Users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [displayName]
+              properties:
+                displayName:
+                  type: string
+      responses:
+        "200":
+          description: Profile updated
+
+  /api/users/{id}:
+    get:
+      summary: Get user profile
+      tags: [Users]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User detail
+    delete:
+      summary: Permanently delete deactivated user
+      tags: [Users]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: User deleted
+
+  /api/users/{id}/role:
+    patch:
+      summary: Change user role (admin only)
+      tags: [Users]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role, reason]
+              properties:
+                role:
+                  type: string
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Role updated
+
+  /api/users/{id}/site:
+    patch:
+      summary: Assign user to site
+      tags: [Users]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [siteId, reason]
+              properties:
+                siteId:
+                  type: string
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Site assigned
+
+  /api/users/{id}/sites:
+    post:
+      summary: Add site+study assignment
+      tags: [Users]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [siteId, studyId]
+              properties:
+                siteId:
+                  type: string
+                studyId:
+                  type: string
+                reason:
+                  type: string
+      responses:
+        "201":
+          description: Assignment added
+
+  /api/users/{id}/sites/{assignmentId}:
+    delete:
+      summary: Remove site assignment
+      tags: [Users]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: assignmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Assignment removed
+
+  /api/users/{id}/studies:
+    post:
+      summary: Assign user to study
+      tags: [Users]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [studyId]
+              properties:
+                studyId:
+                  type: string
+      responses:
+        "201":
+          description: Assigned
+
+  /api/users/{id}/studies/{studyId}:
+    delete:
+      summary: Remove user from study
+      tags: [Users]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: studyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Removed
+
+  /api/users/{id}/deactivate:
+    patch:
+      summary: Deactivate user
+      tags: [Users]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: User deactivated
+
+  /api/users/{id}/display-name:
+    delete:
+      summary: Admin resets user display name
+      tags: [Users]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Display name reset
+
+  # ── Security ─────────────────────────────────────────────
+  /api/security/password-status:
+    get:
+      summary: Check password expiry for current user
+      tags: [Security]
+      responses:
+        "200":
+          description: Password status
+
+  /api/security/change-password:
+    post:
+      summary: Self-service password change
+      tags: [Security]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                newPassword:
+                  type: string
+      responses:
+        "200":
+          description: Password changed
+
+  /api/security/locked-accounts:
+    get:
+      summary: List locked accounts (admin only)
+      tags: [Security]
+      responses:
+        "200":
+          description: Locked accounts
+
+  /api/security/unlock/{userId}:
+    post:
+      summary: Manually unlock account
+      tags: [Security]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Account unlocked
+
+  /api/security/force-password-reset/{userId}:
+    post:
+      summary: Force password reset on next login
+      tags: [Security]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reset forced
+
+  /api/security/users:
+    get:
+      summary: All users with lock/expiry status (admin only)
+      tags: [Security]
+      responses:
+        "200":
+          description: Users with security status
+
+  /api/security/login-activity:
+    get:
+      summary: Recent login attempts (admin only)
+      tags: [Security]
+      parameters:
+        - name: email
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Login activity
+
+  # ── Notifications ────────────────────────────────────────
+  /api/notifications:
+    get:
+      summary: Aggregate alerts (SAE deadlines, open queries, expiring training)
+      tags: [Notifications]
+      responses:
+        "200":
+          description: Alerts
+
+  /api/notifications/send-sae-deadline-emails:
+    post:
+      summary: Trigger SAE deadline emails
+      tags: [Notifications]
+      responses:
+        "200":
+          description: Emails sent
+
+  # ── SAE Reports ──────────────────────────────────────────
+  /api/saereports:
+    get:
+      summary: List SAE reports
+      tags: [SAE Reports]
+      parameters:
+        - name: aeId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Array of SAE reports
+    post:
+      summary: Create SAE report
+      tags: [SAE Reports]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [aeId, reportType, day0Date, deadlineDays]
+              properties:
+                aeId:
+                  type: string
+                reportType:
+                  type: string
+                day0Date:
+                  type: string
+                  format: date
+                deadlineDays:
+                  type: integer
+                submittedTo:
+                  type: string
+                narrative:
+                  type: string
+      responses:
+        "201":
+          description: SAE report created
+
+  /api/saereports/overdue:
+    get:
+      summary: Reports past deadline, not yet submitted
+      tags: [SAE Reports]
+      responses:
+        "200":
+          description: Overdue reports
+
+  /api/saereports/{id}:
+    get:
+      summary: Get single SAE report
+      tags: [SAE Reports]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Report detail
+
+  /api/saereports/{id}/sign:
+    patch:
+      summary: E-sign SAE report
+      tags: [SAE Reports]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, meaning]
+              properties:
+                password:
+                  type: string
+                meaning:
+                  type: string
+      responses:
+        "200":
+          description: Report signed
+
+  /api/saereports/{id}/submit:
+    patch:
+      summary: Mark SAE report as submitted
+      tags: [SAE Reports]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                submissionRef:
+                  type: string
+                narrative:
+                  type: string
+      responses:
+        "200":
+          description: Report submitted
+
+  # ── Visit Templates ──────────────────────────────────────
+  /api/visit-templates:
+    get:
+      summary: List visit templates for current study
+      tags: [Visit Templates]
+      responses:
+        "200":
+          description: Templates
+    post:
+      summary: Create visit template
+      tags: [Visit Templates]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, items]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      visitName:
+                        type: string
+                      visitOrder:
+                        type: integer
+                      visitType:
+                        type: string
+                      studyDay:
+                        type: integer
+                      windowDaysBefore:
+                        type: integer
+                      windowDaysAfter:
+                        type: integer
+                      formIds:
+                        type: array
+                        items:
+                          type: string
+                      isMandatory:
+                        type: boolean
+                      notes:
+                        type: string
+      responses:
+        "201":
+          description: Template created
+
+  /api/visit-templates/{id}:
+    get:
+      summary: Get template detail with items and form names
+      tags: [Visit Templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Template detail
+    put:
+      summary: Replace visit template
+      tags: [Visit Templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, items, reason]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                items:
+                  type: array
+                  items:
+                    type: object
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Template replaced
+    delete:
+      summary: Delete visit template
+      tags: [Visit Templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Template deleted
+
+  /api/visit-templates/{id}/generate/{subjectId}:
+    post:
+      summary: Generate scheduled visits from template
+      tags: [Visit Templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enrollmentDate]
+              properties:
+                enrollmentDate:
+                  type: string
+                  format: date
+                overwrite:
+                  type: boolean
+      responses:
+        "201":
+          description: Visits generated
+
+  # ── Medical History ───────────────────────────────────────
+  /api/medhistory:
+    get:
+      summary: List medical history records
+      tags: [Medical History]
+      parameters:
+        - name: subjectId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Records
+    post:
+      summary: Create medical history record
+      tags: [Medical History]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectId, condition]
+              properties:
+                subjectId:
+                  type: string
+                condition:
+                  type: string
+                icdCode:
+                  type: string
+                icdVersion:
+                  type: string
+                onsetDate:
+                  type: string
+                  format: date
+                resolutionDate:
+                  type: string
+                  format: date
+                status:
+                  type: string
+                severity:
+                  type: string
+                isRelatedToIndication:
+                  type: boolean
+                notes:
+                  type: string
+      responses:
+        "201":
+          description: Record created
+
+  /api/medhistory/{id}:
+    get:
+      summary: Get single medical history record
+      tags: [Medical History]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Record detail
+    patch:
+      summary: Update medical history record
+      tags: [Medical History]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Updated
+    delete:
+      summary: Delete medical history record
+      tags: [Medical History]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Deleted
+
+  # ── Concomitant Medications ───────────────────────────────
+  /api/conmeds:
+    get:
+      summary: List concomitant medications
+      tags: [Concomitant Medications]
+      parameters:
+        - name: subjectId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Records
+    post:
+      summary: Create concomitant medication record
+      tags: [Concomitant Medications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectId, drugName, indication, startDate]
+              properties:
+                subjectId:
+                  type: string
+                drugName:
+                  type: string
+                whoDrugName:
+                  type: string
+                whoDrugCode:
+                  type: string
+                atcCode:
+                  type: string
+                indication:
+                  type: string
+                dose:
+                  type: string
+                doseUnit:
+                  type: string
+                frequency:
+                  type: string
+                route:
+                  type: string
+                startDate:
+                  type: string
+                  format: date
+                stopDate:
+                  type: string
+                  format: date
+                isOngoing:
+                  type: boolean
+                notes:
+                  type: string
+      responses:
+        "201":
+          description: Record created
+
+  /api/conmeds/{id}:
+    get:
+      summary: Get single concomitant medication record
+      tags: [Concomitant Medications]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Record detail
+    patch:
+      summary: Update record
+      tags: [Concomitant Medications]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Updated
+    delete:
+      summary: Delete record
+      tags: [Concomitant Medications]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Deleted
+
+  # ── Vital Signs ───────────────────────────────────────────
+  /api/vitalsigns:
+    get:
+      summary: List vital signs (auto-calc BMI)
+      tags: [Vital Signs]
+      parameters:
+        - name: subjectId
+          in: query
+          schema:
+            type: string
+        - name: visitId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Records
+    post:
+      summary: Create vital signs record
+      tags: [Vital Signs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectId, assessmentDate]
+              properties:
+                subjectId:
+                  type: string
+                visitId:
+                  type: string
+                assessmentDate:
+                  type: string
+                  format: date
+                assessmentTime:
+                  type: string
+                position:
+                  type: string
+                systolicBp:
+                  type: number
+                diastolicBp:
+                  type: number
+                heartRate:
+                  type: number
+                respiratoryRate:
+                  type: number
+                temperature:
+                  type: number
+                temperatureUnit:
+                  type: string
+                  enum: [C, F]
+                weight:
+                  type: number
+                weightUnit:
+                  type: string
+                height:
+                  type: number
+                heightUnit:
+                  type: string
+                bmi:
+                  type: number
+                oxygenSaturation:
+                  type: number
+                notes:
+                  type: string
+      responses:
+        "201":
+          description: Record created
+
+  /api/vitalsigns/{id}:
+    get:
+      summary: Get single vital signs record
+      tags: [Vital Signs]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Record
+    patch:
+      summary: Update vital signs record
+      tags: [Vital Signs]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Updated
+    delete:
+      summary: Delete vital signs record
+      tags: [Vital Signs]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Deleted
+
+  # ── Lab Results ──────────────────────────────────────────
+  /api/lab:
+    get:
+      summary: List lab results
+      tags: [Lab Results]
+      parameters:
+        - name: subjectId
+          in: query
+          schema:
+            type: string
+        - name: visitId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: panel
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lab results
+    post:
+      summary: Create lab result
+      tags: [Lab Results]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectId, panelName, testName, specimenCollectedAt]
+              properties:
+                subjectId:
+                  type: string
+                visitId:
+                  type: string
+                panelName:
+                  type: string
+                testName:
+                  type: string
+                testCode:
+                  type: string
+                loincCodingStatus:
+                  type: string
+                specimenType:
+                  type: string
+                specimenCollectedAt:
+                  type: string
+                  format: date-time
+                labName:
+                  type: string
+                valueNumeric:
+                  type: number
+                valueText:
+                  type: string
+                unit:
+                  type: string
+                refRangeLow:
+                  type: number
+                refRangeHigh:
+                  type: number
+                refRangeText:
+                  type: string
+                abnormalityFlag:
+                  type: string
+                clinicalSignificance:
+                  type: string
+                isAbnormal:
+                  type: boolean
+                notes:
+                  type: string
+      responses:
+        "201":
+          description: Lab result created
+
+  /api/lab/{id}:
+    get:
+      summary: Get single lab result
+      tags: [Lab Results]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lab result
+    patch:
+      summary: Update lab result
+      tags: [Lab Results]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Updated
+    delete:
+      summary: Delete lab result
+      tags: [Lab Results]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Deleted
+
+  /api/lab/{id}/verify:
+    patch:
+      summary: Verify lab result
+      tags: [Lab Results]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Result verified
+
+  # ── Amendments ───────────────────────────────────────────
+  /api/amendments:
+    get:
+      summary: List amendments for current study
+      tags: [Amendments]
+      responses:
+        "200":
+          description: Amendments
+    post:
+      summary: Create amendment
+      tags: [Amendments]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amendmentNo, effectiveDate, summary]
+              properties:
+                amendmentNo:
+                  type: string
+                effectiveDate:
+                  type: string
+                  format: date
+                summary:
+                  type: string
+                changes:
+                  type: string
+                requiresReconsent:
+                  type: boolean
+                reconsentReason:
+                  type: string
+                irbApprovalDate:
+                  type: string
+                  format: date
+                irbRefNo:
+                  type: string
+      responses:
+        "201":
+          description: Amendment created
+
+  /api/amendments/{id}:
+    get:
+      summary: Get single amendment
+      tags: [Amendments]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Amendment detail
+    patch:
+      summary: Update amendment
+      tags: [Amendments]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Updated
+    delete:
+      summary: Delete amendment
+      tags: [Amendments]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Deleted
+
+  /api/amendments/{id}/approve:
+    patch:
+      summary: Approve amendment and enforce re-consent
+      tags: [Amendments]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Amendment approved
+
+  /api/amendments/{id}/reconsent-status:
+    get:
+      summary: Which active subjects still need re-consent
+      tags: [Amendments]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Re-consent status per subject
+
+  # ── BD Review ────────────────────────────────────────────
+  /api/bdreview:
+    get:
+      summary: List BD reviews for current study
+      tags: [BD Review]
+      responses:
+        "200":
+          description: Reviews
+    post:
+      summary: Initiate new BD review
+      tags: [BD Review]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+      responses:
+        "201":
+          description: BD review initiated
+
+  /api/bdreview/current:
+    get:
+      summary: Get latest in-progress BD review
+      tags: [BD Review]
+      responses:
+        "200":
+          description: Current review or null
+
+  /api/bdreview/history:
+    get:
+      summary: List completed BD reviews
+      tags: [BD Review]
+      responses:
+        "200":
+          description: Completed reviews
+
+  /api/bdreview/{id}:
+    get:
+      summary: Get single BD review
+      tags: [BD Review]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Review detail
+    patch:
+      summary: Update BD review checklist
+      tags: [BD Review]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                checklistJson:
+                  type: object
+                notes:
+                  type: string
+      responses:
+        "200":
+          description: Updated
+
+  /api/bdreview/{id}/complete:
+    post:
+      summary: Complete BD review (all checklist items must be ticked)
+      tags: [BD Review]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Review completed
+
+  # ── QTL ──────────────────────────────────────────────────
+  /api/qtl:
+    get:
+      summary: List QTLs for current study
+      tags: [QTL]
+      responses:
+        "200":
+          description: QTL list
+    post:
+      summary: Create QTL
+      tags: [QTL]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [indicator, label, threshold, unit, alertLevel]
+              properties:
+                indicator:
+                  type: string
+                label:
+                  type: string
+                threshold:
+                  type: number
+                unit:
+                  type: string
+                alertLevel:
+                  type: string
+                  enum: [Warning, Critical]
+                description:
+                  type: string
+      responses:
+        "201":
+          description: QTL created
+
+  /api/qtl/metrics:
+    get:
+      summary: Compute KRI metrics vs QTL thresholds
+      tags: [QTL]
+      responses:
+        "200":
+          description: KRI metrics with threshold comparison
+
+  /api/qtl/{id}:
+    get:
+      summary: Get single QTL
+      tags: [QTL]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: QTL detail
+    patch:
+      summary: Update QTL
+      tags: [QTL]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Updated
+    delete:
+      summary: Delete QTL
+      tags: [QTL]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reason"
+      responses:
+        "200":
+          description: Deleted
+
+  # ── System Validation ─────────────────────────────────────
+  /api/sysval:
+    get:
+      summary: List all validation records (admin only)
+      tags: [System Validation]
+      responses:
+        "200":
+          description: Validation records
+    post:
+      summary: Create validation record (admin only)
+      tags: [System Validation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, validationDate, validationType, status, performedBy]
+              properties:
+                version:
+                  type: string
+                validationDate:
+                  type: string
+                  format: date
+                validationType:
+                  type: string
+                status:
+                  type: string
+                performedBy:
+                  type: string
+                summary:
+                  type: string
+                changesSince:
+                  type: string
+                approvedBy:
+                  type: string
+      responses:
+        "201":
+          description: Validation record created
+
+  /api/sysval/info:
+    get:
+      summary: System metadata (admin only)
+      tags: [System Validation]
+      responses:
+        "200":
+          description: System info
+
+  /api/sysval/{id}:
+    patch:
+      summary: Update validation record
+      tags: [System Validation]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                performedBy:
+                  type: string
+                summary:
+                  type: string
+                changesSince:
+                  type: string
+                approvedBy:
+                  type: string
+                validationDate:
+                  type: string
+                  format: date
+      responses:
+        "200":
+          description: Updated
+    delete:
+      summary: Delete validation record
+      tags: [System Validation]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+
+  /api/sysval/{id}/approve:
+    patch:
+      summary: Mark validation record as Validated
+      tags: [System Validation]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Approved
+
+  # ── Monitoring ───────────────────────────────────────────
+  /api/monitoring:
+    get:
+      summary: List monitoring visits
+      tags: [Monitoring]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: siteId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Monitoring visits
+    post:
+      summary: Create monitoring visit
+      tags: [Monitoring]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [visitDate, siteId, visitType]
+              properties:
+                visitDate:
+                  type: string
+                  format: date
+                siteId:
+                  type: string
+                visitType:
+                  type: string
+                findings:
+                  type: string
+                actionItems:
+                  type: string
+                subjectsReviewed:
+                  type: array
+                  items:
+                    type: string
+                nextVisitDate:
+                  type: string
+                  format: date
+                notes:
+                  type: string
+      responses:
+        "201":
+          description: Visit created
+
+  /api/monitoring/{id}:
+    get:
+      summary: Get monitoring visit with SDV records
+      tags: [Monitoring]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Visit detail
+    patch:
+      summary: Update draft monitoring visit
+      tags: [Monitoring]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                visitDate:
+                  type: string
+                  format: date
+                visitType:
+                  type: string
+                findings:
+                  type: string
+                actionItems:
+                  type: string
+                subjectsReviewed:
+                  type: array
+                  items:
+                    type: string
+                nextVisitDate:
+                  type: string
+                  format: date
+                notes:
+                  type: string
+      responses:
+        "200":
+          description: Updated
+
+  /api/monitoring/{id}/submit:
+    post:
+      summary: CRA submits monitoring visit for PI review
+      tags: [Monitoring]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Submitted
+
+  /api/monitoring/{id}/acknowledge:
+    post:
+      summary: PI/Admin acknowledges monitoring visit
+      tags: [Monitoring]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                piComments:
+                  type: string
+      responses:
+        "200":
+          description: Acknowledged
+
+  /api/monitoring/{id}/sdv:
+    get:
+      summary: List SDV records for monitoring visit
+      tags: [Monitoring]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SDV records
+    post:
+      summary: Add or update SDV record
+      tags: [Monitoring]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectId, subjectCode, sdvStatus]
+              properties:
+                subjectId:
+                  type: string
+                subjectCode:
+                  type: string
+                visitId:
+                  type: string
+                visitName:
+                  type: string
+                formId:
+                  type: string
+                formName:
+                  type: string
+                sdvStatus:
+                  type: string
+                  enum: [Verified, Discrepancy, Pending]
+                discrepancyNote:
+                  type: string
+      responses:
+        "200":
+          description: SDV record saved
+
+tags:
+  - name: System
+  - name: Auth
+  - name: Studies
+  - name: Sites
+  - name: Subjects
+  - name: Visits
+  - name: Forms
+  - name: Entries
+  - name: Queries
+  - name: Signatures
+  - name: Audit
+  - name: Dashboard
+  - name: Adverse Events
+  - name: Deviations
+  - name: Randomization
+  - name: Consents
+  - name: DB Lock
+  - name: Delegation
+  - name: Export
+  - name: Users
+  - name: Security
+  - name: Notifications
+  - name: SAE Reports
+  - name: Visit Templates
+  - name: Medical History
+  - name: Concomitant Medications
+  - name: Vital Signs
+  - name: Lab Results
+  - name: Amendments
+  - name: BD Review
+  - name: QTL
+  - name: System Validation
+  - name: Monitoring
