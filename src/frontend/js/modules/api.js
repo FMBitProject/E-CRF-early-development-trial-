@@ -253,7 +253,10 @@ export const api = {
         localStorage.removeItem('ecrf_study_meta');
         localStorage.removeItem('ecrf_site_context_id');
         localStorage.removeItem('ecrf_site_context_meta');
-        try { await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'include' }); } catch {}
+        // ICH E6(R3) C.4.3 — /api/mfa/logout writes LOGOUT to audit trail before sign-out
+        try { await fetch('/api/mfa/logout', { method: 'POST', credentials: 'include' }); } catch {
+            try { await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'include' }); } catch {}
+        }
         window.location.href = 'login.html';
     },
 
@@ -904,6 +907,48 @@ export const api = {
 
     // ── Notifications ────────────────────────────────────────
     async getNotifications() { return apiFetch('/api/notifications'); },
+
+    // ── Screening Log (ICH E6(R3) §8.3.20) ──────────────────
+    async getScreeningLog()            { return apiFetch('/api/screening'); },
+    async getScreeningStats()          { return apiFetch('/api/screening/stats'); },
+    async createScreeningRecord(data)  { return apiFetch('/api/screening', { method: 'POST', body: JSON.stringify(data) }); },
+    async updateScreeningRecord(id, d) { return apiFetch(`/api/screening/${id}`, { method: 'PATCH', body: JSON.stringify(d) }); },
+    async deleteScreeningRecord(id)    { return apiFetch(`/api/screening/${id}`, { method: 'DELETE' }); },
+
+    // ── IP Accountability (ICH E6(R3) §8.3.19) ───────────────
+    async getIPRecords(params = {}) {
+        const qs = new URLSearchParams(params).toString();
+        return apiFetch(`/api/ip${qs ? '?' + qs : ''}`);
+    },
+    async getIPSummary()              { return apiFetch('/api/ip/summary'); },
+    async createIPRecord(data)        { return apiFetch('/api/ip', { method: 'POST', body: JSON.stringify(data) }); },
+    async updateIPRecord(id, data)    { return apiFetch(`/api/ip/${id}`, { method: 'PATCH', body: JSON.stringify(data) }); },
+    async deleteIPRecord(id)          { return apiFetch(`/api/ip/${id}`, { method: 'DELETE' }); },
+
+    // ── Essential Documents (ICH E6(R3) §8) ─────────────────
+    async getEssentialDocs(section)   { return apiFetch(`/api/essential-docs${section ? '?section=' + encodeURIComponent(section) : ''}`); },
+    async getEssentialDocTypes()      { return apiFetch('/api/essential-docs/types'); },
+    async getEssentialDocCompleteness(){ return apiFetch('/api/essential-docs/completeness'); },
+    async createEssentialDoc(data)    { return apiFetch('/api/essential-docs', { method: 'POST', body: JSON.stringify(data) }); },
+    async updateEssentialDoc(id, d)   { return apiFetch(`/api/essential-docs/${id}`, { method: 'PATCH', body: JSON.stringify(d) }); },
+    async deleteEssentialDoc(id)      { return apiFetch(`/api/essential-docs/${id}`, { method: 'DELETE' }); },
+
+    // ── SOP Agreements (ICH E6(R3) C.4.1) ───────────────────
+    async getRequiredAgreements()     { return apiFetch('/api/agreements/required'); },
+    async getAgreementText(type)      { return apiFetch(`/api/agreements/text/${type}`); },
+    async submitAgreement(type)       { return apiFetch('/api/agreements', { method: 'POST', body: JSON.stringify({ agreementType: type }) }); },
+
+    // ── Monitoring Plan / RBMP (ICH E6(R3) §5.18.3) ─────────
+    async getMonitoringPlans()        { return apiFetch('/api/monitoring-plan'); },
+    async getCurrentMonitoringPlan()  { return apiFetch('/api/monitoring-plan/current'); },
+    async createMonitoringPlan(data)  { return apiFetch('/api/monitoring-plan', { method: 'POST', body: JSON.stringify(data) }); },
+    async updateMonitoringPlan(id, d) { return apiFetch(`/api/monitoring-plan/${id}`, { method: 'PATCH', body: JSON.stringify(d) }); },
+    async approveMonitoringPlan(id)   { return apiFetch(`/api/monitoring-plan/${id}/approve`, { method: 'POST' }); },
+
+    // ── Reports ──────────────────────────────────────────────
+    async getMissingDataReport(groupBy = 'site') { return apiFetch(`/api/reports/missing-data?groupBy=${groupBy}`); },
+    async getDataQualityReport()      { return apiFetch('/api/reports/data-quality'); },
+    async getAuditIntegrityReport()   { return apiFetch('/api/reports/audit-integrity'); },
 };
 
 window.api = api;

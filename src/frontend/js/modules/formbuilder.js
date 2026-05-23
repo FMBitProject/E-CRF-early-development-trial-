@@ -193,13 +193,35 @@ function renderFieldList() {
           <i data-lucide="x" class="w-3.5 h-3.5"></i>
         </button>
       </div>
-      <div class="flex items-center gap-4 pl-6">
+      <div class="flex items-center gap-4 pl-6 flex-wrap">
         <label class="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
           <input type="checkbox" ${f.required ? 'checked' : ''} onchange="window.fbUpdateField(${i},'required',this.checked)" class="rounded">
           Required
         </label>
+        <label class="flex items-center gap-1.5 text-xs text-red-600 cursor-pointer" title="ICH E6(R3) §5.0.5 — Critical Data">
+          <input type="checkbox" ${f.isCritical ? 'checked' : ''} onchange="window.fbUpdateField(${i},'isCritical',this.checked)" class="rounded accent-red-500">
+          <span class="font-medium">Critical Data</span>
+        </label>
         <div class="flex-1">
           <input class="ph-input text-xs" value="${f.placeholder ?? ''}" onchange="window.fbUpdateField(${i},'placeholder',this.value)" placeholder="Placeholder text (optional)">
+        </div>
+      </div>
+      <div class="flex items-center gap-2 pl-6 flex-wrap">
+        <div class="flex items-center gap-1">
+          <span class="text-xs text-slate-400 whitespace-nowrap">CDASH:</span>
+          <input class="ph-input text-xs w-24" value="${f.cdashVar ?? ''}"
+                 onchange="window.fbUpdateField(${i},'cdashVar',this.value)"
+                 placeholder="e.g. AESTDTC" title="CDASH variable name">
+        </div>
+        <div class="flex items-center gap-1">
+          <span class="text-xs text-slate-400 whitespace-nowrap">SDTM:</span>
+          <input class="ph-input text-xs w-20" value="${f.sdtmDomain ?? ''}"
+                 onchange="window.fbUpdateField(${i},'sdtmDomain',this.value)"
+                 placeholder="AE" title="SDTM domain (e.g. AE, CM, VS)">
+          <span class="text-xs text-slate-300">.</span>
+          <input class="ph-input text-xs w-24" value="${f.sdtmVar ?? ''}"
+                 onchange="window.fbUpdateField(${i},'sdtmVar',this.value)"
+                 placeholder="AETERM" title="SDTM variable name">
         </div>
       </div>
       ${(f.type === 'number') ? `

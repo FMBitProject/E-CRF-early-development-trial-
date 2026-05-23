@@ -7,6 +7,7 @@ import {
     esignatures,
 } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
+import { writeAudit } from '../lib/audit.js';
 
 const router = Router();
 
@@ -108,17 +109,29 @@ router.get('/odm', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
       </FormDef>`;
         }
 
-        // ItemGroupDef + ItemDef blocks
+        // ItemGroupDef + ItemDef blocks (CDASH/SDTM annotations via Alias elements per CDISC ODM 1.3.2)
         for (const form of allForms) {
             const schema = form.schemaJson || {};
             const fields = schema.fields || [];
             for (const field of fields) {
+                const hasCdash = !!field.cdashVar;
+                const hasSdtm  = !!(field.sdtmDomain && field.sdtmVar);
+                const dataType = field.type === 'number'   ? 'float'
+                               : field.type === 'date'     ? 'date'
+                               : field.type === 'datetime' ? 'datetime'
+                               : field.type === 'boolean'  ? 'boolean'
+                               : 'text';
+                const aliases = [
+                    hasCdash ? `        <Alias Context="CDASH" Name="${xmlEsc(field.cdashVar)}"/>` : '',
+                    hasSdtm  ? `        <Alias Context="SDTM"  Name="${xmlEsc(field.sdtmDomain + '.' + field.sdtmVar)}"/>` : '',
+                    field.isCritical ? `        <Alias Context="ICH-E6R3" Name="CriticalDataField"/>` : '',
+                ].filter(Boolean).join('\n');
                 xml += `
       <ItemGroupDef OID="IG.${form.id}.${xmlEsc(field.key)}" Name="${xmlEsc(field.label || field.key)}" Repeating="No">
         <ItemRef ItemOID="IT.${form.id}.${xmlEsc(field.key)}" Mandatory="${field.required ? 'Yes' : 'No'}"/>
       </ItemGroupDef>
-      <ItemDef OID="IT.${form.id}.${xmlEsc(field.key)}" Name="${xmlEsc(field.label || field.key)}" DataType="${field.type === 'number' ? 'float' : 'text'}">
-        <Question><TranslatedText>${xmlEsc(field.label || field.key)}</TranslatedText></Question>
+      <ItemDef OID="IT.${form.id}.${xmlEsc(field.key)}" Name="${xmlEsc(field.label || field.key)}" DataType="${dataType}"${hasSdtm ? ` SDSVarName="${xmlEsc(field.sdtmVar)}"` : ''}>
+        <Question><TranslatedText>${xmlEsc(field.label || field.key)}</TranslatedText></Question>${aliases ? '\n' + aliases : ''}
       </ItemDef>`;
             }
         }
@@ -255,6 +268,14 @@ router.get('/odm', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
 
         res.set('Content-Type', 'application/xml; charset=utf-8');
         res.set('Content-Disposition', `attachment; filename="study_export_${Date.now()}.xml"`);
+
+        await writeAudit(db, {
+            tableName: 'export', recordId: sid, action: 'EXPORT',
+            fieldName: 'format', newValue: 'ODM-XML',
+            reason: 'Data export performed',
+            user: req.user, ipAddress: req.ip,
+        });
+
         res.send(xml);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -357,6 +378,14 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
         const csv = [csvRow(headers), ...rows.map(csvRow)].join('\r\n');
         res.set('Content-Type', 'text/csv; charset=utf-8');
         res.set('Content-Disposition', `attachment; filename="${domain}_${Date.now()}.csv"`);
+
+        await writeAudit(db, {
+            tableName: 'export', recordId: req.studyId, action: 'EXPORT',
+            fieldName: 'domain', newValue: domain,
+            reason: `CSV export — domain: ${domain}`,
+            user: req.user, ipAddress: req.ip,
+        });
+
         res.send('﻿' + csv); // BOM for Excel UTF-8
     } catch (err) {
         res.status(500).json({ error: err.message });

@@ -6,6 +6,7 @@ import { api } from './modules/api.js';
 import { showToast, showModal, closeModal } from './modules/utils.js';
 import { getSiteContext, switchStudyAndSite } from './modules/study-select.js';
 import { initSessionTimeout } from './modules/session.js';
+import { checkAndShowAgreements } from './modules/agreements.js';
 
 export { showToast, showModal, closeModal };
 
@@ -46,6 +47,12 @@ const NAV_ITEMS = [
     // ── Phase 3: Quality Management ───────────────────────────────────────────
     { id: 'csm',            label: 'CSM / KRI',         icon: 'bar-chart-3',      roles: ['admin', 'cra', 'pi', DM] },
     { id: 'qtl',            label: 'QTL Thresholds',    icon: 'sliders-horizontal',roles: ['admin', 'cra', 'pi', DM] },
+    // ── ICH E6(R3) Gap Closure ───────────────────────────────────────────────────
+    { id: 'screening',      label: 'Screening Log',   icon: 'clipboard-list',   roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+    { id: 'ipdispensing',   label: 'IP Accountability',icon: 'package',         roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+    { id: 'essentialdocs',  label: 'Essential Docs',  icon: 'folder-check',     roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'monitoringplan', label: 'Monitoring Plan', icon: 'map',              roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'missingdata',    label: 'Data Quality',    icon: 'bar-chart-2',      roles: ['admin', 'cra', 'pi', DM] },
     // ── Admin ─────────────────────────────────────────────────────────────────
     { id: 'sites',          label: 'Sites',           icon: 'building-2',       roles: ['admin'] },
     { id: 'studymgmt',      label: 'Studies',         icon: 'flask-conical',    roles: ['admin'] },
@@ -307,6 +314,32 @@ const routes = {
         const el = document.getElementById('main-content');
         if (el) { const { renderSysVal } = await import('./modules/sysval.js'); await renderSysVal(el); }
     },
+    // ── ICH E6(R3) Gap Closure ──────────────────────────────────────────────────
+    'screening': async () => {
+        renderBreadcrumb([{ label: 'Screening Log', route: 'screening' }]);
+        const el = document.getElementById('main-content');
+        if (el) { const { renderScreeningLog } = await import('./modules/screening.js'); await renderScreeningLog(el); }
+    },
+    'ipdispensing': async () => {
+        renderBreadcrumb([{ label: 'IP Accountability', route: 'ipdispensing' }]);
+        const el = document.getElementById('main-content');
+        if (el) { const { renderIPDispensing } = await import('./modules/ipdispensing.js'); await renderIPDispensing(el); }
+    },
+    'essentialdocs': async () => {
+        renderBreadcrumb([{ label: 'Essential Documents', route: 'essentialdocs' }]);
+        const el = document.getElementById('main-content');
+        if (el) { const { renderEssentialDocs } = await import('./modules/essentialdocs.js'); await renderEssentialDocs(el); }
+    },
+    'monitoringplan': async () => {
+        renderBreadcrumb([{ label: 'Monitoring Plan (RBMP)', route: 'monitoringplan' }]);
+        const el = document.getElementById('main-content');
+        if (el) { const { renderMonitoringPlan } = await import('./modules/monitoringplan.js'); await renderMonitoringPlan(el); }
+    },
+    'missingdata': async () => {
+        renderBreadcrumb([{ label: 'Data Quality Report', route: 'missingdata' }]);
+        const el = document.getElementById('main-content');
+        if (el) { const { renderMissingDataReport } = await import('./modules/missingdata.js'); await renderMissingDataReport(el); }
+    },
     'audit': async () => {
         renderBreadcrumb([{ label: 'Audit Trail', route: 'audit' }]);
         const { renderAuditTrail } = await import('./modules/audit.js');
@@ -565,7 +598,11 @@ if (!_initState.hasStudy || !_initState.hasSite || !user.displayName) {
 _appReady = true;
 const _initBasePath = parseRoute(window.location.hash).key.split('/')[0] || 'dashboard';
 renderSidebar(_initBasePath);
-navigateByState();
+
+// ICH E6(R3) C.4.1 — check SOP agreements before allowing access
+checkAndShowAgreements().then(() => {
+    navigateByState();
+});
 
 // 21 CFR Part 11 §11.10(d) — 30-minute inactivity session timeout
 initSessionTimeout();

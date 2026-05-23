@@ -44,6 +44,13 @@ import bdReviewRouter        from './routes/bdreview.js';
 // Phase 3 — Quality Management & Validation
 import qtlRouter             from './routes/qtl.js';
 import sysValRouter          from './routes/sysval.js';
+// ICH E6(R3) Gap Closure
+import screeningRouter       from './routes/screening.js';
+import ipDispensingRouter    from './routes/ipdispensing.js';
+import essentialDocsRouter   from './routes/essentialdocs.js';
+import agreementsRouter      from './routes/agreements.js';
+import monitoringPlanRouter  from './routes/monitoringplan.js';
+import reportRouter          from './routes/report.js';
 import { requireStudy }      from './middleware/study.js';
 import { rateLimitAuth }     from './middleware/ratelimit.js';
 
@@ -628,6 +635,126 @@ async function runMigrations() {
             backup_codes JSONB NOT NULL DEFAULT '[]',
             UNIQUE(user_id)
         )`,
+
+        // ICH E6(R3) — audit_action enum: add EXPORT, SIGN, AGREE values
+        `DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel='EXPORT' AND enumtypid=(SELECT oid FROM pg_type WHERE typname='audit_action'))
+            THEN ALTER TYPE audit_action ADD VALUE 'EXPORT'; END IF; END $$`,
+        `DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel='SIGN' AND enumtypid=(SELECT oid FROM pg_type WHERE typname='audit_action'))
+            THEN ALTER TYPE audit_action ADD VALUE 'SIGN'; END IF; END $$`,
+        `DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel='AGREE' AND enumtypid=(SELECT oid FROM pg_type WHERE typname='audit_action'))
+            THEN ALTER TYPE audit_action ADD VALUE 'AGREE'; END IF; END $$`,
+
+        // ICH E6(R3) — audit trail hash for tamper detection
+        `ALTER TABLE audit_trails ADD COLUMN IF NOT EXISTS audit_hash TEXT`,
+        `ALTER TABLE audit_trails ALTER COLUMN created_at SET DEFAULT NOW()`,
+
+        // ICH E6(R3) §8.3.20 — Screening Log
+        `CREATE TABLE IF NOT EXISTS screening_log (
+            id                   INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+            study_id             INTEGER NOT NULL REFERENCES studies(id) ON DELETE CASCADE,
+            site_id              INTEGER REFERENCES sites(id),
+            screening_date       TEXT NOT NULL,
+            screening_code       VARCHAR(30) NOT NULL,
+            subject_initials     VARCHAR(10),
+            disposition          TEXT NOT NULL DEFAULT 'Pending',
+            fail_reason          TEXT,
+            eligibility_criteria TEXT,
+            notes                TEXT,
+            enrolled_subject_id  INTEGER REFERENCES subjects(id),
+            created_by           TEXT REFERENCES "user"(id),
+            created_by_name      TEXT,
+            created_at           TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at           TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_screening_study ON screening_log (study_id)`,
+
+        // ICH E6(R3) §8.3.19 — IP Accountability / Drug Dispensing
+        `CREATE TABLE IF NOT EXISTS ip_accountability (
+            id                 INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+            study_id           INTEGER NOT NULL REFERENCES studies(id) ON DELETE CASCADE,
+            site_id            INTEGER REFERENCES sites(id),
+            subject_id         INTEGER REFERENCES subjects(id),
+            record_type        TEXT NOT NULL,
+            transaction_date   TEXT NOT NULL,
+            drug_name          TEXT NOT NULL,
+            batch_no           TEXT,
+            quantity_in        TEXT,
+            quantity_out       TEXT,
+            unit               TEXT,
+            expiry_date        TEXT,
+            supplier_ref       TEXT,
+            returned_quantity  TEXT,
+            destroyed_quantity TEXT,
+            destruction_ref    TEXT,
+            balance            TEXT,
+            notes              TEXT,
+            created_by         TEXT REFERENCES "user"(id),
+            created_by_name    TEXT,
+            created_at         TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at         TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_ip_study ON ip_accountability (study_id)`,
+
+        // ICH E6(R3) §8 — Essential Documents Checklist
+        `CREATE TABLE IF NOT EXISTS essential_documents (
+            id               INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+            study_id         INTEGER NOT NULL REFERENCES studies(id) ON DELETE CASCADE,
+            site_id          INTEGER REFERENCES sites(id),
+            section          TEXT NOT NULL,
+            document_type    TEXT NOT NULL,
+            document_ref     TEXT,
+            version          TEXT,
+            document_date    TEXT,
+            expiry_date      TEXT,
+            status           TEXT NOT NULL DEFAULT 'Pending',
+            notes            TEXT,
+            uploaded_by      TEXT REFERENCES "user"(id),
+            uploaded_by_name TEXT,
+            uploaded_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at       TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_esdoc_study ON essential_documents (study_id)`,
+
+        // ICH E6(R3) C.4.1, §5.5.2 — User SOP/Training Agreements
+        `CREATE TABLE IF NOT EXISTS user_agreements (
+            id                INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+            user_id           TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+            agreement_type    TEXT NOT NULL DEFAULT 'SOP',
+            agreement_version TEXT NOT NULL,
+            agreed_at         TIMESTAMP NOT NULL DEFAULT NOW(),
+            ip_address        TEXT,
+            user_agent        TEXT
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_agreements_user ON user_agreements (user_id)`,
+
+        // ICH E6(R3) §5.18.3 — Risk-Based Monitoring Plan
+        `CREATE TABLE IF NOT EXISTS monitoring_plans (
+            id                   INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+            study_id             INTEGER NOT NULL REFERENCES studies(id) ON DELETE CASCADE,
+            version              TEXT NOT NULL DEFAULT '1.0',
+            status               TEXT NOT NULL DEFAULT 'Draft',
+            risk_level           TEXT,
+            scope                TEXT,
+            sdv_strategy         TEXT,
+            sdv_percentage       INTEGER,
+            on_site_frequency    TEXT,
+            remote_frequency     TEXT,
+            critical_data_fields JSONB DEFAULT '[]',
+            risk_factors         JSONB DEFAULT '[]',
+            action_thresholds    JSONB DEFAULT '{}',
+            approved_by          TEXT REFERENCES "user"(id),
+            approved_by_name     TEXT,
+            approved_at          TIMESTAMP,
+            notes                TEXT,
+            created_by           TEXT REFERENCES "user"(id),
+            created_by_name      TEXT,
+            created_at           TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at           TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_monplan_study ON monitoring_plans (study_id)`,
     ];
     for (const stmt of stmts) {
         await client.unsafe(stmt);
@@ -694,6 +821,13 @@ app.use('/api/bdreview',                 ...studyAuth, bdReviewRouter);
 // Phase 3 — Quality Management & Validation
 app.use('/api/qtl',                      ...studyAuth, qtlRouter);
 app.use('/api/sysval',                   requireAuth,  sysValRouter);
+// ICH E6(R3) Gap Closure
+app.use('/api/screening',                ...studyAuth, screeningRouter);
+app.use('/api/ip',                       ...studyAuth, ipDispensingRouter);
+app.use('/api/essential-docs',           ...studyAuth, essentialDocsRouter);
+app.use('/api/agreements',               requireAuth,  agreementsRouter);
+app.use('/api/monitoring-plan',          ...studyAuth, monitoringPlanRouter);
+app.use('/api/reports',                  ...studyAuth, reportRouter);
 
 // Serve all static frontend files from project root
 app.use(express.static(rootDir));

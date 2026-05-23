@@ -1,24 +1,31 @@
+import crypto from 'crypto';
 import { auditTrails } from '../db/schemas/schema.js';
 
-/**
- * Write a single audit entry. Call this for every mutating operation.
- * @param {import('drizzle-orm/postgres-js').PostgresJsDatabase} db
- * @param {object} params
- * @param {string} params.tableName
- * @param {string|number} params.recordId
- * @param {'INSERT'|'UPDATE'|'DELETE'|'LOCK'|'UNLOCK'|'LOGIN'|'LOGOUT'} params.action
- * @param {string} [params.fieldName]
- * @param {string} [params.oldValue]
- * @param {string} [params.newValue]
- * @param {string} [params.reason]
- * @param {object} [params.user]   - req.user object
- * @param {string} [params.ipAddress]
- */
+function computeHash(params, createdAt) {
+    const raw = [
+        params.tableName,
+        String(params.recordId),
+        params.action,
+        params.fieldName  ?? '',
+        params.oldValue   ?? '',
+        params.newValue   ?? '',
+        params.user?.id   ?? '',
+        params.ipAddress  ?? '',
+        createdAt.toISOString(),
+    ].join('|');
+    return crypto.createHash('sha256').update(raw).digest('hex');
+}
+
 export async function writeAudit(db, {
     tableName, recordId, action,
     fieldName, oldValue, newValue, reason,
     user, ipAddress,
 }) {
+    const createdAt = new Date();
+    const auditHash = computeHash(
+        { tableName, recordId, action, fieldName, oldValue, newValue, user, ipAddress },
+        createdAt,
+    );
     await db.insert(auditTrails).values({
         tableName,
         recordId:  String(recordId),
@@ -31,12 +38,11 @@ export async function writeAudit(db, {
         userName:   user?.name ?? null,
         userRole:   user?.role ?? null,
         ipAddress:  ipAddress  ?? null,
+        auditHash,
+        createdAt,
     });
 }
 
-/**
- * Diff two plain objects and write one audit row per changed field.
- */
 export async function writeFieldDiffAudit(db, { tableName, recordId, oldData, newData, reason, user, ipAddress }) {
     const allKeys = new Set([...Object.keys(oldData || {}), ...Object.keys(newData || {})]);
     const writes = [];

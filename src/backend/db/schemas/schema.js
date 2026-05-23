@@ -354,7 +354,7 @@ export const crfDataEntries = pgTable('crf_data_entries', {
     updatedBy:    text('updated_by').references(() => user.id),
 });
 
-export const auditActionEnum = pgEnum('audit_action', ['INSERT', 'UPDATE', 'DELETE', 'LOCK', 'UNLOCK', 'LOGIN', 'LOGOUT']);
+export const auditActionEnum = pgEnum('audit_action', ['INSERT', 'UPDATE', 'DELETE', 'LOCK', 'UNLOCK', 'LOGIN', 'LOGOUT', 'EXPORT', 'SIGN', 'AGREE']);
 
 export const auditTrails = pgTable('audit_trails', {
     id:        integer('id').primaryKey().generatedAlwaysAsIdentity(),
@@ -369,7 +369,8 @@ export const auditTrails = pgTable('audit_trails', {
     userName:  text('user_name'),
     userRole:  text('user_role'),
     ipAddress: text('ip_address'),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
+    auditHash: text('audit_hash'),
+    createdAt: timestamp('created_at').notNull(),
 });
 
 // ─── Electronic Signatures (FDA 21 CFR Part 11) ─────────────────────────────
@@ -693,4 +694,109 @@ export const queries = pgTable('queries', {
     resolvedAt:     timestamp('resolved_at'),
     closedBy:       text('closed_by').references(() => user.id),
     closedAt:       timestamp('closed_at'),
+});
+
+// ─── Screening Log (ICH E6(R3) §8.3.20) ─────────────────────────────────────
+
+export const screeningLog = pgTable('screening_log', {
+    id:                  integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:             integer('study_id').notNull().references(() => studies.id, { onDelete: 'cascade' }),
+    siteId:              integer('site_id').references(() => sites.id),
+    screeningDate:       text('screening_date').notNull(),
+    screeningCode:       varchar('screening_code', { length: 30 }).notNull(),
+    subjectInitials:     varchar('subject_initials', { length: 10 }),
+    disposition:         text('disposition').notNull().default('Pending'), // Enrolled | Screen Failed | Pending | Withdrawn
+    failReason:          text('fail_reason'),
+    eligibilityCriteria: text('eligibility_criteria'),
+    notes:               text('notes'),
+    enrolledSubjectId:   integer('enrolled_subject_id').references(() => subjects.id),
+    createdBy:           text('created_by').references(() => user.id),
+    createdByName:       text('created_by_name'),
+    createdAt:           timestamp('created_at').notNull().defaultNow(),
+    updatedAt:           timestamp('updated_at').notNull().defaultNow(),
+});
+
+// ─── IP Accountability / Drug Dispensing (ICH E6(R3) §8.3.19) ───────────────
+
+export const ipAccountability = pgTable('ip_accountability', {
+    id:                integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:           integer('study_id').notNull().references(() => studies.id, { onDelete: 'cascade' }),
+    siteId:            integer('site_id').references(() => sites.id),
+    subjectId:         integer('subject_id').references(() => subjects.id),
+    recordType:        text('record_type').notNull(), // Receipt | Dispensing | Return | Destruction
+    transactionDate:   text('transaction_date').notNull(),
+    drugName:          text('drug_name').notNull(),
+    batchNo:           text('batch_no'),
+    quantityIn:        text('quantity_in'),
+    quantityOut:       text('quantity_out'),
+    unit:              text('unit'),
+    expiryDate:        text('expiry_date'),
+    supplierRef:       text('supplier_ref'),
+    returnedQuantity:  text('returned_quantity'),
+    destroyedQuantity: text('destroyed_quantity'),
+    destructionRef:    text('destruction_ref'),
+    balance:           text('balance'),
+    notes:             text('notes'),
+    createdBy:         text('created_by').references(() => user.id),
+    createdByName:     text('created_by_name'),
+    createdAt:         timestamp('created_at').notNull().defaultNow(),
+    updatedAt:         timestamp('updated_at').notNull().defaultNow(),
+});
+
+// ─── Essential Documents (ICH E6(R3) §8) ─────────────────────────────────────
+
+export const essentialDocuments = pgTable('essential_documents', {
+    id:           integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:      integer('study_id').notNull().references(() => studies.id, { onDelete: 'cascade' }),
+    siteId:       integer('site_id').references(() => sites.id),
+    section:      text('section').notNull(),       // §8.2 | §8.3 | §8.4
+    documentType: text('document_type').notNull(), // e.g. IB, Protocol, ICF, IRB_Approval, CV
+    documentRef:  text('document_ref'),            // file path, URL, or doc number
+    version:      text('version'),
+    documentDate: text('document_date'),
+    expiryDate:   text('expiry_date'),
+    status:       text('status').notNull().default('Pending'), // Pending | Received | Current | Superseded | Not Applicable
+    notes:        text('notes'),
+    uploadedBy:   text('uploaded_by').references(() => user.id),
+    uploadedByName: text('uploaded_by_name'),
+    uploadedAt:   timestamp('uploaded_at').notNull().defaultNow(),
+    updatedAt:    timestamp('updated_at').notNull().defaultNow(),
+});
+
+// ─── User SOP Agreements (ICH E6(R3) C.4.1, §5.5.2) ─────────────────────────
+
+export const userAgreements = pgTable('user_agreements', {
+    id:               integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    userId:           text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    agreementType:    text('agreement_type').notNull().default('SOP'), // SOP | Data_Privacy | Training
+    agreementVersion: text('agreement_version').notNull(),
+    agreedAt:         timestamp('agreed_at').notNull().defaultNow(),
+    ipAddress:        text('ip_address'),
+    userAgent:        text('user_agent'),
+});
+
+// ─── Risk-Based Monitoring Plan (ICH E6(R3) §5.18.3) ─────────────────────────
+
+export const monitoringPlans = pgTable('monitoring_plans', {
+    id:                 integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    studyId:            integer('study_id').notNull().references(() => studies.id, { onDelete: 'cascade' }),
+    version:            text('version').notNull().default('1.0'),
+    status:             text('status').notNull().default('Draft'), // Draft | Approved | Superseded
+    riskLevel:          text('risk_level'),   // Low | Medium | High
+    scope:              text('scope'),
+    sdvStrategy:        text('sdv_strategy'),   // 100% | Risk-Based | Remote
+    sdvPercentage:      integer('sdv_percentage'),
+    onSiteFrequency:    text('on_site_frequency'),
+    remoteFrequency:    text('remote_frequency'),
+    criticalDataFields: jsonb('critical_data_fields').default('[]'),
+    riskFactors:        jsonb('risk_factors').default('[]'),
+    actionThresholds:   jsonb('action_thresholds').default('{}'),
+    approvedBy:         text('approved_by').references(() => user.id),
+    approvedByName:     text('approved_by_name'),
+    approvedAt:         timestamp('approved_at'),
+    notes:              text('notes'),
+    createdBy:          text('created_by').references(() => user.id),
+    createdByName:      text('created_by_name'),
+    createdAt:          timestamp('created_at').notNull().defaultNow(),
+    updatedAt:          timestamp('updated_at').notNull().defaultNow(),
 });

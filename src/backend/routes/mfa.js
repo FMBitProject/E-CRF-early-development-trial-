@@ -182,6 +182,14 @@ router.post('/initiate', async (req, res) => {
             maxAge:   SESSION_MAX_AGE * 1000,
         });
 
+        // ICH E6(R3) C.4.3 — log successful login to audit trail
+        await writeAudit(db, {
+            tableName: 'user', recordId: user.id, action: 'LOGIN',
+            reason: 'Successful login (no MFA)',
+            user: { id: user.id, name: user.name, role: user.role ?? 'investigator' },
+            ipAddress: req.ip,
+        });
+
         res.json({
             status: 'authenticated',
             token,
@@ -256,6 +264,14 @@ router.post('/totp-verify', async (req, res) => {
             sameSite: 'lax',
             path:     '/',
             maxAge:   SESSION_MAX_AGE * 1000,
+        });
+
+        // ICH E6(R3) C.4.3 — log successful TOTP login to audit trail
+        await writeAudit(db, {
+            tableName: 'user', recordId: userId, action: 'LOGIN',
+            reason: 'Successful login (TOTP verified)',
+            user: { id: userId, name, role: role ?? 'investigator' },
+            ipAddress: req.ip,
         });
 
         res.json({ token: authToken, user: { id: userId, name, displayName: displayName ?? null, role: role ?? 'investigator' } });
@@ -483,6 +499,13 @@ router.post('/direct-login', async (req, res) => {
             maxAge:   SESSION_MAX_AGE * 1000,
         });
 
+        await writeAudit(db, {
+            tableName: 'user', recordId: user.id, action: 'LOGIN',
+            reason: 'Successful login (direct)',
+            user: { id: user.id, name: user.name, role: user.role ?? 'investigator' },
+            ipAddress: req.ip,
+        });
+
         res.json({ token, user: { id: user.id, name: user.name, role: user.role ?? 'investigator' } });
 
     } catch (err) {
@@ -494,6 +517,25 @@ router.post('/direct-login', async (req, res) => {
 // POST /api/mfa/resend
 router.post('/resend', (_req, res) => {
     res.status(400).json({ error: 'Please go back and sign in again to get a new code.' });
+});
+
+// POST /api/mfa/logout — ICH E6(R3) C.4.3: audit logout then invalidate session
+router.post('/logout', requireAuth, async (req, res) => {
+    try {
+        await writeAudit(db, {
+            tableName: 'user', recordId: req.user.id, action: 'LOGOUT',
+            reason: 'User signed out',
+            user: req.user, ipAddress: req.ip,
+        });
+    } catch { /* non-fatal */ }
+
+    try {
+        await auth.api.signOut({ headers: req.headers });
+    } catch { /* ignore */ }
+
+    const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    res.clearCookie('better-auth.session_token', { path: '/', secure: isSecure, sameSite: 'lax' });
+    res.json({ ok: true });
 });
 
 export default router;
