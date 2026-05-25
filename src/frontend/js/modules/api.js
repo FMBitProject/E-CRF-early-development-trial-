@@ -949,6 +949,31 @@ export const api = {
     async getMissingDataReport(groupBy = 'site') { return apiFetch(`/api/reports/missing-data?groupBy=${groupBy}`); },
     async getDataQualityReport()      { return apiFetch('/api/reports/data-quality'); },
     async getAuditIntegrityReport()   { return apiFetch('/api/reports/audit-integrity'); },
+    async getVisitComplianceReport()  { return apiFetch('/api/reports/visit-compliance'); },
+    async getQueryAgingReport()       { return apiFetch('/api/reports/query-aging'); },
+    async getDataTimeliness()         { return apiFetch('/api/reports/data-timeliness'); },
+    async getCriticalDataReport()     { return apiFetch('/api/reports/critical-data'); },
+    async getDispositionReport()      { return apiFetch('/api/reports/disposition'); },
+
+    // ── SDV Summary & Monitoring Report ─────────────────────
+    async getSDVSummary()             { return apiFetch('/api/monitoring/sdv-summary'); },
+    async getMonitoringReport(id)     { return apiFetch(`/api/monitoring/${id}/report`); },
+
+    // ── QTL Breach CAPA ──────────────────────────────────────
+    async getQTLBreaches()            { return apiFetch('/api/qtl/breaches'); },
+    async createQTLBreach(data)       { return apiFetch('/api/qtl/breaches', { method: 'POST', body: JSON.stringify(data) }); },
+    async updateQTLBreach(id, data)   { return apiFetch(`/api/qtl/breaches/${id}`, { method: 'PATCH', body: JSON.stringify(data) }); },
+
+    // ── Periodic User Access Review (ICH E6(R3) C.4.2) ───────
+    async getAccessReviews()          { return apiFetch('/api/access-review'); },
+    async createAccessReview(data)    { return apiFetch('/api/access-review', { method: 'POST', body: JSON.stringify(data) }); },
+    async certifyUserAccess(reviewId, userId, certified, certNotes) {
+        return apiFetch(`/api/access-review/${reviewId}/certify`, { method: 'PATCH', body: JSON.stringify({ userId, certified, certNotes }) });
+    },
+    async completeAccessReview(id)    { return apiFetch(`/api/access-review/${id}/complete`, { method: 'POST' }); },
+
+    // ── Amendment Re-consent Status ──────────────────────────
+    async getAmendmentReconsentStatus(id) { return apiFetch(`/api/amendments/${id}/reconsent-status`); },
 };
 
 window.api = api;

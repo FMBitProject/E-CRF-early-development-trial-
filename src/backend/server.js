@@ -51,6 +51,7 @@ import essentialDocsRouter   from './routes/essentialdocs.js';
 import agreementsRouter      from './routes/agreements.js';
 import monitoringPlanRouter  from './routes/monitoringplan.js';
 import reportRouter          from './routes/report.js';
+import accessReviewRouter    from './routes/accessreview.js';
 import { requireStudy }      from './middleware/study.js';
 import { rateLimitAuth }     from './middleware/ratelimit.js';
 
@@ -755,6 +756,50 @@ async function runMigrations() {
             updated_at           TIMESTAMP NOT NULL DEFAULT NOW()
         )`,
         `CREATE INDEX IF NOT EXISTS idx_monplan_study ON monitoring_plans (study_id)`,
+
+        // ICH GCP E6(R3) §5.0.7 — QTL breach CAPA workflow
+        `CREATE TABLE IF NOT EXISTS qtl_breach_actions (
+            id                INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+            study_id          INTEGER NOT NULL REFERENCES studies(id) ON DELETE CASCADE,
+            indicator         TEXT NOT NULL,
+            indicator_label   TEXT,
+            threshold         TEXT NOT NULL,
+            actual_value      TEXT NOT NULL,
+            breach_date       TIMESTAMP NOT NULL DEFAULT NOW(),
+            capa_text         TEXT,
+            capa_due_date     TEXT,
+            status            TEXT NOT NULL DEFAULT 'Open',
+            assigned_to       TEXT REFERENCES "user"(id),
+            assigned_to_name  TEXT,
+            resolved_at       TIMESTAMP,
+            resolved_by       TEXT REFERENCES "user"(id),
+            resolved_by_name  TEXT,
+            notes             TEXT,
+            created_by        TEXT REFERENCES "user"(id),
+            created_by_name   TEXT,
+            created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at        TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_qtl_breach_study ON qtl_breach_actions (study_id)`,
+
+        // ICH GCP E6(R3) C.4.2 — Periodic user access review
+        `CREATE TABLE IF NOT EXISTS access_reviews (
+            id                 INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+            study_id           INTEGER REFERENCES studies(id),
+            review_period      TEXT NOT NULL,
+            status             TEXT NOT NULL DEFAULT 'In Progress',
+            initiated_by       TEXT REFERENCES "user"(id),
+            initiated_by_name  TEXT,
+            initiated_at       TIMESTAMP NOT NULL DEFAULT NOW(),
+            completed_at       TIMESTAMP,
+            completed_by       TEXT REFERENCES "user"(id),
+            completed_by_name  TEXT,
+            certifications     JSONB DEFAULT '[]',
+            notes              TEXT,
+            created_at         TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at         TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_access_review_study ON access_reviews (study_id)`,
     ];
     for (const stmt of stmts) {
         await client.unsafe(stmt);
@@ -828,6 +873,7 @@ app.use('/api/essential-docs',           ...studyAuth, essentialDocsRouter);
 app.use('/api/agreements',               requireAuth,  agreementsRouter);
 app.use('/api/monitoring-plan',          ...studyAuth, monitoringPlanRouter);
 app.use('/api/reports',                  ...studyAuth, reportRouter);
+app.use('/api/access-review',            ...studyAuth, accessReviewRouter);
 
 // Serve all static frontend files from project root
 app.use(express.static(rootDir));

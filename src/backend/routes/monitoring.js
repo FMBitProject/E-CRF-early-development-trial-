@@ -2,7 +2,7 @@
 // CRA monitoring visit records with source data verification tracking
 
 import { Router } from 'express';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { monitoringVisits, sdvRecords, subjects, sites } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
@@ -31,6 +31,52 @@ router.get('/', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, r
             .orderBy(desc(monitoringVisits.visitDate));
 
         res.json(rows);
+    } catch (err) {
+        if (isMissingTable(err)) return res.json([]);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/monitoring/sdv-summary — SDV completion rates per site
+router.get('/sdv-summary', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
+    try {
+        const sid = req.studyId;
+        const mvRows = await db.select({
+            id: monitoringVisits.id, siteId: monitoringVisits.siteId, siteName: monitoringVisits.siteName,
+        }).from(monitoringVisits).where(eq(monitoringVisits.studyId, sid));
+
+        if (!mvRows.length) return res.json([]);
+
+        const visitIds   = mvRows.map(v => v.id);
+        const sdvRows    = await db.select({
+            monitoringVisitId: sdvRecords.monitoringVisitId, sdvStatus: sdvRecords.sdvStatus,
+        }).from(sdvRecords).where(inArray(sdvRecords.monitoringVisitId, visitIds));
+
+        const visitSiteMap = new Map(mvRows.map(v => [v.id, { siteId: v.siteId, siteName: v.siteName }]));
+        const siteStats   = new Map();
+
+        for (const v of mvRows) {
+            const key = v.siteId ?? 'unknown';
+            if (!siteStats.has(key)) {
+                siteStats.set(key, { siteId: v.siteId, siteName: v.siteName ?? 'Unknown', total: 0, verified: 0, discrepant: 0, notReviewed: 0 });
+            }
+        }
+
+        for (const s of sdvRows) {
+            const info = visitSiteMap.get(s.monitoringVisitId);
+            const key  = info?.siteId ?? 'unknown';
+            const stat = siteStats.get(key);
+            if (!stat) continue;
+            stat.total++;
+            if (s.sdvStatus === 'Verified')     stat.verified++;
+            else if (s.sdvStatus === 'Discrepant') stat.discrepant++;
+            else                               stat.notReviewed++;
+        }
+
+        res.json(Array.from(siteStats.values()).map(s => ({
+            ...s,
+            verifiedPct: s.total > 0 ? Math.round((s.verified / s.total) * 100) : 0,
+        })));
     } catch (err) {
         if (isMissingTable(err)) return res.json([]);
         res.status(500).json({ error: err.message });
@@ -286,6 +332,36 @@ router.post('/:id/sdv', requireRole('admin', 'cra', 'pi', 'data_manager'), async
 
         res.status(existing ? 200 : 201).json(record);
     } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/monitoring/:id/report — structured report for printing/export
+router.get('/:id/report', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const [visit] = await db.select().from(monitoringVisits).where(eq(monitoringVisits.id, id));
+        if (!visit) return res.status(404).json({ error: 'Monitoring visit not found' });
+
+        const sdv = await db.select().from(sdvRecords)
+            .where(eq(sdvRecords.monitoringVisitId, id))
+            .orderBy(sdvRecords.subjectCode, sdvRecords.visitName);
+
+        const total      = sdv.length;
+        const verified   = sdv.filter(s => s.sdvStatus === 'Verified').length;
+        const discrepant = sdv.filter(s => s.sdvStatus === 'Discrepant').length;
+
+        res.json({
+            ...visit,
+            sdvRecords: sdv,
+            sdvSummary: {
+                total, verified, discrepant, notReviewed: total - verified - discrepant,
+                verifiedPct: total > 0 ? Math.round((verified / total) * 100) : 0,
+            },
+            generatedAt: new Date().toISOString(),
+        });
+    } catch (err) {
+        if (isMissingTable(err)) return res.status(404).json({ error: 'Not found' });
         res.status(500).json({ error: err.message });
     }
 });

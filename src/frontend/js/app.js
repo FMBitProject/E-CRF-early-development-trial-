@@ -52,7 +52,9 @@ const NAV_ITEMS = [
     { id: 'ipdispensing',   label: 'IP Accountability',icon: 'package',         roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
     { id: 'essentialdocs',  label: 'Essential Docs',  icon: 'folder-check',     roles: ['admin', 'cra', 'pi', DM] },
     { id: 'monitoringplan', label: 'Monitoring Plan', icon: 'map',              roles: ['admin', 'cra', 'pi', DM] },
-    { id: 'missingdata',    label: 'Data Quality',    icon: 'bar-chart-2',      roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'missingdata',       label: 'Data Quality',    icon: 'bar-chart-2',    roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'reconsenttracking', label: 'Re-consent',      icon: 'file-check-2',   roles: ['admin', 'pi', 'cra', DM] },
+    { id: 'accessreview',      label: 'Access Review',   icon: 'shield-check',   roles: ['admin'] },
     // ── Admin ─────────────────────────────────────────────────────────────────
     { id: 'sites',          label: 'Sites',           icon: 'building-2',       roles: ['admin'] },
     { id: 'studymgmt',      label: 'Studies',         icon: 'flask-conical',    roles: ['admin'] },
@@ -339,6 +341,17 @@ const routes = {
         renderBreadcrumb([{ label: 'Data Quality Report', route: 'missingdata' }]);
         const el = document.getElementById('main-content');
         if (el) { const { renderMissingDataReport } = await import('./modules/missingdata.js'); await renderMissingDataReport(el); }
+    },
+    'reconsenttracking': async () => {
+        renderBreadcrumb([{ label: 'Amendment Re-consent Tracking', route: 'reconsenttracking' }]);
+        const el = document.getElementById('main-content');
+        if (el) { const { renderReconsentTracking } = await import('./modules/reconsenttracking.js'); await renderReconsentTracking(el); }
+    },
+    'accessreview': async () => {
+        if (user.role !== 'admin') { window.location.hash = '#dashboard'; return; }
+        renderBreadcrumb([{ label: 'Periodic User Access Review', route: 'accessreview' }]);
+        const el = document.getElementById('main-content');
+        if (el) { const { renderAccessReview } = await import('./modules/accessreview.js'); await renderAccessReview(el); }
     },
     'audit': async () => {
         renderBreadcrumb([{ label: 'Audit Trail', route: 'audit' }]);

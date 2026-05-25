@@ -194,6 +194,86 @@ router.get('/metrics', async (req, res) => {
     }
 });
 
+// GET /api/qtl/breaches — list CAPA actions for QTL breaches
+router.get('/breaches', async (req, res) => {
+    try {
+        const rows = await client`
+            SELECT * FROM qtl_breach_actions
+            WHERE study_id = ${req.studyId}
+            ORDER BY breach_date DESC
+        `;
+        res.json(rows);
+    } catch (err) {
+        if ((err?.message || '').includes('does not exist')) return res.json([]);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/qtl/breaches — log a QTL breach and create CAPA
+router.post('/breaches', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
+    try {
+        const { indicator, indicatorLabel, threshold, actualValue, capaText, capaDueDate, assignedToId, assignedToName, notes } = req.body;
+        if (!indicator || !threshold || !actualValue) {
+            return res.status(400).json({ error: 'indicator, threshold, and actualValue are required' });
+        }
+        const [row] = await client`
+            INSERT INTO qtl_breach_actions
+                (study_id, indicator, indicator_label, threshold, actual_value, capa_text, capa_due_date,
+                 assigned_to, assigned_to_name, notes, created_by, created_by_name)
+            VALUES
+                (${req.studyId}, ${indicator}, ${indicatorLabel ?? null}, ${threshold}, ${actualValue},
+                 ${capaText ?? null}, ${capaDueDate ?? null},
+                 ${assignedToId ?? null}, ${assignedToName ?? null}, ${notes ?? null},
+                 ${req.user.id}, ${req.user.name})
+            RETURNING *
+        `;
+        await writeAudit(db, {
+            tableName: 'qtl_breach_actions', recordId: row.id, action: 'INSERT',
+            newValue: `${indicator} | actual=${actualValue} | threshold=${threshold}`,
+            reason: 'QTL breach logged with CAPA per ICH GCP E6(R3) §5.0.7',
+            user: req.user, ipAddress: req.ip,
+        });
+        res.status(201).json(row);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PATCH /api/qtl/breaches/:bid — update CAPA status/text
+router.patch('/breaches/:bid', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
+    try {
+        const bid = parseInt(req.params.bid);
+        const { status, capaText, capaDueDate, notes } = req.body;
+        const validStatuses = ['Open', 'In Progress', 'Resolved', 'Closed'];
+        if (status && !validStatuses.includes(status)) {
+            return res.status(400).json({ error: `status must be one of: ${validStatuses.join(', ')}` });
+        }
+        const resolvedAt   = status === 'Resolved' || status === 'Closed' ? new Date() : null;
+        const resolvedBy   = resolvedAt ? req.user.id   : null;
+        const resolvedByName = resolvedAt ? req.user.name : null;
+
+        const [existing] = await client`SELECT id FROM qtl_breach_actions WHERE id = ${bid} AND study_id = ${req.studyId}`;
+        if (!existing) return res.status(404).json({ error: 'Breach action not found' });
+
+        const [updated] = await client`
+            UPDATE qtl_breach_actions SET
+                status           = COALESCE(${status ?? null}, status),
+                capa_text        = COALESCE(${capaText ?? null}, capa_text),
+                capa_due_date    = COALESCE(${capaDueDate ?? null}, capa_due_date),
+                notes            = COALESCE(${notes ?? null}, notes),
+                resolved_at      = COALESCE(${resolvedAt}, resolved_at),
+                resolved_by      = COALESCE(${resolvedBy}, resolved_by),
+                resolved_by_name = COALESCE(${resolvedByName}, resolved_by_name),
+                updated_at       = NOW()
+            WHERE id = ${bid}
+            RETURNING *
+        `;
+        res.json(updated);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // GET /api/qtl/:id
 router.get('/:id', async (req, res) => {
     try {
