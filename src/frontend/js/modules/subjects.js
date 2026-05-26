@@ -97,7 +97,7 @@ export async function renderSubjects({ showNewForm = false } = {}) {
                 <h2 class="text-xl font-bold text-slate-900">Study Subjects</h2>
                 <p class="text-xs text-slate-500 mt-0.5">${subjects.length} subject${subjects.length !== 1 ? 's' : ''} enrolled across all sites</p>
             </div>
-            ${['investigator', 'pi', 'admin'].includes(user.role) ? `
+            ${['investigator', 'pi', 'admin', 'crc'].includes(user.role) ? `
             <button onclick="openNewSubjectModal()"
                 class="flex items-center gap-2 btn-primary px-4 py-2 text-sm rounded-md">
                 <i data-lucide="user-plus" class="w-4 h-4"></i> Enroll Subject
@@ -212,8 +212,8 @@ const IE_CRITERIA = {
 
 window.openNewSubjectModal = async function () {
     const user = api.getCurrentUser();
-    if (!['admin', 'investigator'].includes(user.role)) {
-        showToast('Only Investigators and Admins can enroll subjects.', 'error');
+    if (!['admin', 'investigator', 'pi', 'crc'].includes(user.role)) {
+        showToast('You do not have permission to enroll subjects.', 'error');
         return;
     }
     openIECriteriaModal();
