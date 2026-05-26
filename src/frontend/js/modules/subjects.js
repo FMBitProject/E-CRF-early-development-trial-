@@ -410,9 +410,10 @@ window.submitNewSubject = async function () {
     try {
         const created = await api.createSubject({ subject_code, initial, sex, gender_identity, dob, enrollment_date: enroll, site_id });
 
-        // Record I/E assessment if criteria were collected
+        // Record I/E assessment if criteria were collected (non-fatal if it fails)
         if (window._ieCriteriaResults?.length) {
-            await api.submitIEAssessment(created.id, window._ieCriteriaResults, iePasses);
+            await api.submitIEAssessment(created.id, window._ieCriteriaResults, iePasses)
+                .catch(e => console.warn('IE assessment save failed:', e.message));
         }
 
         closeModal();

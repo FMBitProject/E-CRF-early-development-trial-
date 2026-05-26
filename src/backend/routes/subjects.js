@@ -208,8 +208,8 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
 
         res.status(201).json(created);
     } catch (err) {
-        if (err.message.includes('unique')) {
-            return res.status(409).json({ error: 'Subject code already exists' });
+        if (err.message.includes('unique') || err.message.includes('duplicate')) {
+            return res.status(409).json({ error: 'Subject code already exists in this study.' });
         }
         res.status(500).json({ error: err.message });
     }
@@ -253,7 +253,7 @@ router.patch('/:id/status', requireRole('investigator', 'pi', 'admin'), async (r
 });
 
 // POST /api/subjects/:id/ie-assessment — record I/E criteria assessment
-router.post('/:id/ie-assessment', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
+router.post('/:id/ie-assessment', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, res) => {
     try {
         const subjectId = parseInt(req.params.id);
         const { criteriaJson, passed } = req.body;
