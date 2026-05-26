@@ -443,7 +443,7 @@ export async function renderSubjectDetail(id) {
     ]);
     const allEntries    = await api.getDataEntries(id);
     const user          = api.getCurrentUser();
-    const canManageVisit = ['investigator', 'pi', 'admin'].includes(user.role);
+    const canManageVisit = ['investigator', 'pi', 'admin', 'crc'].includes(user.role);
 
     content.innerHTML = `
     <div class="p-5 space-y-4">
@@ -661,7 +661,7 @@ export async function renderSubjectDetail(id) {
             ${fms.map(form => {
                 const entry       = entries.find(e => e.form_id === form.id);
                 const entryStatus = entry?.status || 'Not Started';
-                const canEdit     = entryStatus !== 'Locked' && entryStatus !== 'Signed' && ['investigator', 'pi', 'admin'].includes(u.role);
+                const canEdit     = entryStatus !== 'Locked' && entryStatus !== 'Signed' && ['investigator', 'pi', 'admin', 'crc'].includes(u.role);
                 const canLock     = (entryStatus === 'Submitted' || entryStatus === 'Signed') && ['cra', 'pi', 'admin'].includes(u.role);
                 return `<tr>
                     <td>
