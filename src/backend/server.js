@@ -906,11 +906,12 @@ app.get('/', (_req, res) => res.sendFile(path.join(rootDir, 'login.html')));
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
-// Run migrations before accepting connections so all schema changes (audit_hash, etc.) are present.
-await runMigrations().catch(err => console.warn('Migration error:', err.message));
-console.log('DB migrations applied.');
-
+// Start listening immediately so the port is bound on deploy, then migrate in the background.
+// Per-statement try/catch inside runMigrations() ensures one failing DDL never blocks the rest.
 app.listen(PORT, () => {
     console.log(`E-CRF Server running on http://localhost:${PORT}`);
     console.log(`Better Auth endpoint: http://localhost:${PORT}/api/auth`);
+    runMigrations()
+        .then(() => console.log('DB migrations applied.'))
+        .catch(err => console.warn('Migration warning (non-fatal):', err.message));
 });
