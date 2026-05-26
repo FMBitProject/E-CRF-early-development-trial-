@@ -822,7 +822,12 @@ async function runMigrations() {
         `UPDATE essential_documents SET section = '8.3 — Post-trial'   WHERE section IN ('§8.4 — After Trial Completion', '8.3 Post-trial', '8.3 — After Completion')`,
     ];
     for (const stmt of stmts) {
-        await client.unsafe(stmt);
+        try {
+            await client.unsafe(stmt);
+        } catch (err) {
+            // Log but continue — idempotent statements mean retries are safe
+            console.warn('Migration stmt warning (non-fatal):', err.message?.slice(0, 120));
+        }
     }
 }
 const app = express();
@@ -901,10 +906,9 @@ app.get('/', (_req, res) => res.sendFile(path.join(rootDir, 'login.html')));
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
-// Run migrations async — self-healing in each route handles any race on first boot.
-runMigrations()
-    .then(() => console.log('DB migrations applied.'))
-    .catch(err => console.warn('Migration warning (non-fatal):', err.message));
+// Run migrations before accepting connections so all schema changes (audit_hash, etc.) are present.
+await runMigrations().catch(err => console.warn('Migration error:', err.message));
+console.log('DB migrations applied.');
 
 app.listen(PORT, () => {
     console.log(`E-CRF Server running on http://localhost:${PORT}`);

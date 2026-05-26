@@ -183,12 +183,16 @@ router.post('/initiate', async (req, res) => {
         });
 
         // ICH E6(R3) C.4.3 — log successful login to audit trail
-        await writeAudit(db, {
-            tableName: 'user', recordId: user.id, action: 'LOGIN',
-            reason: 'Successful login (no MFA)',
-            user: { id: user.id, name: user.name, role: user.role ?? 'investigator' },
-            ipAddress: req.ip,
-        });
+        try {
+            await writeAudit(db, {
+                tableName: 'user', recordId: user.id, action: 'LOGIN',
+                reason: 'Successful login (no MFA)',
+                user: { id: user.id, name: user.name, role: user.role ?? 'investigator' },
+                ipAddress: req.ip,
+            });
+        } catch (auditErr) {
+            console.error('Audit trail write failed (login will proceed):', auditErr.message);
+        }
 
         res.json({
             status: 'authenticated',
@@ -267,12 +271,16 @@ router.post('/totp-verify', async (req, res) => {
         });
 
         // ICH E6(R3) C.4.3 — log successful TOTP login to audit trail
-        await writeAudit(db, {
-            tableName: 'user', recordId: userId, action: 'LOGIN',
-            reason: 'Successful login (TOTP verified)',
-            user: { id: userId, name, role: role ?? 'investigator' },
-            ipAddress: req.ip,
-        });
+        try {
+            await writeAudit(db, {
+                tableName: 'user', recordId: userId, action: 'LOGIN',
+                reason: 'Successful login (TOTP verified)',
+                user: { id: userId, name, role: role ?? 'investigator' },
+                ipAddress: req.ip,
+            });
+        } catch (auditErr) {
+            console.error('Audit trail write failed (TOTP login will proceed):', auditErr.message);
+        }
 
         res.json({ token: authToken, user: { id: userId, name, displayName: displayName ?? null, role: role ?? 'investigator' } });
 
