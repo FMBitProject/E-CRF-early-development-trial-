@@ -176,7 +176,7 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
 
 // ── POST /api/visit-templates/:id/generate/:subjectId
 // Generate scheduled visits for a subject from the template
-router.post('/:id/generate/:subjectId', requireRole('admin', 'pi', 'investigator'), async (req, res) => {
+router.post('/:id/generate/:subjectId', requireRole('admin', 'pi', 'investigator', 'crc'), async (req, res) => {
     try {
         const templateId = parseInt(req.params.id);
         const subjectId  = parseInt(req.params.subjectId);

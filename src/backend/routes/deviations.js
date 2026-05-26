@@ -1,11 +1,18 @@
 import { Router } from 'express';
 import { eq, and, desc } from 'drizzle-orm';
 import { db } from '../db/connection.js';
+import { client } from '../db/connection.js';
 import { protocolDeviations, subjects } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 
 const router = Router();
+
+// Self-heal: add visit_id / auto_generated if migration hasn't run yet
+async function ensureDeviationColumns() {
+    await client.unsafe(`ALTER TABLE protocol_deviations ADD COLUMN IF NOT EXISTS visit_id INTEGER REFERENCES visits(id) ON DELETE SET NULL`);
+    await client.unsafe(`ALTER TABLE protocol_deviations ADD COLUMN IF NOT EXISTS auto_generated BOOLEAN NOT NULL DEFAULT false`);
+}
 
 // GET /api/deviations — list, optional ?subjectId=&status=&type=
 router.get('/', async (req, res) => {
@@ -16,7 +23,7 @@ router.get('/', async (req, res) => {
         if (status)    conditions.push(eq(protocolDeviations.status, status));
         if (type)      conditions.push(eq(protocolDeviations.deviationType, type));
 
-        const rows = await db
+        const runQuery = () => db
             .select({
                 id:               protocolDeviations.id,
                 subjectId:        protocolDeviations.subjectId,
@@ -42,6 +49,15 @@ router.get('/', async (req, res) => {
             .leftJoin(subjects, eq(protocolDeviations.subjectId, subjects.id))
             .where(conditions.length ? and(...conditions) : undefined)
             .orderBy(desc(protocolDeviations.createdAt));
+
+        let rows;
+        try {
+            rows = await runQuery();
+        } catch (colErr) {
+            // visit_id / auto_generated columns may not exist yet — self-heal then retry
+            await ensureDeviationColumns();
+            rows = await runQuery();
+        }
 
         res.json(rows);
     } catch (err) {
