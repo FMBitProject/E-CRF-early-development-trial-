@@ -749,18 +749,20 @@ export const essentialDocuments = pgTable('essential_documents', {
     id:           integer('id').primaryKey().generatedAlwaysAsIdentity(),
     studyId:      integer('study_id').notNull().references(() => studies.id, { onDelete: 'cascade' }),
     siteId:       integer('site_id').references(() => sites.id),
-    section:      text('section').notNull(),       // §8.2 | §8.3 | §8.4
-    documentType: text('document_type').notNull(), // e.g. IB, Protocol, ICF, IRB_Approval, CV
-    documentRef:  text('document_ref'),            // file path, URL, or doc number
-    version:      text('version'),
-    documentDate: text('document_date'),
-    expiryDate:   text('expiry_date'),
-    status:       text('status').notNull().default('Pending'), // Pending | Received | Current | Superseded | Not Applicable
-    notes:        text('notes'),
-    uploadedBy:   text('uploaded_by').references(() => user.id),
+    section:        text('section').notNull(),       // 8.1/8.2/8.3 per ICH GCP E6(R3) §8
+    documentType:   text('document_type').notNull(), // document label (e.g. 'Protocol (Signed)')
+    tmfArtifactId:  text('tmf_artifact_id'),         // DIA TMF Reference Model artifact ID (e.g. '01.004')
+    isRequired:     boolean('is_required').notNull().default(false),
+    documentRef:    text('document_ref'),             // file path, URL, or doc number
+    version:        text('version'),
+    documentDate:   text('document_date'),
+    expiryDate:     text('expiry_date'),
+    status:         text('status').notNull().default('Pending'), // Pending | Received | Current | Superseded | Not Applicable
+    notes:          text('notes'),
+    uploadedBy:     text('uploaded_by').references(() => user.id),
     uploadedByName: text('uploaded_by_name'),
-    uploadedAt:   timestamp('uploaded_at').notNull().defaultNow(),
-    updatedAt:    timestamp('updated_at').notNull().defaultNow(),
+    uploadedAt:     timestamp('uploaded_at').notNull().defaultNow(),
+    updatedAt:      timestamp('updated_at').notNull().defaultNow(),
 });
 
 // ─── User SOP Agreements (ICH E6(R3) C.4.1, §5.5.2) ─────────────────────────

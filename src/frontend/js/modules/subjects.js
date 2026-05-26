@@ -533,6 +533,30 @@ export async function renderSubjectDetail(id) {
             <div id="crf-panel-body"></div>
         </div>
 
+        <!-- Subject-level Data Lock (ICH GCP E6(R3) 8.3.3) -->
+        ${['admin', 'pi', 'cra', 'data_manager'].includes(user.role) ? `
+        <div class="ph-card overflow-hidden">
+            <div class="ph-card-header" style="display:flex;align-items:center;justify-content:space-between">
+                <h3 style="display:flex;align-items:center;gap:8px;margin:0">
+                    <i data-lucide="lock" class="w-4 h-4 text-slate-400"></i>
+                    Subject Data Lock
+                    <span class="text-xs font-normal text-slate-400">ICH GCP E6(R3) §8.3.3</span>
+                </h3>
+                <div class="flex gap-2">
+                    <button onclick="openSubjectLockModal(false)"
+                        class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-slate-700 hover:bg-slate-800 text-white rounded-md transition">
+                        <i data-lucide="lock" class="w-3 h-3"></i> Lock All
+                    </button>
+                    ${user.role === 'admin' ? `
+                    <button onclick="openSubjectLockModal(true)"
+                        class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-700 border border-amber-300 hover:bg-amber-50 rounded-md transition">
+                        <i data-lucide="lock-open" class="w-3 h-3"></i> Unlock All
+                    </button>` : ''}
+                </div>
+            </div>
+            <div id="subject-lock-status" class="p-4 text-sm text-slate-400">Loading…</div>
+        </div>` : ''}
+
         <!-- Recent Activity -->
         <div class="ph-card overflow-hidden">
             <div class="ph-card-header">
@@ -544,6 +568,19 @@ export async function renderSubjectDetail(id) {
     </div>`;
 
     lucide.createIcons();
+
+    // Subject lock status (async, non-blocking)
+    if (['admin', 'pi', 'cra', 'data_manager'].includes(user.role)) {
+        api.getSubjectLockStatus(id).then(data => {
+            const el = document.getElementById('subject-lock-status');
+            if (!el) return;
+            el.innerHTML = renderSubjectLockStatus(data);
+            lucide.createIcons();
+        }).catch(() => {
+            const el = document.getElementById('subject-lock-status');
+            if (el) el.innerHTML = '<p class="text-xs text-slate-400">Unable to load lock status.</p>';
+        });
+    }
 
     // Audit trail (async, non-blocking)
     api.getAuditTrail().then(trails => {
@@ -1254,6 +1291,136 @@ window.confirmWithdraw = async function (subjectId) {
         closeModal();
         showToast('Subject withdrawn. Audit trail recorded.', 'warning');
         await renderSubjectDetail(subjectId);
+    } catch (err) { showToast(err.message, 'error'); }
+};
+
+// ============================================================
+// Subject-level Data Lock
+// ============================================================
+function renderSubjectLockStatus(data) {
+    const visits  = data?.visits  ?? [];
+    const history = data?.history ?? [];
+
+    if (!visits.length) {
+        return '<p class="text-xs text-slate-400 p-2">No visits found for this subject.</p>';
+    }
+
+    const visitRows = visits.map(v => {
+        const total   = parseInt(v.total)   || 0;
+        const locked  = parseInt(v.locked)  || 0;
+        const pct     = total > 0 ? Math.round((locked / total) * 100) : 0;
+        const allLocked = total > 0 && locked === total;
+        return `
+        <tr class="hover:bg-slate-50">
+            <td class="px-3 py-2 text-xs font-medium text-slate-700">${esc(v.visit_name)}</td>
+            <td class="px-3 py-2 text-xs text-slate-500">${locked}/${total}</td>
+            <td class="px-3 py-2 w-32">
+                <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                    <div class="h-full rounded-full ${allLocked ? 'bg-emerald-500' : 'bg-blue-500'}"
+                         style="width:${pct}%"></div>
+                </div>
+            </td>
+            <td class="px-3 py-2">
+                <span class="text-xs ${allLocked ? 'text-emerald-600 font-semibold' : 'text-amber-600'}">${allLocked ? '✓ Fully Locked' : pct > 0 ? 'Partial' : 'Not Locked'}</span>
+            </td>
+            <td class="px-3 py-2 flex gap-1">
+                ${!allLocked ? `
+                <button onclick="openSubjectLockModal(false, ${v.visit_id})"
+                    class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs">Lock Visit</button>` : ''}
+                ${locked > 0 ? `
+                <button onclick="openSubjectLockModal(true, ${v.visit_id})"
+                    class="px-2 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-xs" id="unlock-visit-btn-${v.visit_id}">Unlock</button>` : ''}
+            </td>
+        </tr>`;
+    }).join('');
+
+    const historyRows = history.slice(0, 5).map(h => `
+    <tr class="hover:bg-slate-50">
+        <td class="px-3 py-1.5 text-xs">
+            <span class="px-1.5 py-0.5 rounded text-xs font-semibold ${h.action === 'Lock' ? 'bg-slate-200 text-slate-700' : 'bg-amber-100 text-amber-700'}">${h.action}</span>
+        </td>
+        <td class="px-3 py-1.5 text-xs text-slate-600">${esc(h.reason)}</td>
+        <td class="px-3 py-1.5 text-xs text-slate-400">${esc(h.performed_by_name ?? '—')} · ${new Date(h.performed_at).toLocaleString('en-GB')}</td>
+        <td class="px-3 py-1.5 text-xs text-slate-500">${h.entries_affected} entries</td>
+    </tr>`).join('');
+
+    return `
+    <div class="overflow-x-auto border-b border-slate-100">
+        <table class="w-full text-xs">
+            <thead class="bg-slate-50 border-b border-slate-200">
+                <tr>
+                    <th class="px-3 py-2 text-left font-semibold text-slate-600">Visit</th>
+                    <th class="px-3 py-2 text-left font-semibold text-slate-600">Locked</th>
+                    <th class="px-3 py-2 text-left font-semibold text-slate-600">Progress</th>
+                    <th class="px-3 py-2 text-left font-semibold text-slate-600">Status</th>
+                    <th class="px-3 py-2 text-left font-semibold text-slate-600">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">${visitRows}</tbody>
+        </table>
+    </div>
+    ${history.length ? `
+    <div class="p-3">
+        <p class="text-xs font-semibold text-slate-500 mb-2">Lock History</p>
+        <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+                <tbody class="divide-y divide-slate-100">${historyRows}</tbody>
+            </table>
+        </div>
+    </div>` : ''}`;
+}
+
+window.openSubjectLockModal = function (isUnlock, visitId = null) {
+    const user = api.getCurrentUser();
+    if (isUnlock && user.role !== 'admin') {
+        showToast('Only admins can unlock subject data.', 'error');
+        return;
+    }
+    const label = isUnlock ? 'Unlock' : 'Lock';
+    const scope = visitId != null ? 'this visit' : 'all visits for this subject';
+    showModal({
+        title: `${label} Subject Data`,
+        size: 'sm',
+        body: `
+        <div class="space-y-4">
+            <div class="flex items-start gap-3 p-3 ${isUnlock ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'} rounded-md border">
+                <i data-lucide="${isUnlock ? 'lock-open' : 'lock'}" class="w-5 h-5 ${isUnlock ? 'text-amber-500' : 'text-slate-500'} flex-shrink-0 mt-0.5"></i>
+                <p class="text-sm ${isUnlock ? 'text-amber-700' : 'text-slate-700'}">
+                    ${isUnlock
+                        ? `This will unlock all locked CRF entries for ${scope}. An unlock event will be permanently recorded in the Audit Trail.`
+                        : `This will lock all Draft/Saved CRF entries for ${scope}. Locked entries cannot be edited without admin approval. Recorded in the Audit Trail per GCP.`}
+                </p>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Reason <span class="text-red-500">*</span></label>
+                <textarea id="subject-lock-reason" rows="3"
+                    placeholder="${isUnlock ? 'e.g. Query response requires data correction — authorised by PI' : 'e.g. All CRF entries verified and approved for database lock'}"
+                    class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none resize-none"></textarea>
+            </div>
+        </div>`,
+        footer: `
+        <button onclick="closeModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition">Cancel</button>
+        <button onclick="confirmSubjectLock(${isUnlock}, ${visitId ?? 'null'})"
+            class="px-4 py-2 text-sm font-semibold ${isUnlock ? 'bg-amber-600 hover:bg-amber-700' : 'bg-slate-800 hover:bg-slate-900'} text-white rounded-md transition flex items-center gap-2">
+            <i data-lucide="${isUnlock ? 'lock-open' : 'lock'}" class="w-4 h-4"></i> Confirm ${label}
+        </button>`,
+    });
+};
+
+window.confirmSubjectLock = async function (isUnlock, visitId) {
+    const reason = document.getElementById('subject-lock-reason').value.trim();
+    if (!reason) { showToast('Reason is required.', 'error'); return; }
+    try {
+        const vid = visitId === null || visitId === 'null' ? null : visitId;
+        if (isUnlock) {
+            const r = await api.unlockSubject(window._subjectId, reason, vid);
+            showToast(`${r.unlocked} entries unlocked. Audit trail recorded.`, 'warning');
+        } else {
+            const r = await api.lockSubject(window._subjectId, reason, vid);
+            showToast(`${r.locked} entries locked. Audit trail recorded.`, 'success');
+        }
+        closeModal();
+        await renderSubjectDetail(window._subjectId);
     } catch (err) { showToast(err.message, 'error'); }
 };
 

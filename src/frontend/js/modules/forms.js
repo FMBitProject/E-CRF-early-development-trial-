@@ -176,13 +176,19 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
 
     lucide.createIcons();
 
-    // Live validation on numeric fields
+    // Live validation on numeric fields (supports both field.validation and field.min/max)
     fields.forEach(field => {
-        if (field.type === 'number' && field.validation && !isLocked && !isSigned) {
+        if (field.type === 'number' && !isLocked && !isSigned) {
+            const rules  = field.validation ?? field;
+            const rMin   = rules.hard_min ?? rules.hardMin ?? rules.min;
+            const rMax   = rules.hard_max ?? rules.hardMax ?? rules.max;
+            const rSMin  = rules.soft_min ?? rules.softMin;
+            const rSMax  = rules.soft_max ?? rules.softMax;
+            if (rMin == null && rMax == null && rSMin == null && rSMax == null) return;
             const inputEl = document.getElementById(`field-${field.key}`);
             const errorEl = document.getElementById(`error-${field.key}`);
             if (inputEl) {
-                const handler = () => applyFieldValidation(inputEl, errorEl, validateNumericField(inputEl.value, field.validation));
+                const handler = () => applyFieldValidation(inputEl, errorEl, validateNumericField(inputEl.value, rules));
                 inputEl.addEventListener('input', handler);
                 inputEl.addEventListener('blur', handler);
             }
@@ -432,7 +438,7 @@ function renderField(field, existingData = {}, isLocked = false, fieldQueryMap =
         <label for="field-${field.key}" class="text-xs font-semibold text-slate-600 uppercase tracking-wide">
             ${field.label}
             ${field.required ? '<span class="text-red-500 ml-0.5">*</span>' : '<span class="text-slate-400 normal-case font-normal text-xs ml-1">(optional)</span>'}
-            ${field.validation?.unit ? `<span class="text-slate-400 font-normal normal-case ml-1">[${field.validation.unit}]</span>` : ''}
+            ${(field.validation?.unit || field.unit) ? `<span class="text-slate-400 font-normal normal-case ml-1">[${field.validation?.unit ?? field.unit}]</span>` : ''}
         </label>
         ${queryBtn}
         ${hasOpenQuery ? `<span class="ml-1 text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded px-1">${openQueries.length} query</span>` : ''}
@@ -483,10 +489,16 @@ function renderField(field, existingData = {}, isLocked = false, fieldQueryMap =
     }
 
     let hint = '';
-    if (field.validation && !isLocked) {
+    if (!isLocked) {
+        const v   = field.validation;
         const parts = [];
-        if (field.validation.hard_min !== undefined) parts.push(`Min: ${field.validation.hard_min}`);
-        if (field.validation.hard_max !== undefined) parts.push(`Max: ${field.validation.hard_max}`);
+        const hMin = v?.hard_min ?? v?.hardMin ?? field.min;
+        const hMax = v?.hard_max ?? v?.hardMax ?? field.max;
+        const unit = v?.unit ?? field.unit ?? '';
+        if (hMin !== undefined && hMin !== null) parts.push(`Min: ${hMin}${unit ? ' ' + unit : ''}`);
+        if (hMax !== undefined && hMax !== null) parts.push(`Max: ${hMax}${unit ? ' ' + unit : ''}`);
+        if (field.pattern) parts.push(`Format required`);
+        if (field.closedCodelist) parts.push(`Closed codelist`);
         if (parts.length) hint = `<p class="mt-1 text-xs text-slate-400">${parts.join(' · ')}</p>`;
     }
 

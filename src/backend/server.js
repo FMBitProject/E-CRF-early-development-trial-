@@ -800,6 +800,26 @@ async function runMigrations() {
             updated_at         TIMESTAMP NOT NULL DEFAULT NOW()
         )`,
         `CREATE INDEX IF NOT EXISTS idx_access_review_study ON access_reviews (study_id)`,
+        `CREATE TABLE IF NOT EXISTS subject_data_locks (
+            id              INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+            study_id        INTEGER NOT NULL REFERENCES studies(id) ON DELETE CASCADE,
+            subject_id      INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+            visit_id        INTEGER REFERENCES visits(id) ON DELETE SET NULL,
+            action          TEXT NOT NULL CHECK (action IN ('Lock', 'Unlock')),
+            reason          TEXT NOT NULL,
+            entries_affected INTEGER NOT NULL DEFAULT 0,
+            performed_by    TEXT REFERENCES "user"(id),
+            performed_by_name TEXT,
+            performed_at    TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_sdl_subject ON subject_data_locks (subject_id)`,
+        // Add tmf_artifact_id column to essential_documents for DIA TMF Reference Model
+        `ALTER TABLE essential_documents ADD COLUMN IF NOT EXISTS tmf_artifact_id TEXT`,
+        `ALTER TABLE essential_documents ADD COLUMN IF NOT EXISTS is_required BOOLEAN NOT NULL DEFAULT false`,
+        // Migrate legacy section names to ICH GCP E6(R3) §8 correct numbering
+        `UPDATE essential_documents SET section = '8.1 — Pre-trial'    WHERE section IN ('§8.2 — Before Trial', '8.1 Pre-trial', '8.1 — Before Trial')`,
+        `UPDATE essential_documents SET section = '8.2 — Trial Conduct' WHERE section IN ('§8.3 — During Trial', '8.2 Trial Conduct', '8.2 — During Trial')`,
+        `UPDATE essential_documents SET section = '8.3 — Post-trial'   WHERE section IN ('§8.4 — After Trial Completion', '8.3 Post-trial', '8.3 — After Completion')`,
     ];
     for (const stmt of stmts) {
         await client.unsafe(stmt);

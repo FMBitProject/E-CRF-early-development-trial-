@@ -225,33 +225,84 @@ function renderFieldList() {
         </div>
       </div>
       ${(f.type === 'number') ? `
-      <div class="flex items-center gap-2 pl-6">
-        <div class="flex-1">
-          <label class="ph-label text-xs">Min</label>
+      <div class="flex items-center gap-2 pl-6 flex-wrap">
+        <div class="flex-1 min-w-16">
+          <label class="ph-label text-xs">Hard Min</label>
           <input type="number" class="ph-input text-xs" value="${f.min ?? ''}" onchange="window.fbUpdateField(${i},'min',this.value ? +this.value : null)" placeholder="—">
         </div>
-        <div class="flex-1">
-          <label class="ph-label text-xs">Max</label>
+        <div class="flex-1 min-w-16">
+          <label class="ph-label text-xs">Hard Max</label>
           <input type="number" class="ph-input text-xs" value="${f.max ?? ''}" onchange="window.fbUpdateField(${i},'max',this.value ? +this.value : null)" placeholder="—">
         </div>
-        <div class="flex-1">
+        <div class="flex-1 min-w-16">
           <label class="ph-label text-xs">Unit</label>
           <input class="ph-input text-xs" value="${f.unit ?? ''}" onchange="window.fbUpdateField(${i},'unit',this.value)" placeholder="e.g. mmHg">
         </div>
-        <div class="flex-1">
+        <div class="flex-1 min-w-16">
           <label class="ph-label text-xs">Soft Min</label>
           <input type="number" class="ph-input text-xs" value="${f.softMin ?? ''}" onchange="window.fbUpdateField(${i},'softMin',this.value ? +this.value : null)" placeholder="—">
         </div>
-        <div class="flex-1">
+        <div class="flex-1 min-w-16">
           <label class="ph-label text-xs">Soft Max</label>
           <input type="number" class="ph-input text-xs" value="${f.softMax ?? ''}" onchange="window.fbUpdateField(${i},'softMax',this.value ? +this.value : null)" placeholder="—">
         </div>
+      </div>
+      <div class="pl-6 flex items-center gap-4 flex-wrap">
+        <label class="flex items-center gap-1.5 text-xs text-amber-700 cursor-pointer" title="Auto-create a data query when a value falls outside the soft range">
+          <input type="checkbox" ${f.autoQueryOnRangeViolation !== false ? 'checked' : ''} onchange="window.fbUpdateField(${i},'autoQueryOnRangeViolation',this.checked)" class="rounded accent-amber-500">
+          <span>Auto-query on soft range violation</span>
+        </label>
       </div>` : ''}
       ${(f.type === 'select' || f.type === 'radio' || f.type === 'checkbox') ? `
-      <div class="pl-6">
-        <label class="ph-label text-xs">Options (one per line) *</label>
-        <textarea class="ph-input text-xs" rows="3" onchange="window.fbUpdateOptions(${i},this.value)" placeholder="Option A&#10;Option B&#10;Option C">${(f.options ?? []).join('\n')}</textarea>
+      <div class="pl-6 space-y-2">
+        <div>
+          <label class="ph-label text-xs">Options (one per line) *</label>
+          <textarea class="ph-input text-xs" rows="3" onchange="window.fbUpdateOptions(${i},this.value)" placeholder="Option A&#10;Option B&#10;Option C">${(f.options ?? []).join('\n')}</textarea>
+        </div>
+        <label class="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer" title="Reject any value that is not in the options list">
+          <input type="checkbox" ${f.closedCodelist ? 'checked' : ''} onchange="window.fbUpdateField(${i},'closedCodelist',this.checked)" class="rounded accent-blue-500">
+          <span class="font-medium">Closed codelist</span>
+          <span class="text-slate-400">(reject values not in the list above)</span>
+        </label>
       </div>` : ''}
+      ${(f.type === 'text' || f.type === 'textarea') ? `
+      <div class="pl-6 space-y-1.5">
+        <div class="flex gap-2">
+          <div class="flex-1">
+            <label class="ph-label text-xs">Pattern (regex)</label>
+            <input class="ph-input text-xs font-mono" value="${f.pattern ?? ''}" onchange="window.fbUpdateField(${i},'pattern',this.value||null)" placeholder="e.g. ^[A-Z]{2}\\d{4}$">
+          </div>
+          <div class="flex-1">
+            <label class="ph-label text-xs">Pattern error message</label>
+            <input class="ph-input text-xs" value="${f.patternMessage ?? ''}" onchange="window.fbUpdateField(${i},'patternMessage',this.value||null)" placeholder="e.g. Must be 2 letters + 4 digits">
+          </div>
+        </div>
+      </div>` : ''}
+      <div class="pl-6">
+        <details class="group">
+          <summary class="text-xs text-slate-400 cursor-pointer hover:text-slate-600 select-none list-none flex items-center gap-1">
+            <i data-lucide="chevron-right" class="w-3 h-3 transition-transform group-open:rotate-90"></i>
+            Conditional required rule
+            ${f.conditionalRequired?.ifField ? `<span class="ml-1 px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">active</span>` : ''}
+          </summary>
+          <div class="mt-2 flex gap-2 items-end">
+            <div class="flex-1">
+              <label class="ph-label text-xs">Required if field key</label>
+              <input class="ph-input text-xs font-mono" value="${f.conditionalRequired?.ifField ?? ''}"
+                     onchange="window.fbUpdateConditional(${i},'ifField',this.value)"
+                     placeholder="other_field_key">
+            </div>
+            <div class="flex items-center text-xs text-slate-400 pb-2">=</div>
+            <div class="flex-1">
+              <label class="ph-label text-xs">equals value</label>
+              <input class="ph-input text-xs" value="${f.conditionalRequired?.ifValue ?? ''}"
+                     onchange="window.fbUpdateConditional(${i},'ifValue',this.value)"
+                     placeholder="Yes">
+            </div>
+            <button onclick="window.fbClearConditional(${i})" class="pb-2 text-xs text-red-400 hover:text-red-600" title="Clear rule">✕</button>
+          </div>
+        </details>
+      </div>
     </div>`).join('');
     lucide.createIcons();
 }
@@ -281,6 +332,20 @@ window.fbUpdateField = (i, key, value) => {
 
 window.fbUpdateOptions = (i, text) => {
     _fields[i].options = text.split('\n').map(s => s.trim()).filter(Boolean);
+};
+
+window.fbUpdateConditional = (i, prop, value) => {
+    if (!_fields[i].conditionalRequired) _fields[i].conditionalRequired = {};
+    _fields[i].conditionalRequired[prop] = value !== '' ? value : null;
+    const cr = _fields[i].conditionalRequired;
+    if (!cr.ifField && (cr.ifValue === null || cr.ifValue === undefined)) {
+        delete _fields[i].conditionalRequired;
+    }
+};
+
+window.fbClearConditional = (i) => {
+    delete _fields[i].conditionalRequired;
+    renderFieldList();
 };
 
 // ── Save form ─────────────────────────────────────────────────────────────────
@@ -357,9 +422,13 @@ window.fbPreview = async (id) => {
           </div>
           <p class="text-xs text-slate-400 font-mono">key: ${f.key}</p>
           ${f.unit ? `<p class="text-xs text-slate-500">Unit: ${f.unit}</p>` : ''}
-          ${f.min != null || f.max != null ? `<p class="text-xs text-slate-500">Range: ${f.min ?? '—'} – ${f.max ?? '—'}</p>` : ''}
-          ${f.softMin != null || f.softMax != null ? `<p class="text-xs text-amber-600">Soft alert: ${f.softMin ?? '—'} – ${f.softMax ?? '—'}</p>` : ''}
+          ${f.min != null || f.max != null ? `<p class="text-xs text-slate-500">Hard range: ${f.min ?? '—'} – ${f.max ?? '—'}${f.unit ? ' ' + f.unit : ''}</p>` : ''}
+          ${f.softMin != null || f.softMax != null ? `<p class="text-xs text-amber-600">Soft alert: ${f.softMin ?? '—'} – ${f.softMax ?? '—'}${f.unit ? ' ' + f.unit : ''}</p>` : ''}
+          ${f.autoQueryOnRangeViolation ? `<p class="text-xs text-amber-600">⚡ Auto-query on soft range violation</p>` : ''}
           ${f.options?.length ? `<p class="text-xs text-slate-500">Options: ${f.options.join(' · ')}</p>` : ''}
+          ${f.closedCodelist ? `<p class="text-xs text-blue-600">🔒 Closed codelist</p>` : ''}
+          ${f.pattern ? `<p class="text-xs text-slate-500 font-mono">Pattern: ${f.pattern}</p>` : ''}
+          ${f.conditionalRequired?.ifField ? `<p class="text-xs text-purple-600">Required if <code>${f.conditionalRequired.ifField}</code> = "${f.conditionalRequired.ifValue}"</p>` : ''}
         </div>`).join('') : '<p class="text-xs text-slate-400 text-center py-8">No fields defined in this form.</p>'}
       </div>`,
         footer: `<button onclick="closeModal()" class="ph-btn ph-btn-ghost text-sm">Close</button>`,

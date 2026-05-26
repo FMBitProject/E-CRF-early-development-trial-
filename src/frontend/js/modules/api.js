@@ -974,6 +974,21 @@ export const api = {
 
     // ── Amendment Re-consent Status ──────────────────────────
     async getAmendmentReconsentStatus(id) { return apiFetch(`/api/amendments/${id}/reconsent-status`); },
+
+    // ── Subject-level Data Lock ───────────────────────────────
+    async getSubjectLockStatus(subjectId) { return apiFetch(`/api/subjects/${subjectId}/lock-status`); },
+    async lockSubject(subjectId, reason, visitId = null) {
+        return apiFetch(`/api/subjects/${subjectId}/lock`, {
+            method: 'POST',
+            body: JSON.stringify({ reason, ...(visitId != null ? { visitId } : {}) }),
+        });
+    },
+    async unlockSubject(subjectId, reason, visitId = null) {
+        return apiFetch(`/api/subjects/${subjectId}/unlock`, {
+            method: 'POST',
+            body: JSON.stringify({ reason, ...(visitId != null ? { visitId } : {}) }),
+        });
+    },
 };
 
 window.api = api;

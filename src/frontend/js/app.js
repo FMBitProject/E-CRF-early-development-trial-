@@ -50,7 +50,7 @@ const NAV_ITEMS = [
     // ── ICH E6(R3) Gap Closure ───────────────────────────────────────────────────
     { id: 'screening',      label: 'Screening Log',   icon: 'clipboard-list',   roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
     { id: 'ipdispensing',   label: 'IP Accountability',icon: 'package',         roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
-    { id: 'essentialdocs',  label: 'Essential Docs',  icon: 'folder-check',     roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'essentialdocs',  label: 'TMF / Ess. Docs', icon: 'folder-check',     roles: ['admin', 'cra', 'pi', DM] },
     { id: 'monitoringplan', label: 'Monitoring Plan', icon: 'map',              roles: ['admin', 'cra', 'pi', DM] },
     { id: 'missingdata',       label: 'Data Quality',    icon: 'bar-chart-2',    roles: ['admin', 'cra', 'pi', DM] },
     { id: 'reconsenttracking', label: 'Re-consent',      icon: 'file-check-2',   roles: ['admin', 'pi', 'cra', DM] },

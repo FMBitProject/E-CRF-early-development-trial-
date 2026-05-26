@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { eq, ilike, and, count, sql } from 'drizzle-orm';
-import { db } from '../db/connection.js';
+import { db, client } from '../db/connection.js';
 import { subjects, sites, visits, ieAssessments, crfDataEntries, queries, subjectRandomization } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
@@ -298,6 +298,132 @@ router.get('/:id/ie-assessment', async (req, res) => {
             .where(eq(ieAssessments.subjectId, parseInt(req.params.id)))
             .orderBy(ieAssessments.assessedAt);
         res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/subjects/:id/lock-status — per-visit entry lock breakdown
+router.get('/:id/lock-status', async (req, res) => {
+    try {
+        const subjectId = parseInt(req.params.id);
+
+        const [subject] = await db.select({ id: subjects.id, studyId: subjects.studyId })
+            .from(subjects).where(eq(subjects.id, subjectId));
+        if (!subject) return res.status(404).json({ error: 'Subject not found' });
+        if (subject.studyId !== req.studyId) return res.status(403).json({ error: 'Forbidden' });
+
+        // Counts per visit — COUNT(cde.id) avoids inflating total by 1 for visits with no entries
+        const rows = await client`
+            SELECT
+                v.id                                                           AS visit_id,
+                v.visit_name                                                   AS visit_name,
+                v.visit_order                                                  AS visit_order,
+                COUNT(cde.id)                                                  AS total,
+                COUNT(cde.id) FILTER (WHERE cde.status = 'Locked')            AS locked,
+                COUNT(cde.id) FILTER (WHERE cde.status IS DISTINCT FROM 'Locked') AS unlocked
+            FROM visits v
+            LEFT JOIN crf_data_entries cde ON cde.visit_id = v.id
+            WHERE v.subject_id = ${subjectId}
+            GROUP BY v.id, v.visit_name, v.visit_order
+            ORDER BY v.visit_order
+        `;
+
+        // Recent lock actions for this subject
+        const history = await client`
+            SELECT * FROM subject_data_locks
+            WHERE subject_id = ${subjectId}
+            ORDER BY performed_at DESC
+            LIMIT 20
+        `;
+
+        res.json({ visits: rows, history });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/subjects/:id/lock — bulk lock all lockable entries (optionally scoped to a visit)
+router.post('/:id/lock', requireRole('pi', 'admin', 'cra', 'data_manager'), async (req, res) => {
+    try {
+        const subjectId = parseInt(req.params.id);
+        const { reason, visitId } = req.body;
+        if (!reason) return res.status(400).json({ error: 'reason is required' });
+
+        const [subject] = await db.select({ id: subjects.id, studyId: subjects.studyId })
+            .from(subjects).where(eq(subjects.id, subjectId));
+        if (!subject) return res.status(404).json({ error: 'Subject not found' });
+        if (subject.studyId !== req.studyId) return res.status(403).json({ error: 'Forbidden' });
+
+        const conditions = [
+            eq(crfDataEntries.subjectId, subjectId),
+            sql`${crfDataEntries.status} IN ('Saved', 'Draft')`,
+        ];
+        if (visitId) conditions.push(eq(crfDataEntries.visitId, parseInt(visitId)));
+
+        const updated = await db.update(crfDataEntries)
+            .set({ status: 'Locked', lockedAt: new Date(), lockedBy: req.user.id, lockReason: reason })
+            .where(and(...conditions))
+            .returning({ id: crfDataEntries.id });
+
+        await client`
+            INSERT INTO subject_data_locks
+                (study_id, subject_id, visit_id, action, reason, entries_affected, performed_by, performed_by_name)
+            VALUES
+                (${req.studyId}, ${subjectId}, ${visitId ?? null}, 'Lock', ${reason}, ${updated.length},
+                 ${req.user.id}, ${req.user.name})
+        `;
+
+        await writeAudit(db, {
+            tableName: 'subjects', recordId: subjectId, action: 'LOCK',
+            newValue: `Locked ${updated.length} entries${visitId ? ` for visit ${visitId}` : ''}`,
+            reason, user: req.user, ipAddress: req.ip,
+        });
+
+        res.json({ locked: updated.length });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/subjects/:id/unlock — admin only bulk unlock
+router.post('/:id/unlock', requireRole('admin'), async (req, res) => {
+    try {
+        const subjectId = parseInt(req.params.id);
+        const { reason, visitId } = req.body;
+        if (!reason) return res.status(400).json({ error: 'reason is required' });
+
+        const [subject] = await db.select({ id: subjects.id, studyId: subjects.studyId })
+            .from(subjects).where(eq(subjects.id, subjectId));
+        if (!subject) return res.status(404).json({ error: 'Subject not found' });
+        if (subject.studyId !== req.studyId) return res.status(403).json({ error: 'Forbidden' });
+
+        const conditions = [
+            eq(crfDataEntries.subjectId, subjectId),
+            eq(crfDataEntries.status, 'Locked'),
+        ];
+        if (visitId) conditions.push(eq(crfDataEntries.visitId, parseInt(visitId)));
+
+        const updated = await db.update(crfDataEntries)
+            .set({ status: 'Saved', unlockedAt: new Date(), unlockedBy: req.user.id, unlockReason: reason })
+            .where(and(...conditions))
+            .returning({ id: crfDataEntries.id });
+
+        await client`
+            INSERT INTO subject_data_locks
+                (study_id, subject_id, visit_id, action, reason, entries_affected, performed_by, performed_by_name)
+            VALUES
+                (${req.studyId}, ${subjectId}, ${visitId ?? null}, 'Unlock', ${reason}, ${updated.length},
+                 ${req.user.id}, ${req.user.name})
+        `;
+
+        await writeAudit(db, {
+            tableName: 'subjects', recordId: subjectId, action: 'UNLOCK',
+            newValue: `Unlocked ${updated.length} entries${visitId ? ` for visit ${visitId}` : ''}`,
+            reason, user: req.user, ipAddress: req.ip,
+        });
+
+        res.json({ unlocked: updated.length });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
