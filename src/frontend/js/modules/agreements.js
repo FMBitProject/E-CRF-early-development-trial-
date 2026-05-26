@@ -7,7 +7,10 @@ let _currentIndex = 0;
 
 export async function checkAndShowAgreements() {
     try {
-        const { pending } = await api.getRequiredAgreements();
+        const { pending } = await Promise.race([
+            api.getRequiredAgreements(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000)),
+        ]);
         if (!pending.length) return true; // all agreed
 
         _pendingAgreements = pending;

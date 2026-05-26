@@ -11,11 +11,22 @@ function getStudyId() {
 async function apiFetch(path, options = {}) {
     const studyId = getStudyId();
     const studyHeader = studyId ? { 'X-Study-ID': studyId } : {};
-    const res = await fetch(path, {
-        ...options,
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json', ...studyHeader, ...(options.headers || {}) },
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
+    let res;
+    try {
+        res = await fetch(path, {
+            ...options,
+            credentials: 'include',
+            signal: controller.signal,
+            headers: { 'Content-Type': 'application/json', ...studyHeader, ...(options.headers || {}) },
+        });
+    } catch (fetchErr) {
+        if (fetchErr.name === 'AbortError') throw new Error('Request timed out. The server may be starting up — please try again.');
+        throw fetchErr;
+    } finally {
+        clearTimeout(timer);
+    }
     if (res.status === 401) {
         const sessionStr = localStorage.getItem('ecrf_session');
         if (sessionStr) {

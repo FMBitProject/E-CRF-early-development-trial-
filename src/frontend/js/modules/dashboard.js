@@ -27,7 +27,7 @@ export async function renderDashboard() {
     </div>`;
 
     const [stats, aeStats, devStats, consentStats, dblockStatus, pwStatus] = await Promise.all([
-        api.getDashboardStats(),
+        api.getDashboardStats().catch(() => ({ activeSubjects: 0, totalSubjects: 0, pendingForms: 0, openQueries: 0, totalVisits: 0, recentAudit: [] })),
         api.getAEStats().catch(() => ({ total: 0, serious: 0, draft: 0, overdue: 0 })),
         api.getDeviationStats().catch(() => ({ total: 0, open: 0, major: 0, pending: 0 })),
         api.getConsentStats().catch(() => ({ totalActive: 0, consented: 0, unconsented: 0 })),
