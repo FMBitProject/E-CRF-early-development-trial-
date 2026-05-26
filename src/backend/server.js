@@ -820,6 +820,10 @@ async function runMigrations() {
         `UPDATE essential_documents SET section = '8.1 — Pre-trial'    WHERE section IN ('§8.2 — Before Trial', '8.1 Pre-trial', '8.1 — Before Trial')`,
         `UPDATE essential_documents SET section = '8.2 — Trial Conduct' WHERE section IN ('§8.3 — During Trial', '8.2 Trial Conduct', '8.2 — During Trial')`,
         `UPDATE essential_documents SET section = '8.3 — Post-trial'   WHERE section IN ('§8.4 — After Trial Completion', '8.3 Post-trial', '8.3 — After Completion')`,
+        // ICH GCP E6(R3) §4.5.3 — visit window compliance: link auto-generated deviations to their visit
+        `ALTER TABLE protocol_deviations ADD COLUMN IF NOT EXISTS visit_id INTEGER REFERENCES visits(id) ON DELETE SET NULL`,
+        `ALTER TABLE protocol_deviations ADD COLUMN IF NOT EXISTS auto_generated BOOLEAN NOT NULL DEFAULT false`,
+        `CREATE INDEX IF NOT EXISTS idx_devs_visit ON protocol_deviations (visit_id)`,
     ];
     for (const stmt of stmts) {
         try {

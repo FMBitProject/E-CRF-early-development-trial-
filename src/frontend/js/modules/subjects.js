@@ -961,7 +961,7 @@ window.submitAddVisit = async function () {
                             .map(el => Number(el.value));
 
     try {
-        await api.createVisit(subject.id, {
+        const result = await api.createVisit(subject.id, {
             visit_name,
             visit_order,
             visit_type:   type,
@@ -974,7 +974,11 @@ window.submitAddVisit = async function () {
             formIds,
         });
         closeModal();
-        showToast(`Visit "${visit_name}" added to schedule.`, 'success');
+        if (result?.autoDeviationFiled) {
+            showToast(`Visit "${visit_name}" added — out-of-window detected. Protocol deviation auto-filed.`, 'warning');
+        } else {
+            showToast(`Visit "${visit_name}" added to schedule.`, 'success');
+        }
         await renderSubjectDetail(subject.id);
     } catch (err) {
         errEl.textContent = err.message;
@@ -1094,6 +1098,7 @@ window.openEditVisitModal = function (visitId) {
                 <p class="text-xs mt-1" style="color:#C2410C">This justification will be permanently stored in the audit trail.</p>
             </div>
 
+            <div id="ev-window-preview" class="hidden p-2.5 rounded-md border text-xs font-medium"></div>
             <div id="ev-error" class="hidden p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700"></div>
         </div>`,
         footer: `
@@ -1104,6 +1109,43 @@ window.openEditVisitModal = function (visitId) {
         </button>`,
     });
 };
+
+// Live compliance preview in edit-visit modal
+function updateWindowPreview() {
+    const preview  = document.getElementById('ev-window-preview');
+    if (!preview) return;
+    const planned  = document.getElementById('ev-planned')?.value;
+    const actual   = document.getElementById('ev-actual')?.value;
+    const winVal   = document.getElementById('ev-window')?.value;
+    if (!planned || !actual) { preview.classList.add('hidden'); return; }
+    const p    = new Date(planned); p.setHours(0, 0, 0, 0);
+    const a    = new Date(actual);  a.setHours(0, 0, 0, 0);
+    const diff = Math.round((a - p) / 86400000);
+    const win  = winVal !== '' && winVal != null ? parseInt(winVal) : 0;
+    let label, bg, border, color;
+    if (diff === 0) {
+        label = 'On Schedule'; bg = '#D1FAE5'; border = '#A7F3D0'; color = '#065F46';
+    } else if (Math.abs(diff) <= win) {
+        label = diff < 0 ? `Early (${Math.abs(diff)}d) — Within Window` : `Late (+${diff}d) — Within Window`;
+        bg = '#FEF3C7'; border = '#FDE68A'; color = '#92400E';
+    } else {
+        label = diff < 0 ? `Early (${Math.abs(diff)}d) — OUT OF WINDOW ⚠ deviation will be auto-filed`
+                         : `Late (+${diff}d) — OUT OF WINDOW ⚠ deviation will be auto-filed`;
+        bg = '#FEE2E2'; border = '#FECACA'; color = '#991B1B';
+    }
+    preview.textContent = label;
+    preview.style.cssText = `background:${bg};border-color:${border};color:${color}`;
+    preview.classList.remove('hidden');
+}
+
+// Attach live preview listeners after modal DOM is ready
+setTimeout(() => {
+    ['ev-planned', 'ev-actual', 'ev-window'].forEach(id => {
+        document.getElementById(id)?.addEventListener('change', updateWindowPreview);
+        document.getElementById(id)?.addEventListener('input',  updateWindowPreview);
+    });
+    updateWindowPreview();
+}, 0);
 
 window.toggleEditMissedReason = function () {
     const status  = document.getElementById('ev-status')?.value;
@@ -1142,7 +1184,7 @@ window.submitEditVisit = async function (visitId) {
     }
 
     try {
-        await api.updateVisit(visitId, {
+        const result = await api.updateVisit(visitId, {
             visit_name:   name,
             visit_type:   type,
             planned_date: planned || null,
@@ -1154,7 +1196,11 @@ window.submitEditVisit = async function (visitId) {
             _reason:       reason,
         });
         closeModal();
-        showToast('Visit updated. Change recorded in audit trail.', 'success');
+        if (result?.autoDeviationFiled) {
+            showToast('Visit updated — out-of-window detected. Protocol deviation auto-filed.', 'warning');
+        } else {
+            showToast('Visit updated. Change recorded in audit trail.', 'success');
+        }
         await renderSubjectDetail(window._subjectId);
     } catch (err) {
         errEl.textContent = err.message;
