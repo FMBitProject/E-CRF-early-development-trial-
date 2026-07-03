@@ -130,7 +130,7 @@ function renderDblockPage(statusData, role) {
         </div>
     ` : '';
 
-    const initiateBtn = (!isLocked && current?.status !== 'Pending Signatures' && current?.status !== 'Pending Approval' && ['cra', 'admin', 'pi'].includes(role))
+    const initiateBtn = (!isLocked && current?.status !== 'Pending Signatures' && current?.status !== 'Pending Approval' && ['admin', 'pi'].includes(role))
         ? `<button id="btn-initiate-dbl"
                 style="background:#059669;color:#fff;border:none;border-radius:8px;
                        padding:0.7rem 1.5rem;cursor:pointer;font-size:0.95rem;font-weight:600;">

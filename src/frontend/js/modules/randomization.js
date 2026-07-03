@@ -23,20 +23,22 @@ export async function renderRandomization() {
     content.innerHTML = SPINNER;
 
     const user = api.getCurrentUser();
-    if (user.role !== 'admin') {
+    if (!['admin', 'pi', 'investigator'].includes(user.role)) {
         content.innerHTML = `<div class="p-6"><div class="ph-card p-5 border-red-200">
             <p class="text-sm font-semibold text-red-800 mb-1">Access Restricted</p>
-            <p class="text-sm text-red-700">Randomization management is restricted to Administrators to maintain trial integrity.</p>
+            <p class="text-sm text-red-700">Randomization is restricted to Administrators, Principal Investigators, and Investigators to maintain trial integrity.</p>
         </div></div>`;
         return;
     }
+    const isAdmin = user.role === 'admin';
 
     let assignments, stats, listRows;
     try {
         [assignments, stats, listRows] = await Promise.all([
             api.getRandomization(),
             api.getRandomizationStats(),
-            api.getRandomizationList(),
+            // Full randomization list (with unblinded arms) is admin-only
+            isAdmin ? api.getRandomizationList() : Promise.resolve(null),
         ]);
     } catch (err) {
         content.innerHTML = `<div class="p-6"><div class="ph-card p-5 border-red-200"><p class="text-sm text-red-700">${esc(err.message)}</p></div></div>`;
@@ -59,10 +61,11 @@ export async function renderRandomization() {
                 <p class="text-xs text-slate-500 mt-0.5">Blinded treatment assignment — ICH E9 / E9(R1) statistical principles</p>
             </div>
             <div class="flex gap-2">
+                ${isAdmin ? `
                 <button onclick="openUploadModal()"
                     class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-slate-700 hover:bg-slate-800 text-white rounded-md transition">
                     <i data-lucide="upload" class="w-4 h-4"></i> Upload List
-                </button>
+                </button>` : ''}
                 <button onclick="openRandomizeModal()"
                     class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-blue-700 hover:bg-blue-800 text-white rounded-md transition">
                     <i data-lucide="shuffle" class="w-4 h-4"></i> Randomize Subject
@@ -143,11 +146,11 @@ export async function renderRandomization() {
                                     <p class="text-slate-400">${fmtDT(a.randomizedAt)}</p>
                                 </td>
                                 <td class="text-right">
-                                    ${a.isBlinded ? `
+                                    ${a.isBlinded ? (isAdmin ? `
                                     <button onclick="openUnblindModal(${a.id}, '${esc(a.subjectCode)}')"
                                         class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-md transition border border-amber-200">
                                         <i data-lucide="eye" class="w-3 h-3"></i> Unblind
-                                    </button>` : `<span class="text-xs text-slate-300">Unblinded</span>`}
+                                    </button>` : `<span class="text-xs text-slate-300">🔒</span>`) : `<span class="text-xs text-slate-300">Unblinded</span>`}
                                 </td>
                             </tr>`).join('')}
                         </tbody>
@@ -155,7 +158,8 @@ export async function renderRandomization() {
                 </div>
             </div>
 
-            <!-- List Preview -->
+            <!-- List Preview (admin only — reveals treatment arms) -->
+            ${isAdmin ? `
             <div class="ph-card overflow-hidden">
                 <div class="ph-card-header">
                     <h3><i data-lucide="list" class="w-4 h-4 text-slate-400"></i> Randomization List</h3>
@@ -178,7 +182,11 @@ export async function renderRandomization() {
                             </tbody>
                         </table>`}
                 </div>
-            </div>
+            </div>` : `
+            <div class="ph-card p-5">
+                <p class="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Randomization List</p>
+                <p class="text-xs text-slate-400">The full randomization list (with treatment arms) is visible to Administrators only, to preserve blinding.</p>
+            </div>`}
         </div>
     </div>`;
 

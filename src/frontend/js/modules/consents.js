@@ -49,7 +49,7 @@ export async function renderConsents(filters = {}) {
         return;
     }
 
-    const canCreate = ['investigator', 'admin'].includes(user.role);
+    const canCreate = ['investigator', 'pi', 'admin', 'crc'].includes(user.role);
     const withdrawn = consents.filter(c => c.isWithdrawn).length;
 
     content.innerHTML = `
@@ -172,7 +172,7 @@ export async function renderConsents(filters = {}) {
 function renderConsentRows(consents, user) {
     if (!consents.length) return '';
     return consents.map(c => {
-        const canWithdraw = ['investigator','admin'].includes(user.role) && !c.isWithdrawn && c.consentType !== 'Withdrawal';
+        const canWithdraw = ['investigator','pi','admin'].includes(user.role) && !c.isWithdrawn && c.consentType !== 'Withdrawal';
 
         return `<tr class="${c.isWithdrawn ? 'opacity-60' : ''}">
             <td class="text-xs text-slate-400 font-mono">#${c.id}</td>
@@ -431,7 +431,7 @@ export async function renderSubjectConsentSection(subjectId, container) {
     try {
         const consents = await api.getConsents({ subjectId });
         const user = api.getCurrentUser();
-        const canCreate = ['investigator','admin'].includes(user.role);
+        const canCreate = ['investigator','pi','admin','crc'].includes(user.role);
 
         container.innerHTML = `
         <div class="space-y-3">

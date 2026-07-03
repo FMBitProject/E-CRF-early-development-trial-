@@ -4,7 +4,7 @@
 > Panduan ini mengikuti standar **ICH GCP E6(R3)**, **21 CFR Part 11**, dan **UU PDP Indonesia**.
 
 <!-- AUTO-GENERATED:UPDATED-AT-START -->
-_Panduan ini terakhir diperbarui otomatis: **11/5/2026, 16.35.00 WIB**_
+_Panduan ini terakhir diperbarui otomatis: **3/7/2026, 23.59.34 WIB**_
 <!-- AUTO-GENERATED:UPDATED-AT-END -->
 
 ---
@@ -69,19 +69,38 @@ E-CRF adalah platform pengelolaan data uji klinis berbasis web yang memungkinkan
 |-------|:---:|:---:|:---:|:---:|:---:|
 | Dashboard | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Subjects | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Medical History | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Con. Medications | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Vital Signs | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Laboratory | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Adverse Events | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Deviations | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Consent | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Randomization | ✓ | ✓ | ✓ | — | — |
 | Queries | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Amendments | ✓ | ✓ | — | ✓ | — |
+| Blind Review | ✓ | ✓ | — | ✓ | — |
 | Audit Trail | ✓ | ✓ | — | ✓ | — |
 | DB Lock | ✓ | ✓ | — | ✓ | — |
 | Delegation | ✓ | ✓ | — | ✓ | — |
 | SAE Reports | ✓ | ✓ | — | ✓ | — |
 | Monitoring | ✓ | ✓ | — | ✓ | — |
 | Data Status | ✓ | ✓ | — | ✓ | — |
+| CSM / KRI | ✓ | ✓ | — | ✓ | — |
+| QTL Thresholds | ✓ | ✓ | — | ✓ | — |
+| Screening Log | ✓ | ✓ | ✓ | ✓ | ✓ |
+| IP Accountability | ✓ | ✓ | ✓ | ✓ | ✓ |
+| TMF / Ess. Docs | ✓ | ✓ | — | ✓ | — |
+| Monitoring Plan | ✓ | ✓ | — | ✓ | — |
+| Data Quality | ✓ | ✓ | — | ✓ | — |
+| Re-consent | ✓ | ✓ | — | ✓ | — |
+| Access Review | ✓ | — | — | — | — |
 | Sites | ✓ | — | — | — | — |
 | Studies | ✓ | — | — | — | — |
+| Form Builder | ✓ | — | — | — | — |
+| Visit Templates | ✓ | ✓ | — | — | — |
+| Users | ✓ | — | — | — | — |
+| System Validation | ✓ | — | — | — | — |
 <!-- AUTO-GENERATED:NAV-ACCESS-END -->
 
 ---
@@ -135,6 +154,8 @@ Modul untuk mendaftarkan dan mengelola subjek penelitian.
 | `POST /` | ✓ | ✓ | ✓ | — | ✓ |
 | `PATCH /:id/status` | ✓ | ✓ | ✓ | — | — |
 | `POST /:id/ie-assessment` | ✓ | ✓ | ✓ | — | — |
+| `POST /:id/lock` | ✓ | ✓ | — | ✓ | — |
+| `POST /:id/unlock` | ✓ | — | — | — | — |
 <!-- AUTO-GENERATED:PERM-SUBJECTS-END -->
 
 ### Cara Penggunaan
@@ -162,8 +183,8 @@ Pencatatan kejadian tidak diinginkan selama studi.
 <!-- AUTO-GENERATED:PERM-AE-START -->
 | Endpoint | Administrator | Principal Investigator | Investigator | CRA / Monitor | Study Coordinator |
 |----------|:---:|:---:|:---:|:---:|:---:|
-| `POST /` | ✓ | ✓ | ✓ | — | — |
-| `PATCH /:id` | ✓ | ✓ | ✓ | — | — |
+| `POST /` | ✓ | ✓ | ✓ | — | ✓ |
+| `PATCH /:id` | ✓ | ✓ | ✓ | — | ✓ |
 | `PATCH /:id/report` | ✓ | ✓ | ✓ | — | — |
 | `PATCH /:id/close` | ✓ | ✓ | — | — | — |
 <!-- AUTO-GENERATED:PERM-AE-END -->
@@ -186,8 +207,8 @@ Pencatatan penyimpangan dari protokol.
 <!-- AUTO-GENERATED:PERM-DEVIATIONS-START -->
 | Endpoint | Administrator | Principal Investigator | Investigator | CRA / Monitor | Study Coordinator |
 |----------|:---:|:---:|:---:|:---:|:---:|
-| `POST /` | ✓ | ✓ | ✓ | — | — |
-| `PATCH /:id` | ✓ | ✓ | ✓ | — | — |
+| `POST /` | ✓ | ✓ | ✓ | — | ✓ |
+| `PATCH /:id` | ✓ | ✓ | ✓ | — | ✓ |
 | `PATCH /:id/report-irb` | ✓ | ✓ | ✓ | — | — |
 | `PATCH /:id/status` | ✓ | ✓ | — | — | — |
 <!-- AUTO-GENERATED:PERM-DEVIATIONS-END -->
@@ -392,12 +413,10 @@ Pencatatan delegasi tugas dan rekam pelatihan tim situs sesuai ICH GCP §4.1.5.
 <!-- AUTO-GENERATED:PERM-DELEGATION-START -->
 | Endpoint | Administrator | Principal Investigator | Investigator | CRA / Monitor | Study Coordinator |
 |----------|:---:|:---:|:---:|:---:|:---:|
-| `GET /` | ✓ | ✓ | — | ✓ | — |
 | `GET /training/records` | ✓ | ✓ | — | ✓ | — |
 | `POST /training/records` | ✓ | ✓ | — | — | — |
 | `GET /training/expiring` | ✓ | ✓ | — | ✓ | — |
 | `DELETE /training/records/:id` | ✓ | ✓ | — | — | — |
-| `GET /:id` | ✓ | ✓ | — | ✓ | — |
 | `POST /` | ✓ | ✓ | — | — | — |
 | `PATCH /:id` | ✓ | ✓ | — | — | — |
 <!-- AUTO-GENERATED:PERM-DELEGATION-END -->
@@ -423,6 +442,7 @@ Laporan ekspedisi Serious Adverse Event (SAE) ke Sponsor/IRB sesuai ICH E2A.
 | `GET /overdue` | ✓ | ✓ | — | ✓ | — |
 | `GET /:id` | ✓ | ✓ | — | ✓ | — |
 | `POST /` | ✓ | ✓ | — | ✓ | — |
+| `PATCH /:id/sign` | ✓ | ✓ | ✓ | — | — |
 | `PATCH /:id/submit` | ✓ | ✓ | — | ✓ | — |
 <!-- AUTO-GENERATED:PERM-SAE-END -->
 
@@ -445,6 +465,7 @@ Kunjungan monitor dan Source Data Verification (SDV) sesuai ICH GCP §5.18.
 | Endpoint | Administrator | Principal Investigator | Investigator | CRA / Monitor | Study Coordinator |
 |----------|:---:|:---:|:---:|:---:|:---:|
 | `GET /` | ✓ | ✓ | — | ✓ | — |
+| `GET /sdv-summary` | ✓ | ✓ | — | ✓ | — |
 | `GET /:id` | ✓ | ✓ | — | ✓ | — |
 | `POST /` | ✓ | ✓ | — | ✓ | — |
 | `PATCH /:id` | ✓ | ✓ | — | ✓ | — |
@@ -452,6 +473,7 @@ Kunjungan monitor dan Source Data Verification (SDV) sesuai ICH GCP §5.18.
 | `POST /:id/acknowledge` | ✓ | ✓ | — | — | — |
 | `GET /:id/sdv` | ✓ | ✓ | — | ✓ | — |
 | `POST /:id/sdv` | ✓ | ✓ | — | ✓ | — |
+| `GET /:id/report` | ✓ | ✓ | — | ✓ | — |
 <!-- AUTO-GENERATED:PERM-MONITORING-END -->
 
 ### Alur Monitoring Visit

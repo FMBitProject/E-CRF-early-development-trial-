@@ -13,6 +13,7 @@ Reference: ICH GCP E6(R3) · 21 CFR Part 11 · Bioclinica EDC Standard
 | `investigator` | Investigator | Sub-investigator — read/write for clinical data at their site, no sign-off authority |
 | `cra` | CRA / Monitor | Clinical Research Associate — read-only on patient data, raises queries, conducts SDV, creates monitoring visit reports, signs DB Lock |
 | `crc` | Study Coordinator | CRC / Study Coordinator — data entry (subjects, AE, deviations, consents), answers queries |
+| `data_manager` | Data Manager | DM — data oversight and cleaning: raises/closes queries, runs pre-lock checks and initiates DB Lock, blind data review, data exports, monitoring/SAE report visibility. No clinical data entry, no e-signature authority, no user/site/study management. |
 
 ---
 
@@ -126,6 +127,28 @@ Reference: ICH GCP E6(R3) · 21 CFR Part 11 · Bioclinica EDC Standard
 | Create/edit studies | ✓ | — | — | — | — |
 | Assign users to study | ✓ | — | — | — | — |
 | Create/edit sites | ✓ | — | — | — | — |
+
+---
+
+## Data Manager (`data_manager`) Grants
+
+The DM role mirrors the data-oversight subset of admin, per the backend route guards:
+
+| Area | Allowed actions |
+|------|-----------------|
+| Queries | Raise query, close query |
+| Database Lock | Run pre-lock checks, initiate DB Lock, sign as CRA-slot |
+| Subjects | View status overview (Data Status) |
+| Monitoring | View visits, create visits, SDV summary |
+| SAE Reports | View, create, submit |
+| Delegation & Training | View logs and training records |
+| Blind Data Review | Create and update review records |
+| QTL | Record and update threshold breaches |
+| Monitoring Plan / Essential Docs / Amendments | View and maintain |
+| Export | CSV and ODM-XML export |
+| IP Dispensing | Record dispensing |
+
+Not granted: clinical data entry (CRF/AE/deviations/consents), subject enrollment or status changes, e-signatures on CRFs, final DB Lock admin signature, randomization, user/site/study management.
 
 ---
 

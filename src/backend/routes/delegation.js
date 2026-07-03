@@ -21,10 +21,14 @@ function isMissingTable(err) {
            (c?.message || '').includes('does not exist');
 }
 
-// GET /api/delegation — list all delegation entries
-router.get('/', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
+// GET /api/delegation — list delegation entries
+// Privileged roles see all entries; other roles (investigator, crc) only see
+// their own so they can review and sign them (ICH GCP §4.1.5).
+router.get('/', async (req, res) => {
     try {
-        const { userId, status } = req.query;
+        const privileged = ['admin', 'cra', 'pi', 'data_manager'].includes(req.user.role);
+        const { status } = req.query;
+        const userId = privileged ? req.query.userId : req.user.id;
         const base = eq(delegationLog.studyId, req.studyId);
         const rows = await db.select().from(delegationLog)
             .where(
@@ -146,11 +150,16 @@ router.delete('/training/records/:id', requireRole('admin', 'pi'), async (req, r
 // ---------------------------------------------------------------------------
 
 // GET /api/delegation/:id — single entry
-router.get('/:id', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
+// Privileged roles see any entry; other roles only their own (to sign it).
+router.get('/:id', async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const [row] = await db.select().from(delegationLog).where(eq(delegationLog.id, id));
         if (!row) return res.status(404).json({ error: 'Delegation record not found' });
+        const privileged = ['admin', 'cra', 'pi', 'data_manager'].includes(req.user.role);
+        if (!privileged && row.userId !== req.user.id) {
+            return res.status(403).json({ error: 'You can only view your own delegation entry' });
+        }
         res.json(row);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -241,7 +250,7 @@ router.post('/:id/sign', async (req, res) => {
 
         const [entry] = await db.select().from(delegationLog).where(eq(delegationLog.id, id));
         if (!entry) return res.status(404).json({ error: 'Delegation record not found' });
-        if (entry.userId !== req.user.id && !['admin', 'cra'].includes(req.user.role)) {
+        if (entry.userId !== req.user.id) {
             return res.status(403).json({ error: 'You can only sign your own delegation entries' });
         }
         if (entry.signedAt) return res.status(409).json({ error: 'Already signed' });

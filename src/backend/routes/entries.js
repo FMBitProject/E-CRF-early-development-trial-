@@ -39,7 +39,8 @@ async function createAutoQueries(db, req, softViolations, entryId, subjectId, vi
 router.get('/', async (req, res) => {
     try {
         const { subjectId, visitId } = req.query;
-        const conditions = [];
+        // crf_data_entries has no study_id column — scope via the subject's study
+        const conditions = [eq(subjects.studyId, req.studyId)];
         if (subjectId) conditions.push(eq(crfDataEntries.subjectId, parseInt(subjectId)));
         if (visitId)   conditions.push(eq(crfDataEntries.visitId,   parseInt(visitId)));
 
@@ -59,8 +60,9 @@ router.get('/', async (req, res) => {
                 formName:   crfForms.name,
             })
             .from(crfDataEntries)
+            .innerJoin(subjects, eq(crfDataEntries.subjectId, subjects.id))
             .leftJoin(crfForms, eq(crfDataEntries.formId, crfForms.id))
-            .where(conditions.length ? and(...conditions) : undefined);
+            .where(and(...conditions));
 
         res.json(rows);
     } catch (err) {
@@ -75,6 +77,14 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
         const { subjectId, visitId, formId, dataJson, reason } = body;
         if (!subjectId || !visitId || !formId) {
             return res.status(400).json({ error: 'subjectId, visitId, formId are required' });
+        }
+
+        // Subject must belong to the active study (entries are not study-scoped directly)
+        const [subject] = await db.select({ studyId: subjects.studyId }).from(subjects)
+            .where(eq(subjects.id, parseInt(subjectId)));
+        if (!subject) return res.status(404).json({ error: 'Subject not found' });
+        if (subject.studyId !== req.studyId) {
+            return res.status(403).json({ error: 'Subject does not belong to the active study' });
         }
 
         // Load form schema for validation
@@ -144,9 +154,12 @@ router.patch('/:id/lock', requireRole('cra', 'pi', 'admin'), async (req, res) =>
         const { reason } = req.body;
         if (!reason) return res.status(400).json({ error: 'Lock reason is required' });
 
-        const [entry] = await db.select().from(crfDataEntries)
+        const [row] = await db.select({ entry: crfDataEntries, studyId: subjects.studyId })
+            .from(crfDataEntries)
+            .innerJoin(subjects, eq(crfDataEntries.subjectId, subjects.id))
             .where(eq(crfDataEntries.id, parseInt(req.params.id)));
-        if (!entry) return res.status(404).json({ error: 'Entry not found' });
+        const entry = row?.entry;
+        if (!entry || row.studyId !== req.studyId) return res.status(404).json({ error: 'Entry not found' });
         if (entry.status === 'Locked') return res.status(409).json({ error: 'Already locked' });
 
         const [locked] = await db.update(crfDataEntries)
@@ -171,9 +184,12 @@ router.patch('/:id/unlock', requireRole('admin'), async (req, res) => {
         const { reason } = req.body;
         if (!reason) return res.status(400).json({ error: 'Unlock reason is required' });
 
-        const [entry] = await db.select().from(crfDataEntries)
+        const [row] = await db.select({ entry: crfDataEntries, studyId: subjects.studyId })
+            .from(crfDataEntries)
+            .innerJoin(subjects, eq(crfDataEntries.subjectId, subjects.id))
             .where(eq(crfDataEntries.id, parseInt(req.params.id)));
-        if (!entry) return res.status(404).json({ error: 'Entry not found' });
+        const entry = row?.entry;
+        if (!entry || row.studyId !== req.studyId) return res.status(404).json({ error: 'Entry not found' });
         if (entry.status !== 'Locked') return res.status(409).json({ error: 'Entry is not locked' });
 
         const [unlocked] = await db.update(crfDataEntries)

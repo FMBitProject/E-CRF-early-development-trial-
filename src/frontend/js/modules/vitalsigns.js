@@ -124,6 +124,7 @@ export async function renderVitalSigns(container) {
 
 function renderVitalRows(records, user, canWrite) {
     if (!records.length) return '';
+    const canQuery = ['cra', 'admin'].includes(user.role);
     return records.map(r => {
         const bpCls = bpClass(r.systolicBp, r.diastolicBp);
         const bpDisplay = (r.systolicBp || r.diastolicBp)
@@ -149,10 +150,10 @@ function renderVitalRows(records, user, canWrite) {
             <td class="text-xs text-slate-600">${r.oxygenSaturation != null ? `${r.oxygenSaturation}%` : '—'}</td>
             <td class="text-right">
                 <div class="flex items-center justify-end gap-1.5">
-                    <button onclick="openRowInlineQuery(${r.subjectId}, ${r.visitId || null}, 'vital_signs', 'Vital Signs — ${esc(r.assessmentDate || '')}')"
+                    ${canQuery ? `<button onclick="openRowInlineQuery(${r.subjectId}, ${r.visitId || null}, 'vital_signs', 'Vital Signs — ${esc(r.assessmentDate || '')}')"
                         class="p-1.5 text-slate-400 hover:text-orange-500 hover:bg-orange-50 rounded transition" title="Raise Query">
                         <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
-                    </button>
+                    </button>` : ''}
                     ${canWrite ? `
                     <button onclick="openVitalForm(${r.id})"
                         class="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded transition" title="Edit">

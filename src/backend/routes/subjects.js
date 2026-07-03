@@ -253,7 +253,7 @@ router.patch('/:id/status', requireRole('investigator', 'pi', 'admin'), async (r
 });
 
 // POST /api/subjects/:id/ie-assessment — record I/E criteria assessment
-router.post('/:id/ie-assessment', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, res) => {
+router.post('/:id/ie-assessment', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
     try {
         const subjectId = parseInt(req.params.id);
         const { criteriaJson, passed } = req.body;

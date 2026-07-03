@@ -30,8 +30,8 @@ async function runPreLockChecks(studyId) {
     ] = await Promise.all([
         db.select({ openQueries:     count() }).from(queries).where(and(eq(queries.studyId, studyId), eq(queries.status, 'Open'))),
         db.select({ resolvedQueries: count() }).from(queries).where(and(eq(queries.studyId, studyId), eq(queries.status, 'Resolved'))),
-        db.select({ draftEntries:    count() }).from(crfDataEntries).where(eq(crfDataEntries.status, 'Draft')),
-        db.select({ savedEntries:    count() }).from(crfDataEntries).where(eq(crfDataEntries.status, 'Saved')),
+        db.select({ draftEntries:    count() }).from(crfDataEntries).innerJoin(subjects, eq(crfDataEntries.subjectId, subjects.id)).where(and(eq(subjects.studyId, studyId), eq(crfDataEntries.status, 'Draft'))),
+        db.select({ savedEntries:    count() }).from(crfDataEntries).innerJoin(subjects, eq(crfDataEntries.subjectId, subjects.id)).where(and(eq(subjects.studyId, studyId), eq(crfDataEntries.status, 'Saved'))),
         db.select({ draftSAEs:       count() }).from(adverseEvents)
             .where(and(eq(adverseEvents.studyId, studyId), eq(adverseEvents.isSerious, true), eq(adverseEvents.reportStatus, 'Draft'))),
         db.select({ openDeviations:  count() }).from(protocolDeviations).where(and(eq(protocolDeviations.studyId, studyId), eq(protocolDeviations.status, 'Open'))),
@@ -197,7 +197,7 @@ router.post('/:id/sign-cra', requireRole('cra', 'pi', 'admin', 'data_manager'), 
         if (lock.craSigned) return res.status(409).json({ error: 'CRA already signed' });
 
         const [acct] = await db.select({ password: account.password }).from(account)
-            .where(eq(account.userId, req.user.id) && eq(account.providerId, 'credential'));
+            .where(and(eq(account.userId, req.user.id), eq(account.providerId, 'credential')));
         if (!await verifyPassword(acct?.password ?? '', password)) {
             return res.status(401).json({ error: 'Incorrect password — electronic signature rejected' });
         }
@@ -239,7 +239,7 @@ router.post('/:id/sign-admin', requireRole('admin', 'pi'), async (req, res) => {
         if (lock.adminSigned) return res.status(409).json({ error: 'Admin already signed' });
 
         const [acct] = await db.select({ password: account.password }).from(account)
-            .where(eq(account.userId, req.user.id) && eq(account.providerId, 'credential'));
+            .where(and(eq(account.userId, req.user.id), eq(account.providerId, 'credential')));
         if (!await verifyPassword(acct?.password ?? '', password)) {
             return res.status(401).json({ error: 'Incorrect password — electronic signature rejected' });
         }

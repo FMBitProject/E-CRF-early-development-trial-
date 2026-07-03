@@ -111,6 +111,7 @@ export async function renderConMeds(container) {
 
 function renderConMedRows(records, user, canWrite) {
     if (!records.length) return '';
+    const canQuery = ['cra', 'admin'].includes(user.role);
     return records.map(r => `
         <tr>
             <td class="text-xs font-semibold font-mono text-slate-800">${esc(r.subjectCode || '—')}</td>
@@ -133,10 +134,10 @@ function renderConMedRows(records, user, canWrite) {
             </td>
             <td class="text-right">
                 <div class="flex items-center justify-end gap-1.5">
-                    <button onclick="openRowInlineQuery(${r.subjectId}, null, 'con_medication', 'ConMed: ${esc(r.drugName || '')}')"
+                    ${canQuery ? `<button onclick="openRowInlineQuery(${r.subjectId}, null, 'con_medication', 'ConMed: ${esc(r.drugName || '')}')"
                         class="p-1.5 text-slate-400 hover:text-orange-500 hover:bg-orange-50 rounded transition" title="Raise Query">
                         <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
-                    </button>
+                    </button>` : ''}
                     ${canWrite ? `
                     <button onclick="openConMedForm(${r.id})"
                         class="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded transition" title="Edit">

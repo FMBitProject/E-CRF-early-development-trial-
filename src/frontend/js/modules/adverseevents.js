@@ -97,7 +97,7 @@ export async function renderAdverseEvents(filters = {}) {
         return new Date(a.expeditedDeadline) < new Date();
     }).length;
 
-    const canCreate = ['investigator', 'admin'].includes(user.role);
+    const canCreate = ['investigator', 'pi', 'admin', 'crc'].includes(user.role);
 
     content.innerHTML = `
     <div class="p-5 space-y-4">
@@ -223,9 +223,10 @@ export async function renderAdverseEvents(filters = {}) {
 function renderAERows(aes, user) {
     if (!aes.length) return '';
     return aes.map(ae => {
-        const canEdit    = ['investigator','admin'].includes(user.role) && ae.reportStatus !== 'Closed';
-        const canReport  = ['investigator','admin'].includes(user.role) && ae.isSerious && ae.reportStatus === 'Draft';
-        const canClose   = ['cra','admin'].includes(user.role) && ae.reportStatus === 'Reported';
+        const canEdit    = ['investigator','pi','admin','crc'].includes(user.role) && ae.reportStatus !== 'Closed';
+        const canReport  = ['investigator','pi','admin'].includes(user.role) && ae.isSerious && ae.reportStatus === 'Draft';
+        const canClose   = ['pi','admin'].includes(user.role) && ae.reportStatus === 'Reported';
+        const canQuery   = ['cra','admin'].includes(user.role);
         const saeTag     = ae.isSerious ? `<span class="badge ml-1" style="background:#FEE2E2;color:#991B1B;border:1px solid #FECACA;font-weight:700">SAE</span>` : '';
 
         return `<tr>
@@ -253,10 +254,10 @@ function renderAERows(aes, user) {
             <td>${statusBadge(ae.reportStatus)}</td>
             <td class="text-right">
                 <div class="flex items-center justify-end gap-1.5">
-                    <button onclick="openRowInlineQuery(${ae.subjectId}, null, 'adverse_event', 'AE: ${esc(ae.aeTerm || '')}')"
+                    ${canQuery ? `<button onclick="openRowInlineQuery(${ae.subjectId}, null, 'adverse_event', 'AE: ${esc(ae.aeTerm || '')}')"
                         class="p-1.5 text-slate-400 hover:text-orange-500 hover:bg-orange-50 rounded transition" title="Raise Query">
                         <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
-                    </button>
+                    </button>` : ''}
                     ${canEdit ? `<button onclick="openAEForm(${ae.id})"
                         class="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded transition" title="Edit">
                         <i data-lucide="pencil" class="w-3.5 h-3.5"></i>

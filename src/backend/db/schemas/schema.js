@@ -370,7 +370,7 @@ export const auditTrails = pgTable('audit_trails', {
     userRole:  text('user_role'),
     ipAddress: text('ip_address'),
     auditHash: text('audit_hash'),
-    createdAt: timestamp('created_at').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
 // ─── Electronic Signatures (FDA 21 CFR Part 11) ─────────────────────────────

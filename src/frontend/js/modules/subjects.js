@@ -468,7 +468,7 @@ export async function renderSubjectDetail(id) {
                         <span>Enrollment (Day 1): <strong class="text-slate-700">${fmt(subject.enrollment_date)}</strong></span>
                     </div>
                 </div>
-                ${['admin', 'pi', 'cra'].includes(user.role) && subject.status === 'Active' ? `
+                ${['admin', 'pi', 'investigator'].includes(user.role) && subject.status === 'Active' ? `
                 <button onclick="openWithdrawModal(${subject.id})"
                     class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-600 border border-red-200 hover:bg-red-50 rounded-md transition">
                     <i data-lucide="user-x" class="w-3.5 h-3.5"></i> Withdraw

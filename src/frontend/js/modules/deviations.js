@@ -68,7 +68,7 @@ export async function renderDeviations(filters = {}) {
     const major  = devs.filter(d => d.deviationType === 'Major').length;
     const unreported = devs.filter(d => d.deviationType === 'Major' && !d.reportedToIrb && d.status !== 'Closed').length;
 
-    const canCreate = ['investigator', 'admin'].includes(user.role);
+    const canCreate = ['investigator', 'pi', 'admin', 'crc'].includes(user.role);
 
     content.innerHTML = `
     <div class="p-5 space-y-4">
@@ -186,9 +186,9 @@ export async function renderDeviations(filters = {}) {
 function renderDevRows(devs, user) {
     if (!devs.length) return '';
     return devs.map(d => {
-        const canEdit   = ['investigator','admin'].includes(user.role) && d.status !== 'Closed';
-        const canIrb    = ['investigator','admin'].includes(user.role) && d.deviationType === 'Major' && !d.reportedToIrb;
-        const canAdvance = ['cra','admin'].includes(user.role) && d.status !== 'Closed';
+        const canEdit   = ['investigator','pi','admin','crc'].includes(user.role) && d.status !== 'Closed';
+        const canIrb    = ['investigator','pi','admin'].includes(user.role) && d.deviationType === 'Major' && !d.reportedToIrb;
+        const canAdvance = ['pi','admin'].includes(user.role) && d.status !== 'Closed';
 
         return `<tr>
             <td class="text-xs text-slate-400 font-mono">#${d.id}</td>

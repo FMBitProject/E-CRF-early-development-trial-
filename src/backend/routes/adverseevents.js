@@ -120,7 +120,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/ae — create new AE (investigator, admin)
-router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
+router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, res) => {
     try {
         const {
             subjectId, aeTerm,
@@ -179,7 +179,7 @@ router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) =>
 });
 
 // PATCH /api/ae/:id — update AE with reason for change (ICH GCP)
-router.patch('/:id', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
+router.patch('/:id', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const { reason, ...fields } = req.body;
@@ -286,7 +286,7 @@ router.patch('/:id/close', requireRole('pi', 'admin'), async (req, res) => {
         await writeAudit(db, {
             tableName: 'adverse_events', recordId: id, action: 'UPDATE',
             fieldName: 'report_status', oldValue: 'Reported', newValue: 'Closed',
-            reason: 'AE closed by CRA/Admin',
+            reason: 'AE closed by PI/Admin',
             user: req.user, ipAddress: req.ip,
         });
 

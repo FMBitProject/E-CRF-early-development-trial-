@@ -98,7 +98,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/deviations — create (investigator, admin)
-router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
+router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, res) => {
     try {
         const {
             subjectId, deviationType, category, description,
@@ -140,7 +140,7 @@ router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) =>
 });
 
 // PATCH /api/deviations/:id — update with RFC
-router.patch('/:id', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
+router.patch('/:id', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const { reason, ...fields } = req.body;
