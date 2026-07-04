@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, count } from 'drizzle-orm';
 import { db } from '../db/connection.js';
-import { crfForms } from '../db/schemas/schema.js';
+import { crfForms, crfDataEntries } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 
@@ -108,6 +108,20 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
 
         const [existing] = await db.select().from(crfForms).where(eq(crfForms.id, id));
         if (!existing) return res.status(404).json({ error: 'Form not found' });
+
+        // Captured data was entered and validated against the current schema —
+        // rewriting it in place silently changes the meaning of existing entries
+        // (fields can vanish or change type). Block once any entry references
+        // this form; create a new form version instead.
+        if (JSON.stringify(schemaJson) !== JSON.stringify(existing.schemaJson)) {
+            const [{ inUse }] = await db.select({ inUse: count() }).from(crfDataEntries)
+                .where(eq(crfDataEntries.formId, id));
+            if (Number(inUse) > 0) {
+                return res.status(409).json({
+                    error: `Schema cannot be modified: ${inUse} data entr${Number(inUse) === 1 ? 'y' : 'ies'} reference this form. Create a new form version instead.`,
+                });
+            }
+        }
 
         // Auto-increment version if not provided
         const oldVer = parseFloat(existing.version || '1.0');

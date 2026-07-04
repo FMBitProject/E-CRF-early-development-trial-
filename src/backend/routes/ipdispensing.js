@@ -148,10 +148,13 @@ router.patch('/:id', requireRole('admin', 'investigator', 'pi', 'data_manager'),
 router.delete('/:id', requireRole('admin'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
-        await db.delete(ipAccountability)
-            .where(and(eq(ipAccountability.id, id), eq(ipAccountability.studyId, req.studyId)));
+        const [deleted] = await db.delete(ipAccountability)
+            .where(and(eq(ipAccountability.id, id), eq(ipAccountability.studyId, req.studyId)))
+            .returning();
+        if (!deleted) return res.status(404).json({ error: 'IP accountability record not found' });
         await writeAudit(db, {
             tableName: 'ip_accountability', recordId: id, action: 'DELETE',
+            oldValue: deleted.drugName ?? String(id),
             user: req.user, ipAddress: req.ip,
         });
         res.json({ ok: true });

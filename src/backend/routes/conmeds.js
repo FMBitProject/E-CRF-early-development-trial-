@@ -53,7 +53,7 @@ router.get('/:id', async (req, res) => {
         const [row] = await db
             .select()
             .from(concomitantMeds)
-            .where(eq(concomitantMeds.id, parseInt(req.params.id)));
+            .where(and(eq(concomitantMeds.id, parseInt(req.params.id)), eq(concomitantMeds.studyId, req.studyId)));
         if (!row) return res.status(404).json({ error: 'Concomitant medication record not found' });
         res.json(row);
     } catch (err) {
@@ -72,6 +72,12 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
 
         if (!subjectId || !drugName) {
             return res.status(400).json({ error: 'subjectId and drugName are required' });
+        }
+
+        const [subject] = await db.select({ studyId: subjects.studyId }).from(subjects)
+            .where(eq(subjects.id, parseInt(subjectId)));
+        if (!subject || subject.studyId !== req.studyId) {
+            return res.status(404).json({ error: 'Subject not found in the active study' });
         }
 
         const [created] = await db.insert(concomitantMeds).values({
@@ -114,7 +120,8 @@ router.patch('/:id', requireRole('investigator', 'pi', 'admin', 'crc'), async (r
         const { reason, ...fields } = req.body;
         if (!reason) return res.status(400).json({ error: 'reason is required for edits (ICH GCP)' });
 
-        const [existing] = await db.select().from(concomitantMeds).where(eq(concomitantMeds.id, id));
+        const [existing] = await db.select().from(concomitantMeds)
+            .where(and(eq(concomitantMeds.id, id), eq(concomitantMeds.studyId, req.studyId)));
         if (!existing) return res.status(404).json({ error: 'Concomitant medication record not found' });
 
         const updates = {
@@ -162,7 +169,8 @@ router.delete('/:id', requireRole('pi', 'admin'), async (req, res) => {
         const { reason } = req.body;
         if (!reason) return res.status(400).json({ error: 'reason is required for deletion (ICH GCP)' });
 
-        const [existing] = await db.select().from(concomitantMeds).where(eq(concomitantMeds.id, id));
+        const [existing] = await db.select().from(concomitantMeds)
+            .where(and(eq(concomitantMeds.id, id), eq(concomitantMeds.studyId, req.studyId)));
         if (!existing) return res.status(404).json({ error: 'Concomitant medication record not found' });
 
         await db.delete(concomitantMeds).where(eq(concomitantMeds.id, id));

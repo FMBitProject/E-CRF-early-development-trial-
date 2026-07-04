@@ -67,11 +67,24 @@ async function autoCreateWindowDeviation(studyId, subjectId, visitId, visitName,
     return dev;
 }
 
+// Resolve the :subjectId URL segment and verify it belongs to the active
+// study — visits have no study_id of their own, so every handler must anchor
+// through the subject (cross-study read/write was possible otherwise).
+async function resolveSubject(req) {
+    const subjectId = parseInt(req.params.subjectId);
+    if (isNaN(subjectId)) return null;
+    const [subject] = await db.select().from(subjects)
+        .where(and(eq(subjects.id, subjectId), eq(subjects.studyId, req.studyId)));
+    return subject ?? null;
+}
+
 // GET /api/subjects/:subjectId/visits
 router.get('/', async (req, res) => {
     try {
+        const subject = await resolveSubject(req);
+        if (!subject) return res.status(404).json({ error: 'Subject not found in the active study' });
         const rows = await db.select().from(visits)
-            .where(eq(visits.subjectId, parseInt(req.params.subjectId)))
+            .where(eq(visits.subjectId, subject.id))
             .orderBy(visits.visitOrder, visits.createdAt);
         res.json(rows);
     } catch (err) {
@@ -89,8 +102,8 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
         } = req.body;
         if (!visitName) return res.status(400).json({ error: 'visitName is required' });
 
-        const [subject] = await db.select().from(subjects).where(eq(subjects.id, subjectId));
-        if (!subject) return res.status(404).json({ error: 'Subject not found' });
+        const subject = await resolveSubject(req);
+        if (!subject) return res.status(404).json({ error: 'Subject not found in the active study' });
 
         const enrollmentDate = subject.enrolledAt ? subject.enrolledAt.toISOString().split('T')[0] : null;
         const studyDay        = calcStudyDay(enrollmentDate, actualDate);
@@ -130,19 +143,21 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
 });
 
 // PATCH /api/subjects/:subjectId/visits/:id — full update
-router.patch('/:id', requireRole('investigator', 'cra', 'pi', 'admin', 'crc'), async (req, res) => {
+// (CRA is read-only on clinical data per ROLE_MATRIX — not in this guard.)
+router.patch('/:id', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, res) => {
     try {
         const {
             visitName, visitOrder, visitType, plannedDate, actualDate,
             windowDays, status, missedReason, notes, reason, formIds,
         } = req.body;
 
+        const subject = await resolveSubject(req);
+        if (!subject) return res.status(404).json({ error: 'Subject not found in the active study' });
+
         const [existing] = await db.select().from(visits)
-            .where(eq(visits.id, parseInt(req.params.id)));
+            .where(and(eq(visits.id, parseInt(req.params.id)), eq(visits.subjectId, subject.id)));
         if (!existing) return res.status(404).json({ error: 'Visit not found' });
 
-        const [subject] = await db.select().from(subjects)
-            .where(eq(subjects.id, existing.subjectId));
         const enrollmentDate = subject?.enrolledAt ? subject.enrolledAt.toISOString().split('T')[0] : null;
 
         const newActualDate  = actualDate  !== undefined ? actualDate  : existing.actualDate;
@@ -190,12 +205,16 @@ router.patch('/:id', requireRole('investigator', 'cra', 'pi', 'admin', 'crc'), a
 });
 
 // PATCH /api/subjects/:subjectId/visits/:id/status
-router.patch('/:id/status', requireRole('investigator', 'cra', 'pi', 'admin', 'crc'), async (req, res) => {
+// (CRA is read-only on clinical data per ROLE_MATRIX — not in this guard.)
+router.patch('/:id/status', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, res) => {
     try {
         const { status } = req.body;
+        const subject = await resolveSubject(req);
+        if (!subject) return res.status(404).json({ error: 'Subject not found in the active study' });
+
         const [updated] = await db.update(visits)
             .set({ status, updatedAt: new Date() })
-            .where(eq(visits.id, parseInt(req.params.id)))
+            .where(and(eq(visits.id, parseInt(req.params.id)), eq(visits.subjectId, subject.id)))
             .returning();
         if (!updated) return res.status(404).json({ error: 'Visit not found' });
 
@@ -218,7 +237,11 @@ router.delete('/:id', requireRole('investigator', 'pi', 'admin'), async (req, re
         const { reason } = req.body;
         if (!reason?.trim()) return res.status(400).json({ error: 'reason is required' });
 
-        const [existing] = await db.select().from(visits).where(eq(visits.id, visitId));
+        const subject = await resolveSubject(req);
+        if (!subject) return res.status(404).json({ error: 'Subject not found in the active study' });
+
+        const [existing] = await db.select().from(visits)
+            .where(and(eq(visits.id, visitId), eq(visits.subjectId, subject.id)));
         if (!existing) return res.status(404).json({ error: 'Visit not found' });
 
         await db.delete(visits).where(eq(visits.id, visitId));

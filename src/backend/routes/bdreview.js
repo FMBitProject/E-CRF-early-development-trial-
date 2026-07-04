@@ -246,7 +246,9 @@ router.patch('/:id', requireRole('admin', 'cra', 'pi', 'data_manager'), async (r
     }
 });
 
-// PATCH /api/bdreview/:id/complete — frontend-compat alias (accepts checks object, ticks all then completes)
+// PATCH /api/bdreview/:id/complete — frontend-compat alias. Applies the
+// client-submitted checks, then enforces the same all-ticked rule as the POST
+// variant — it must NOT auto-tick (that would let one call skip the review).
 router.patch('/:id/complete', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
@@ -260,7 +262,28 @@ router.patch('/:id/complete', requireRole('admin', 'cra', 'pi', 'data_manager'),
             return res.status(409).json({ error: `Review is already ${existing.status}` });
         }
 
-        // Tick all sections in checklistJson before completing
+        // The UI submits six attestation booleans — every one must be
+        // explicitly true, server-side, before the review may complete.
+        const REQUIRED_CHECKS = {
+            queriesResolved:    'All open queries reviewed and resolved or justified',
+            missingDataCleared: 'Missing critical data reviewed and cleared',
+            deviationsReviewed: 'All protocol deviations reviewed and assessed',
+            saeReviewed:        'All SAEs reviewed and expedited reports confirmed',
+            auditReviewed:      'Audit trail reviewed and complete',
+            freezeReady:        'All sites confirm data entry complete',
+        };
+        const submitted = req.body?.checks ?? {};
+        const unticked = Object.entries(REQUIRED_CHECKS)
+            .filter(([key]) => submitted[key] !== true)
+            .map(([, label]) => label);
+        if (unticked.length > 0) {
+            return res.status(422).json({
+                error: 'All checklist sections must be ticked before completing the review',
+                unticked,
+            });
+        }
+
+        // Reviewer attested every section — persist the checklist as ticked.
         const checklist = existing.checklistJson ?? {};
         const tickedAll = Object.fromEntries(
             Object.entries(checklist).map(([k, v]) => [k, { ...v, ticked: true }])

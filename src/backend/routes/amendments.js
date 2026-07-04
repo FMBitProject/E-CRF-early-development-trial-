@@ -39,7 +39,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/amendments — create (admin/pi only)
-router.post('/', requireRole('admin', 'pi'), async (req, res) => {
+router.post('/', requireRole('admin', 'pi', 'data_manager'), async (req, res) => {
     try {
         const {
             amendmentNo, effectiveDate, summary, changes,
@@ -80,7 +80,7 @@ router.post('/', requireRole('admin', 'pi'), async (req, res) => {
 });
 
 // PATCH /api/amendments/:id — update status or fields; require reason
-router.patch('/:id', requireRole('admin', 'pi'), async (req, res) => {
+router.patch('/:id', requireRole('admin', 'pi', 'data_manager'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const { reason, ...fields } = req.body;
@@ -96,9 +96,13 @@ router.patch('/:id', requireRole('admin', 'pi'), async (req, res) => {
             return res.status(409).json({ error: 'Cannot edit an implemented amendment' });
         }
 
-        const allowedStatuses = ['Draft', 'Approved', 'Implemented'];
-        if (fields.status && !allowedStatuses.includes(fields.status)) {
-            return res.status(400).json({ error: `status must be one of: ${allowedStatuses.join(', ')}` });
+        // Status transitions must go through the dedicated endpoints
+        // (/approve enforces re-consent tracking and writes its own audit
+        // entry) — the generic PATCH must not allow Draft→Approved/Implemented.
+        if (fields.status !== undefined && fields.status !== existing.status) {
+            return res.status(400).json({
+                error: 'status cannot be changed here — use PATCH /:id/approve for approval workflow',
+            });
         }
 
         const updates = {

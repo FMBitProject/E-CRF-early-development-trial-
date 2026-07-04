@@ -73,13 +73,17 @@ router.patch('/:id/certify', requireRole('admin'), async (req, res) => {
             return res.status(400).json({ error: 'userId and certified are required' });
         }
 
-        const [existing] = await client`SELECT id, certifications FROM access_reviews WHERE id = ${id}`;
+        const [existing] = await client`
+            SELECT id, certifications FROM access_reviews
+            WHERE id = ${id} AND (study_id = ${req.studyId} OR study_id IS NULL)
+        `;
         if (!existing) return res.status(404).json({ error: 'Review not found' });
 
         const certs = existing.certifications ?? [];
         const idx = certs.findIndex(c => c.userId === userId);
         if (idx === -1) return res.status(404).json({ error: 'User not found in review' });
 
+        const wasCertified = certs[idx].certified;
         certs[idx] = {
             ...certs[idx],
             certified:    Boolean(certified),
@@ -94,6 +98,18 @@ router.patch('/:id/certify', requireRole('admin'), async (req, res) => {
             WHERE id = ${id}
             RETURNING *
         `;
+
+        // Certification decisions are the core Part 11 artifact of the review —
+        // each one must land in the audit trail.
+        await writeAudit(db, {
+            tableName: 'access_reviews', recordId: id, action: 'UPDATE',
+            fieldName: 'certifications',
+            oldValue: `${certs[idx].userName}: certified=${wasCertified}`,
+            newValue: `${certs[idx].userName}: certified=${Boolean(certified)}${certNotes ? ` — ${certNotes}` : ''}`,
+            reason: 'User access certification decision (ICH GCP E6(R3) C.4.2)',
+            user: req.user, ipAddress: req.ip,
+        });
+
         res.json(updated);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -104,7 +120,10 @@ router.patch('/:id/certify', requireRole('admin'), async (req, res) => {
 router.post('/:id/complete', requireRole('admin'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
-        const [existing] = await client`SELECT id, status FROM access_reviews WHERE id = ${id}`;
+        const [existing] = await client`
+            SELECT id, status FROM access_reviews
+            WHERE id = ${id} AND (study_id = ${req.studyId} OR study_id IS NULL)
+        `;
         if (!existing) return res.status(404).json({ error: 'Review not found' });
         if (existing.status === 'Complete') return res.status(409).json({ error: 'Review already completed' });
 

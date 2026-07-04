@@ -2,11 +2,14 @@ import { Router } from 'express';
 import { eq, and, ilike, desc } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { auditTrails } from '../db/schemas/schema.js';
+import { requireRole } from '../middleware/rbac.js';
 
 const router = Router();
 
-// GET /api/audit — immutable audit trail (all authenticated users)
-router.get('/', async (req, res) => {
+// GET /api/audit — immutable audit trail.
+// Restricted per ROLE_MATRIX: crc/investigator must not read other users'
+// old/new clinical values, reasons, and IP addresses across the platform.
+router.get('/', requireRole('admin', 'pi', 'cra', 'data_manager'), async (req, res) => {
     try {
         const { action, tableName, userId, search } = req.query;
         const conditions = [];

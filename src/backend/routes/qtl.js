@@ -252,7 +252,7 @@ router.patch('/breaches/:bid', requireRole('admin', 'cra', 'pi', 'data_manager')
         const resolvedBy   = resolvedAt ? req.user.id   : null;
         const resolvedByName = resolvedAt ? req.user.name : null;
 
-        const [existing] = await client`SELECT id FROM qtl_breach_actions WHERE id = ${bid} AND study_id = ${req.studyId}`;
+        const [existing] = await client`SELECT id, status FROM qtl_breach_actions WHERE id = ${bid} AND study_id = ${req.studyId}`;
         if (!existing) return res.status(404).json({ error: 'Breach action not found' });
 
         const [updated] = await client`
@@ -268,6 +268,14 @@ router.patch('/breaches/:bid', requireRole('admin', 'cra', 'pi', 'data_manager')
             WHERE id = ${bid}
             RETURNING *
         `;
+
+        await writeAudit(db, {
+            tableName: 'qtl_breach_actions', recordId: bid, action: 'UPDATE',
+            fieldName: 'status', oldValue: existing.status, newValue: updated.status,
+            reason: `QTL breach CAPA updated${capaText ? ' (CAPA text changed)' : ''} — ICH E6(R3) §5.0`,
+            user: req.user, ipAddress: req.ip,
+        });
+
         res.json(updated);
     } catch (err) {
         res.status(500).json({ error: err.message });

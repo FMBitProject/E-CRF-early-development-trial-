@@ -209,10 +209,13 @@ router.patch('/:id', requireRole('admin', 'cra', 'pi', 'data_manager'), async (r
 router.delete('/:id', requireRole('admin', 'cra'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
-        await db.delete(essentialDocuments)
-            .where(and(eq(essentialDocuments.id, id), eq(essentialDocuments.studyId, req.studyId)));
+        const [deleted] = await db.delete(essentialDocuments)
+            .where(and(eq(essentialDocuments.id, id), eq(essentialDocuments.studyId, req.studyId)))
+            .returning();
+        if (!deleted) return res.status(404).json({ error: 'Document not found' });
         await writeAudit(db, {
             tableName: 'essential_documents', recordId: id, action: 'DELETE',
+            oldValue: deleted.title ?? deleted.docType ?? String(id),
             user: req.user, ipAddress: req.ip,
         });
         res.json({ ok: true });

@@ -33,21 +33,35 @@ router.get('/odm', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
         const sid = req.studyId;
         const [
             allSubjects,
-            allVisits,
-            allEntries,
-            allForms,
+            visitRows,
+            entryRows,
+            allFormsGlobal,
             allAE,
             allConsents,
-            allSigs,
+            sigRows,
         ] = await Promise.all([
             db.select().from(subjects).leftJoin(sites, eq(subjects.siteId, sites.id)).where(eq(subjects.studyId, sid)),
-            db.select().from(visits),
-            db.select().from(crfDataEntries),
+            // visits/entries/signatures have no study_id — scope via the subject
+            db.select({ row: visits }).from(visits)
+                .innerJoin(subjects, eq(visits.subjectId, subjects.id))
+                .where(eq(subjects.studyId, sid)),
+            db.select({ row: crfDataEntries }).from(crfDataEntries)
+                .innerJoin(subjects, eq(crfDataEntries.subjectId, subjects.id))
+                .where(eq(subjects.studyId, sid)),
             db.select().from(crfForms),
             db.select().from(adverseEvents).where(eq(adverseEvents.studyId, sid)),
             db.select().from(informedConsents).where(eq(informedConsents.studyId, sid)),
-            db.select().from(esignatures),
+            db.select({ row: esignatures }).from(esignatures)
+                .innerJoin(crfDataEntries, eq(esignatures.entryId, crfDataEntries.id))
+                .innerJoin(subjects, eq(crfDataEntries.subjectId, subjects.id))
+                .where(eq(subjects.studyId, sid)),
         ]);
+        const allVisits  = visitRows.map(r => r.row);
+        const allEntries = entryRows.map(r => r.row);
+        const allSigs    = sigRows.map(r => r.row);
+        // Only emit metadata for forms actually used by this study's entries
+        const usedFormIds = new Set(allEntries.map(e => e.formId));
+        const allForms = allFormsGlobal.filter(f => usedFormIds.has(f.id));
 
         const visitMap  = new Map(allVisits.map(v => [v.id, v]));
         const formMap   = new Map(allForms.map(f => [f.id, f]));
@@ -349,6 +363,7 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
             headers = ['ICID','SUBJID','VERSION','DATE','TYPE','LANGUAGE','WITNESS','WITHDRAWN','WITHDRAWN_DTC','WITHDRAWN_REASON','CREATED_BY','CREATED_AT'];
             const data = await db.select().from(informedConsents)
                 .leftJoin(subjects, eq(informedConsents.subjectId, subjects.id))
+                .where(eq(informedConsents.studyId, sid))
                 .orderBy(informedConsents.id);
             rows = data.map(r => {
                 const c = r.informed_consents ?? r;
