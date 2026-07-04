@@ -912,7 +912,19 @@ app.use('/api/audit',      requireAuth, auditRouter);
 app.use('/api/forms',      requireAuth, formsRouter);
 app.use('/api/users',         requireAuth, userMgmtRouter);
 app.use('/api/notifications', requireAuth, requireStudy, notificationsRouter);
-app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+// Liveness — process is up (cheap, no dependencies).
+app.get('/api/health', (_req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
+
+// Readiness — includes a DB round-trip. Load balancers should route on this;
+// returns 503 when the database is unreachable so unhealthy instances drain.
+app.get('/api/ready', async (_req, res) => {
+    try {
+        await client`SELECT 1`;
+        res.json({ status: 'ready', db: 'up' });
+    } catch (err) {
+        res.status(503).json({ status: 'not-ready', db: 'down', error: err.message });
+    }
+});
 
 // Study-scoped routes — require both auth and X-Study-ID header
 const studyAuth = [requireAuth, requireStudy];
