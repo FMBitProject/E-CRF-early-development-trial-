@@ -2,6 +2,7 @@
 import { eq, and } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { studyUsers, studies, studyDbLock } from '../db/schemas/schema.js';
+import { computeSiteScope } from '../lib/sitescope.js';
 
 const CLOSED_STATUSES = new Set(['Terminated', 'Completed', 'Suspended']);
 
@@ -37,6 +38,11 @@ export async function requireStudy(req, res, next) {
 
         req.studyId     = id;
         req.studyStatus = study.status;
+
+        // Site-level isolation: PI/investigator/CRC are limited to their
+        // assigned sites' subjects (null = unscoped). Routes consume this via
+        // lib/sitescope.js siteCondition()/subjectInSiteScope().
+        req.siteScope = await computeSiteScope(req.user, id);
 
         if (req.method !== 'GET') {
             const url = req.originalUrl.split('?')[0];

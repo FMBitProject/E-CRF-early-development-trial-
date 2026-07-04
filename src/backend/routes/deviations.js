@@ -1,10 +1,11 @@
 import { Router } from 'express';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, or, isNull, desc } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { client } from '../db/connection.js';
 import { protocolDeviations, subjects } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
+import { siteCondition, subjectInSiteScope } from '../lib/sitescope.js';
 
 const router = Router();
 
@@ -22,6 +23,9 @@ router.get('/', async (req, res) => {
         if (subjectId) conditions.push(eq(protocolDeviations.subjectId, parseInt(subjectId)));
         if (status)    conditions.push(eq(protocolDeviations.status, status));
         if (type)      conditions.push(eq(protocolDeviations.deviationType, type));
+        // Site isolation — study-level deviations (no subject) stay visible
+        const siteCond = siteCondition(req);
+        if (siteCond) conditions.push(or(isNull(protocolDeviations.subjectId), siteCond));
 
         const runQuery = () => db
             .select({
@@ -89,8 +93,10 @@ router.get('/stats', async (req, res) => {
 router.get('/:id', async (req, res) => {
     try {
         const [row] = await db.select().from(protocolDeviations)
-            .where(eq(protocolDeviations.id, parseInt(req.params.id)));
-        if (!row) return res.status(404).json({ error: 'Protocol deviation not found' });
+            .where(and(eq(protocolDeviations.id, parseInt(req.params.id)), eq(protocolDeviations.studyId, req.studyId)));
+        if (!row || !(await subjectInSiteScope(req, row.subjectId))) {
+            return res.status(404).json({ error: 'Protocol deviation not found' });
+        }
         res.json(row);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -108,6 +114,15 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
 
         if (!deviationType || !description) {
             return res.status(400).json({ error: 'deviationType and description are required' });
+        }
+
+        if (subjectId) {
+            const [subject] = await db.select({ siteId: subjects.siteId }).from(subjects)
+                .where(and(eq(subjects.id, parseInt(subjectId)), eq(subjects.studyId, req.studyId)));
+            if (!subject) return res.status(404).json({ error: 'Subject not found in the active study' });
+            if (Array.isArray(req.siteScope) && !req.siteScope.includes(subject.siteId)) {
+                return res.status(404).json({ error: 'Subject not found in the active study' });
+            }
         }
 
         const [created] = await db.insert(protocolDeviations).values({
@@ -147,8 +162,10 @@ router.patch('/:id', requireRole('investigator', 'pi', 'admin', 'crc'), async (r
         if (!reason) return res.status(400).json({ error: 'reason is required for edits' });
 
         const [existing] = await db.select().from(protocolDeviations)
-            .where(eq(protocolDeviations.id, id));
-        if (!existing) return res.status(404).json({ error: 'Protocol deviation not found' });
+            .where(and(eq(protocolDeviations.id, id), eq(protocolDeviations.studyId, req.studyId)));
+        if (!existing || !(await subjectInSiteScope(req, existing.subjectId))) {
+            return res.status(404).json({ error: 'Protocol deviation not found' });
+        }
         if (existing.status === 'Closed') {
             return res.status(409).json({ error: 'Cannot edit a closed deviation' });
         }
@@ -189,7 +206,7 @@ router.patch('/:id/report-irb', requireRole('investigator', 'pi', 'admin'), asyn
         const id = parseInt(req.params.id);
         const [updated] = await db.update(protocolDeviations)
             .set({ reportedToIrb: true, reportedToIrbAt: new Date(), updatedBy: req.user.id, updatedAt: new Date() })
-            .where(eq(protocolDeviations.id, id))
+            .where(and(eq(protocolDeviations.id, id), eq(protocolDeviations.studyId, req.studyId)))
             .returning();
         if (!updated) return res.status(404).json({ error: 'Protocol deviation not found' });
 
@@ -217,8 +234,10 @@ router.patch('/:id/status', requireRole('pi', 'admin'), async (req, res) => {
         }
 
         const [existing] = await db.select().from(protocolDeviations)
-            .where(eq(protocolDeviations.id, id));
-        if (!existing) return res.status(404).json({ error: 'Protocol deviation not found' });
+            .where(and(eq(protocolDeviations.id, id), eq(protocolDeviations.studyId, req.studyId)));
+        if (!existing || !(await subjectInSiteScope(req, existing.subjectId))) {
+            return res.status(404).json({ error: 'Protocol deviation not found' });
+        }
 
         const [updated] = await db.update(protocolDeviations)
             .set({ status, updatedBy: req.user.id, updatedAt: new Date() })

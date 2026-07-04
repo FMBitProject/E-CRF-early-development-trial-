@@ -4,6 +4,7 @@ import { db, client } from '../db/connection.js';
 import { subjects, sites, visits, ieAssessments, crfDataEntries, queries, subjectRandomization } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
+import { siteCondition, subjectInSiteScope } from '../lib/sitescope.js';
 
 const router = Router();
 
@@ -14,10 +15,10 @@ router.get('/', async (req, res) => {
         const conditions = [eq(subjects.studyId, req.studyId)];
         if (status) conditions.push(eq(subjects.status, status));
         if (search) conditions.push(ilike(subjects.subjectCode, `%${search}%`));
-        // Site-scoped: investigator and crc only see subjects at their assigned site
-        if (['investigator', 'crc'].includes(req.user.role) && req.user.siteId) {
-            conditions.push(eq(subjects.siteId, req.user.siteId));
-        }
+        // Site isolation: PI/investigator/CRC only see their assigned sites'
+        // subjects (user_sites per study + legacy user.site_id).
+        const siteCond = siteCondition(req);
+        if (siteCond) conditions.push(siteCond);
 
         const rows = await db
             .select({
@@ -168,9 +169,12 @@ router.get('/:id', async (req, res) => {
             })
             .from(subjects)
             .leftJoin(sites, eq(subjects.siteId, sites.id))
-            .where(eq(subjects.id, parseInt(req.params.id)));
+            .where(and(eq(subjects.id, parseInt(req.params.id)), eq(subjects.studyId, req.studyId)));
 
         if (!row) return res.status(404).json({ error: 'Subject not found' });
+        if (Array.isArray(req.siteScope) && !req.siteScope.includes(row.siteId)) {
+            return res.status(404).json({ error: 'Subject not found' });
+        }
 
         const visitRows = await db.select().from(visits)
             .where(eq(visits.subjectId, parseInt(req.params.id)))
@@ -187,6 +191,11 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
     try {
         const { subjectCode, siteId, initials, dateOfBirth, sex, genderIdentity, enrolledAt } = req.body;
         if (!subjectCode) return res.status(400).json({ error: 'subjectCode is required' });
+
+        // Site-bound staff may only enroll subjects at their own site(s)
+        if (Array.isArray(req.siteScope) && !req.siteScope.includes(siteId ? parseInt(siteId) : null)) {
+            return res.status(403).json({ error: 'You can only enroll subjects at your assigned site' });
+        }
 
         const [created] = await db.insert(subjects).values({
             studyId:     req.studyId,
@@ -227,6 +236,10 @@ router.patch('/:id/status', requireRole('investigator', 'pi', 'admin'), async (r
             return res.status(400).json({ error: 'Withdrawal reason is required' });
         }
 
+        if (!(await subjectInSiteScope(req, req.params.id))) {
+            return res.status(404).json({ error: 'Subject not found' });
+        }
+
         const updates = { status, updatedAt: new Date() };
         if (status === 'Withdrawn') {
             updates.withdrawnAt = new Date();
@@ -235,7 +248,7 @@ router.patch('/:id/status', requireRole('investigator', 'pi', 'admin'), async (r
 
         const [updated] = await db.update(subjects)
             .set(updates)
-            .where(eq(subjects.id, parseInt(req.params.id)))
+            .where(and(eq(subjects.id, parseInt(req.params.id)), eq(subjects.studyId, req.studyId)))
             .returning();
 
         if (!updated) return res.status(404).json({ error: 'Subject not found' });
@@ -261,8 +274,12 @@ router.post('/:id/ie-assessment', requireRole('investigator', 'pi', 'admin'), as
             return res.status(400).json({ error: 'criteriaJson (array) and passed (boolean) are required' });
         }
 
-        const [subject] = await db.select().from(subjects).where(eq(subjects.id, subjectId));
+        const [subject] = await db.select().from(subjects)
+            .where(and(eq(subjects.id, subjectId), eq(subjects.studyId, req.studyId)));
         if (!subject) return res.status(404).json({ error: 'Subject not found' });
+        if (Array.isArray(req.siteScope) && !req.siteScope.includes(subject.siteId)) {
+            return res.status(404).json({ error: 'Subject not found' });
+        }
 
         const [assessment] = await db.insert(ieAssessments).values({
             subjectId,

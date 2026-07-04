@@ -4,6 +4,7 @@ import { db } from '../db/connection.js';
 import { concomitantMeds, subjects } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
+import { siteCondition, subjectInSiteScope } from '../lib/sitescope.js';
 
 const router = Router();
 
@@ -13,6 +14,8 @@ router.get('/', async (req, res) => {
         const { subjectId } = req.query;
         const conditions = [eq(concomitantMeds.studyId, req.studyId)];
         if (subjectId) conditions.push(eq(concomitantMeds.subjectId, parseInt(subjectId)));
+        const siteCond = siteCondition(req);
+        if (siteCond) conditions.push(siteCond);
 
         const rows = await db
             .select({
@@ -54,7 +57,9 @@ router.get('/:id', async (req, res) => {
             .select()
             .from(concomitantMeds)
             .where(and(eq(concomitantMeds.id, parseInt(req.params.id)), eq(concomitantMeds.studyId, req.studyId)));
-        if (!row) return res.status(404).json({ error: 'Concomitant medication record not found' });
+        if (!row || !(await subjectInSiteScope(req, row.subjectId))) {
+            return res.status(404).json({ error: 'Concomitant medication record not found' });
+        }
         res.json(row);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -74,9 +79,10 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
             return res.status(400).json({ error: 'subjectId and drugName are required' });
         }
 
-        const [subject] = await db.select({ studyId: subjects.studyId }).from(subjects)
+        const [subject] = await db.select({ studyId: subjects.studyId, siteId: subjects.siteId }).from(subjects)
             .where(eq(subjects.id, parseInt(subjectId)));
-        if (!subject || subject.studyId !== req.studyId) {
+        if (!subject || subject.studyId !== req.studyId ||
+            (Array.isArray(req.siteScope) && !req.siteScope.includes(subject.siteId))) {
             return res.status(404).json({ error: 'Subject not found in the active study' });
         }
 
@@ -122,7 +128,9 @@ router.patch('/:id', requireRole('investigator', 'pi', 'admin', 'crc'), async (r
 
         const [existing] = await db.select().from(concomitantMeds)
             .where(and(eq(concomitantMeds.id, id), eq(concomitantMeds.studyId, req.studyId)));
-        if (!existing) return res.status(404).json({ error: 'Concomitant medication record not found' });
+        if (!existing || !(await subjectInSiteScope(req, existing.subjectId))) {
+            return res.status(404).json({ error: 'Concomitant medication record not found' });
+        }
 
         const updates = {
             drugName:     fields.drugName    ?? existing.drugName,
@@ -171,7 +179,9 @@ router.delete('/:id', requireRole('pi', 'admin'), async (req, res) => {
 
         const [existing] = await db.select().from(concomitantMeds)
             .where(and(eq(concomitantMeds.id, id), eq(concomitantMeds.studyId, req.studyId)));
-        if (!existing) return res.status(404).json({ error: 'Concomitant medication record not found' });
+        if (!existing || !(await subjectInSiteScope(req, existing.subjectId))) {
+            return res.status(404).json({ error: 'Concomitant medication record not found' });
+        }
 
         await db.delete(concomitantMeds).where(eq(concomitantMeds.id, id));
 

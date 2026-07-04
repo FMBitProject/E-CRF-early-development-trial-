@@ -5,6 +5,7 @@ import { crfDataEntries, crfForms, subjects, queries } from '../db/schemas/schem
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit, writeFieldDiffAudit } from '../lib/audit.js';
 import { validateCRFData } from '../lib/validate.js';
+import { siteCondition, subjectInSiteScope } from '../lib/sitescope.js';
 
 const router = Router();
 
@@ -43,6 +44,8 @@ router.get('/', async (req, res) => {
         const conditions = [eq(subjects.studyId, req.studyId)];
         if (subjectId) conditions.push(eq(crfDataEntries.subjectId, parseInt(subjectId)));
         if (visitId)   conditions.push(eq(crfDataEntries.visitId,   parseInt(visitId)));
+        const siteCond = siteCondition(req);
+        if (siteCond) conditions.push(siteCond);
 
         const rows = await db
             .select({
@@ -80,11 +83,14 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
         }
 
         // Subject must belong to the active study (entries are not study-scoped directly)
-        const [subject] = await db.select({ studyId: subjects.studyId }).from(subjects)
+        const [subject] = await db.select({ studyId: subjects.studyId, siteId: subjects.siteId }).from(subjects)
             .where(eq(subjects.id, parseInt(subjectId)));
         if (!subject) return res.status(404).json({ error: 'Subject not found' });
         if (subject.studyId !== req.studyId) {
             return res.status(403).json({ error: 'Subject does not belong to the active study' });
+        }
+        if (Array.isArray(req.siteScope) && !req.siteScope.includes(subject.siteId)) {
+            return res.status(403).json({ error: 'Subject is not at your assigned site' });
         }
 
         // Load form schema for validation
@@ -160,6 +166,9 @@ router.patch('/:id/lock', requireRole('cra', 'pi', 'admin'), async (req, res) =>
             .where(eq(crfDataEntries.id, parseInt(req.params.id)));
         const entry = row?.entry;
         if (!entry || row.studyId !== req.studyId) return res.status(404).json({ error: 'Entry not found' });
+        if (!(await subjectInSiteScope(req, entry.subjectId))) {
+            return res.status(404).json({ error: 'Entry not found' });
+        }
         if (entry.status === 'Locked') return res.status(409).json({ error: 'Already locked' });
 
         const [locked] = await db.update(crfDataEntries)

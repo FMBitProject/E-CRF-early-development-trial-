@@ -4,6 +4,7 @@ import { db } from '../db/connection.js';
 import { adverseEvents, subjects } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
+import { siteCondition, subjectInSiteScope } from '../lib/sitescope.js';
 
 const router = Router();
 
@@ -27,21 +28,9 @@ router.get('/', async (req, res) => {
         if (subjectId) conditions.push(eq(adverseEvents.subjectId, parseInt(subjectId)));
         if (serious === 'true') conditions.push(eq(adverseEvents.isSerious, true));
         if (status) conditions.push(eq(adverseEvents.reportStatus, status));
-        // Site-scoped for investigator/crc
-        if (['investigator', 'crc'].includes(req.user.role) && req.user.siteId) {
-            const siteSubjects = await db
-                .select({ id: subjects.id })
-                .from(subjects)
-                .where(eq(subjects.siteId, req.user.siteId));
-            const ids = siteSubjects.map(s => s.id);
-            if (ids.length === 0) return res.json([]);
-            // Filter by subject IDs in the user's site
-            conditions.push(
-                ids.length === 1
-                    ? eq(adverseEvents.subjectId, ids[0])
-                    : inArray(adverseEvents.subjectId, ids)
-            );
-        }
+        // Site isolation via the subjects join (PI/investigator/CRC)
+        const siteCond = siteCondition(req);
+        if (siteCond) conditions.push(siteCond);
         const rows = await db
             .select({
                 id:                      adverseEvents.id,
@@ -111,8 +100,10 @@ router.get('/:id', async (req, res) => {
         const [row] = await db
             .select()
             .from(adverseEvents)
-            .where(eq(adverseEvents.id, parseInt(req.params.id)));
-        if (!row) return res.status(404).json({ error: 'Adverse event not found' });
+            .where(and(eq(adverseEvents.id, parseInt(req.params.id)), eq(adverseEvents.studyId, req.studyId)));
+        if (!row || !(await subjectInSiteScope(req, row.subjectId))) {
+            return res.status(404).json({ error: 'Adverse event not found' });
+        }
         res.json(row);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -132,6 +123,13 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
 
         if (!subjectId || !aeTerm || !severity) {
             return res.status(400).json({ error: 'subjectId, aeTerm, and severity are required' });
+        }
+
+        const [subject] = await db.select({ siteId: subjects.siteId }).from(subjects)
+            .where(and(eq(subjects.id, parseInt(subjectId)), eq(subjects.studyId, req.studyId)));
+        if (!subject) return res.status(404).json({ error: 'Subject not found in the active study' });
+        if (Array.isArray(req.siteScope) && !req.siteScope.includes(subject.siteId)) {
+            return res.status(404).json({ error: 'Subject not found in the active study' });
         }
 
         const serious = Boolean(isSerious);
@@ -185,7 +183,11 @@ router.patch('/:id', requireRole('investigator', 'pi', 'admin', 'crc'), async (r
         const { reason, ...fields } = req.body;
         if (!reason) return res.status(400).json({ error: 'reason is required for edits (ICH GCP)' });
 
-        const [existing] = await db.select().from(adverseEvents).where(eq(adverseEvents.id, id));
+        const [existing] = await db.select().from(adverseEvents)
+            .where(and(eq(adverseEvents.id, id), eq(adverseEvents.studyId, req.studyId)));
+        if (existing && !(await subjectInSiteScope(req, existing.subjectId))) {
+            return res.status(404).json({ error: 'Adverse event not found' });
+        }
         if (!existing) return res.status(404).json({ error: 'Adverse event not found' });
         if (existing.reportStatus === 'Closed') {
             return res.status(409).json({ error: 'Cannot edit a closed adverse event' });
@@ -243,7 +245,11 @@ router.patch('/:id/report', requireRole('investigator', 'pi', 'admin'), async (r
         const id = parseInt(req.params.id);
         const { reportedToSponsor, reportedToIrb } = req.body;
 
-        const [existing] = await db.select().from(adverseEvents).where(eq(adverseEvents.id, id));
+        const [existing] = await db.select().from(adverseEvents)
+            .where(and(eq(adverseEvents.id, id), eq(adverseEvents.studyId, req.studyId)));
+        if (existing && !(await subjectInSiteScope(req, existing.subjectId))) {
+            return res.status(404).json({ error: 'Adverse event not found' });
+        }
         if (!existing) return res.status(404).json({ error: 'Adverse event not found' });
 
         const now = new Date();
@@ -279,7 +285,7 @@ router.patch('/:id/close', requireRole('pi', 'admin'), async (req, res) => {
         const id = parseInt(req.params.id);
         const [updated] = await db.update(adverseEvents)
             .set({ reportStatus: 'Closed', updatedBy: req.user.id, updatedAt: new Date() })
-            .where(eq(adverseEvents.id, id))
+            .where(and(eq(adverseEvents.id, id), eq(adverseEvents.studyId, req.studyId)))
             .returning();
         if (!updated) return res.status(404).json({ error: 'Adverse event not found' });
 

@@ -4,6 +4,7 @@ import { db } from '../db/connection.js';
 import { vitalSigns, subjects, visits } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
+import { siteCondition, subjectInSiteScope } from '../lib/sitescope.js';
 
 const router = Router();
 
@@ -24,6 +25,8 @@ router.get('/', async (req, res) => {
     try {
         const { subjectId, visitId } = req.query;
         const conditions = [eq(vitalSigns.studyId, req.studyId)];
+        const siteCond = siteCondition(req);
+        if (siteCond) conditions.push(siteCond);
         if (subjectId) conditions.push(eq(vitalSigns.subjectId, parseInt(subjectId)));
         if (visitId)   conditions.push(eq(vitalSigns.visitId, parseInt(visitId)));
 
@@ -73,7 +76,9 @@ router.get('/:id', async (req, res) => {
             .select()
             .from(vitalSigns)
             .where(and(eq(vitalSigns.id, parseInt(req.params.id)), eq(vitalSigns.studyId, req.studyId)));
-        if (!row) return res.status(404).json({ error: 'Vital signs record not found' });
+        if (!row || !(await subjectInSiteScope(req, row.subjectId))) {
+            return res.status(404).json({ error: 'Vital signs record not found' });
+        }
         res.json(row);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -94,9 +99,10 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
             return res.status(400).json({ error: 'subjectId and assessmentDate are required' });
         }
 
-        const [subject] = await db.select({ studyId: subjects.studyId }).from(subjects)
+        const [subject] = await db.select({ studyId: subjects.studyId, siteId: subjects.siteId }).from(subjects)
             .where(eq(subjects.id, parseInt(subjectId)));
-        if (!subject || subject.studyId !== req.studyId) {
+        if (!subject || subject.studyId !== req.studyId ||
+            (Array.isArray(req.siteScope) && !req.siteScope.includes(subject.siteId))) {
             return res.status(404).json({ error: 'Subject not found in the active study' });
         }
 
@@ -148,7 +154,9 @@ router.patch('/:id', requireRole('investigator', 'pi', 'admin', 'crc'), async (r
 
         const [existing] = await db.select().from(vitalSigns)
             .where(and(eq(vitalSigns.id, id), eq(vitalSigns.studyId, req.studyId)));
-        if (!existing) return res.status(404).json({ error: 'Vital signs record not found' });
+        if (!existing || !(await subjectInSiteScope(req, existing.subjectId))) {
+            return res.status(404).json({ error: 'Vital signs record not found' });
+        }
 
         const newWeight      = fields.weight      ?? existing.weight;
         const newWeightUnit  = fields.weightUnit  ?? existing.weightUnit;
@@ -206,7 +214,9 @@ router.delete('/:id', requireRole('pi', 'admin'), async (req, res) => {
 
         const [existing] = await db.select().from(vitalSigns)
             .where(and(eq(vitalSigns.id, id), eq(vitalSigns.studyId, req.studyId)));
-        if (!existing) return res.status(404).json({ error: 'Vital signs record not found' });
+        if (!existing || !(await subjectInSiteScope(req, existing.subjectId))) {
+            return res.status(404).json({ error: 'Vital signs record not found' });
+        }
 
         await db.delete(vitalSigns).where(eq(vitalSigns.id, id));
 

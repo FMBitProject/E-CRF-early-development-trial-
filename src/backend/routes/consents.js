@@ -4,6 +4,7 @@ import { db } from '../db/connection.js';
 import { informedConsents, subjects } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
+import { siteCondition, subjectInSiteScope } from '../lib/sitescope.js';
 
 const router = Router();
 
@@ -13,6 +14,8 @@ router.get('/', async (req, res) => {
         const { subjectId } = req.query;
         const conditions = [eq(informedConsents.studyId, req.studyId)];
         if (subjectId) conditions.push(eq(informedConsents.subjectId, parseInt(subjectId)));
+        const siteCond = siteCondition(req);
+        if (siteCond) conditions.push(siteCond);
 
         const rows = await db
             .select({
@@ -74,6 +77,13 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
             return res.status(400).json({ error: 'subjectId, consentVersion, and consentDate are required' });
         }
 
+        const [subject] = await db.select({ siteId: subjects.siteId }).from(subjects)
+            .where(and(eq(subjects.id, parseInt(subjectId)), eq(subjects.studyId, req.studyId)));
+        if (!subject) return res.status(404).json({ error: 'Subject not found in the active study' });
+        if (Array.isArray(req.siteScope) && !req.siteScope.includes(subject.siteId)) {
+            return res.status(404).json({ error: 'Subject not found in the active study' });
+        }
+
         const allowedTypes = ['Initial', 'Re-consent', 'Withdrawal'];
         const type = allowedTypes.includes(consentType) ? consentType : 'Initial';
 
@@ -117,8 +127,10 @@ router.patch('/:id/withdraw', requireRole('investigator', 'pi', 'admin'), async 
         if (!reason) return res.status(400).json({ error: 'reason is required for withdrawal' });
 
         const [existing] = await db.select().from(informedConsents)
-            .where(eq(informedConsents.id, id));
-        if (!existing) return res.status(404).json({ error: 'Consent record not found' });
+            .where(and(eq(informedConsents.id, id), eq(informedConsents.studyId, req.studyId)));
+        if (!existing || !(await subjectInSiteScope(req, existing.subjectId))) {
+            return res.status(404).json({ error: 'Consent record not found' });
+        }
         if (existing.isWithdrawn) {
             return res.status(409).json({ error: 'Consent already withdrawn' });
         }

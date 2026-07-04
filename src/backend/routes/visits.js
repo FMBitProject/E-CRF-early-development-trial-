@@ -75,7 +75,10 @@ async function resolveSubject(req) {
     if (isNaN(subjectId)) return null;
     const [subject] = await db.select().from(subjects)
         .where(and(eq(subjects.id, subjectId), eq(subjects.studyId, req.studyId)));
-    return subject ?? null;
+    if (!subject) return null;
+    // Site isolation: PI/investigator/CRC only reach their sites' subjects
+    if (Array.isArray(req.siteScope) && !req.siteScope.includes(subject.siteId)) return null;
+    return subject;
 }
 
 // GET /api/subjects/:subjectId/visits

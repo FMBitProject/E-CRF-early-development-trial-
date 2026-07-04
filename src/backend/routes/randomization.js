@@ -113,9 +113,13 @@ router.post('/', requireRole('admin', 'investigator', 'pi'), async (req, res) =>
 
         const sid = parseInt(subjectId);
 
-        // Check subject exists and is Active
-        const [subject] = await db.select().from(subjects).where(eq(subjects.id, sid));
+        // Check subject exists in this study, is at the caller's site, and is Active
+        const [subject] = await db.select().from(subjects)
+            .where(and(eq(subjects.id, sid), eq(subjects.studyId, req.studyId)));
         if (!subject) return res.status(404).json({ error: 'Subject not found' });
+        if (Array.isArray(req.siteScope) && !req.siteScope.includes(subject.siteId)) {
+            return res.status(404).json({ error: 'Subject not found' });
+        }
         if (subject.status !== 'Active') {
             return res.status(409).json({ error: 'Only Active subjects can be randomized' });
         }
