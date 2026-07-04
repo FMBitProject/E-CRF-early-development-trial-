@@ -2,6 +2,11 @@
 import { api } from './api.js';
 import { showToast } from './utils.js';
 
+function esc(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 const TYPE_COLOR = {
     Receipt:     'bg-blue-100 text-blue-700',
     Dispensing:  'bg-emerald-100 text-emerald-700',
@@ -17,9 +22,10 @@ export async function renderIPDispensing(container) {
           <h2 class="text-lg font-semibold text-slate-800">IP Accountability</h2>
           <p class="text-xs text-slate-500">ICH GCP E6(R3) §8.3.19 — Investigational Product dispensing &amp; accountability</p>
         </div>
+        ${['admin', 'investigator', 'pi', 'crc', 'data_manager'].includes(api.getCurrentUser()?.role) ? `
         <button id="ip-add-btn" class="ph-btn ph-btn-primary text-xs flex items-center gap-1.5">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> Add Record
-        </button>
+        </button>` : ''}
       </div>
 
       <!-- Running Balance Summary -->
@@ -113,24 +119,25 @@ function renderIPTable(data, _container) {
       <tbody id="ip-tbody" class="divide-y divide-slate-100">
         ${data.map(r => `
         <tr class="hover:bg-slate-50 ip-row"
-            data-type="${r.recordType}" data-drug="${(r.drugName||'').toLowerCase()}"
-            data-batch="${(r.batchNo||'').toLowerCase()}">
-          <td class="px-3 py-2 whitespace-nowrap">${r.transactionDate || '—'}</td>
+            data-type="${esc(r.recordType)}" data-drug="${esc((r.drugName||'').toLowerCase())}"
+            data-batch="${esc((r.batchNo||'').toLowerCase())}">
+          <td class="px-3 py-2 whitespace-nowrap">${esc(r.transactionDate) || '—'}</td>
           <td class="px-3 py-2">
             <span class="px-2 py-0.5 rounded-full text-xs font-medium ${TYPE_COLOR[r.recordType] || ''}">
-              ${r.recordType}</span>
+              ${esc(r.recordType)}</span>
           </td>
-          <td class="px-3 py-2 font-medium">${r.drugName}</td>
-          <td class="px-3 py-2 font-mono text-slate-500">${r.batchNo || '—'}</td>
-          <td class="px-3 py-2 text-blue-600">${r.quantityIn || '—'}</td>
-          <td class="px-3 py-2 text-amber-600">${r.quantityOut || '—'}</td>
-          <td class="px-3 py-2 font-semibold">${r.balance || '—'}</td>
-          <td class="px-3 py-2 text-slate-400">${r.unit || '—'}</td>
-          <td class="px-3 py-2 text-slate-500">${r.subjectCode || '—'}</td>
-          <td class="px-3 py-2 text-slate-400 max-w-[160px] truncate">${r.notes || '—'}</td>
+          <td class="px-3 py-2 font-medium">${esc(r.drugName)}</td>
+          <td class="px-3 py-2 font-mono text-slate-500">${esc(r.batchNo) || '—'}</td>
+          <td class="px-3 py-2 text-blue-600">${esc(r.quantityIn) || '—'}</td>
+          <td class="px-3 py-2 text-amber-600">${esc(r.quantityOut) || '—'}</td>
+          <td class="px-3 py-2 font-semibold">${esc(r.balance) || '—'}</td>
+          <td class="px-3 py-2 text-slate-400">${esc(r.unit) || '—'}</td>
+          <td class="px-3 py-2 text-slate-500">${esc(r.subjectCode) || '—'}</td>
+          <td class="px-3 py-2 text-slate-400 max-w-[160px] truncate">${esc(r.notes) || '—'}</td>
           <td class="px-3 py-2">
+            ${['admin', 'investigator', 'pi', 'data_manager'].includes(api.getCurrentUser()?.role) ? `
             <button onclick="window._ipEdit(${r.id})"
-                    class="text-blue-600 hover:text-blue-800">Edit</button>
+                    class="text-blue-600 hover:text-blue-800">Edit</button>` : ''}
           </td>
         </tr>`).join('')}
       </tbody>

@@ -28,6 +28,21 @@ const router = Router();
 
 const VALID_ROLES = ['admin', 'investigator', 'pi', 'cra', 'crc', 'data_manager'];
 
+// ── GET /api/users/directory — slim active-staff directory.
+// PI/CRA/DM need this to pick staff for delegation & training entries
+// (ICH GCP §4.1.5) without the full admin user listing.
+router.get('/directory', requireRole('admin', 'pi', 'cra', 'data_manager'), async (_req, res) => {
+    try {
+        const rows = await client`
+            SELECT id, name, email, role FROM "user"
+            WHERE COALESCE(is_active, true) = true
+            ORDER BY name`;
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ── GET /api/users — list all users (admin only)
 router.get('/', requireRole('admin'), async (req, res) => {
     try {

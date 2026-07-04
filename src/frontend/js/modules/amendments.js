@@ -38,8 +38,9 @@ const STATUS_BTN_STYLE = {
 export async function renderAmendments(container) {
     container.innerHTML = SPINNER;
     const user = api.getCurrentUser();
-    const canWrite   = ['admin', 'investigator'].includes(user?.role);
-    const canAdvance = ['admin', 'investigator'].includes(user?.role);
+    const canWrite   = ['admin', 'pi', 'data_manager'].includes(user?.role);
+    const canAdvance = ['admin', 'pi'].includes(user?.role);
+    const canDelete  = user?.role === 'admin';
 
     let records = [];
     try {
@@ -50,7 +51,7 @@ export async function renderAmendments(container) {
     }
 
     const cards = records.length
-        ? records.map(r => amendmentCard(r, canWrite, canAdvance)).join('')
+        ? records.map(r => amendmentCard(r, canWrite, canAdvance, canDelete)).join('')
         : `<div class="py-16 text-center text-slate-400 text-sm">
                <i data-lucide="git-branch" class="w-10 h-10 mx-auto mb-3 opacity-20"></i>
                <p>No protocol amendments recorded.</p>
@@ -78,7 +79,7 @@ export async function renderAmendments(container) {
     lucide.createIcons();
 }
 
-function amendmentCard(r, canWrite, canAdvance) {
+function amendmentCard(r, canWrite, canAdvance, canDelete) {
     const nextStatus = STATUS_FLOW[r.status];
     const btnLabel   = STATUS_BTN_LABEL[r.status];
     const btnStyle   = STATUS_BTN_STYLE[r.status];
@@ -146,7 +147,7 @@ function amendmentCard(r, canWrite, canAdvance) {
                 class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold ${btnStyle} rounded-md transition">
                 <i data-lucide="arrow-right" class="w-3 h-3"></i> ${btnLabel}
             </button>` : ''}
-            ${canWrite ? `
+            ${canDelete ? `
             <button onclick="deleteAmendment(${r.id})"
                 class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition ml-auto">
                 <i data-lucide="trash-2" class="w-3 h-3"></i> Delete

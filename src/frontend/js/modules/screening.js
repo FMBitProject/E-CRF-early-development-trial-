@@ -2,6 +2,14 @@
 import { api } from './api.js';
 import { showToast } from './utils.js';
 
+function esc(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Backend guards: POST/PATCH are admin/investigator/pi/crc only
+const canWriteScreening = () => ['admin', 'investigator', 'pi', 'crc'].includes(api.getCurrentUser()?.role);
+
 const DISPOSITION_COLOR = {
     Enrolled:       'bg-emerald-100 text-emerald-700',
     'Screen Failed':'bg-red-100 text-red-700',
@@ -17,9 +25,10 @@ export async function renderScreeningLog(container) {
           <h2 class="text-lg font-semibold text-slate-800">Screening Log</h2>
           <p class="text-xs text-slate-500">ICH GCP E6(R3) §8.3.20 — All subjects screened for eligibility</p>
         </div>
+        ${canWriteScreening() ? `
         <button id="sl-add-btn" class="ph-btn ph-btn-primary text-xs flex items-center gap-1.5">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i> Add Screening Record
-        </button>
+        </button>` : ''}
       </div>
 
       <div id="sl-stats" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
@@ -93,23 +102,24 @@ function renderTable(data, container) {
       <tbody id="sl-tbody" class="divide-y divide-slate-100">
         ${data.map(r => `
         <tr class="hover:bg-slate-50 transition sl-row"
-            data-code="${(r.screeningCode || '').toLowerCase()}"
-            data-initials="${(r.subjectInitials || '').toLowerCase()}"
-            data-disposition="${r.disposition}">
-          <td class="px-3 py-2 whitespace-nowrap">${r.screeningDate || '—'}</td>
-          <td class="px-3 py-2 font-mono font-semibold text-slate-700">${r.screeningCode}</td>
-          <td class="px-3 py-2">${r.subjectInitials || '—'}</td>
-          <td class="px-3 py-2 text-slate-500">${r.siteName || '—'}</td>
+            data-code="${esc((r.screeningCode || '').toLowerCase())}"
+            data-initials="${esc((r.subjectInitials || '').toLowerCase())}"
+            data-disposition="${esc(r.disposition)}">
+          <td class="px-3 py-2 whitespace-nowrap">${esc(r.screeningDate) || '—'}</td>
+          <td class="px-3 py-2 font-mono font-semibold text-slate-700">${esc(r.screeningCode)}</td>
+          <td class="px-3 py-2">${esc(r.subjectInitials) || '—'}</td>
+          <td class="px-3 py-2 text-slate-500">${esc(r.siteName) || '—'}</td>
           <td class="px-3 py-2">
             <span class="px-2 py-0.5 rounded-full text-xs font-medium ${DISPOSITION_COLOR[r.disposition] || ''}">
-              ${r.disposition}
+              ${esc(r.disposition)}
             </span>
-            ${r.enrolledCode ? `<span class="ml-1 text-emerald-600 font-mono">(${r.enrolledCode})</span>` : ''}
+            ${r.enrolledCode ? `<span class="ml-1 text-emerald-600 font-mono">(${esc(r.enrolledCode)})</span>` : ''}
           </td>
-          <td class="px-3 py-2 text-slate-500 max-w-xs truncate">${r.failReason || '—'}</td>
+          <td class="px-3 py-2 text-slate-500 max-w-xs truncate">${esc(r.failReason) || '—'}</td>
           <td class="px-3 py-2">
+            ${canWriteScreening() ? `
             <button onclick="window._slEdit(${r.id})"
-                    class="text-blue-600 hover:text-blue-800 transition">Edit</button>
+                    class="text-blue-600 hover:text-blue-800 transition">Edit</button>` : ''}
           </td>
         </tr>`).join('')}
       </tbody>

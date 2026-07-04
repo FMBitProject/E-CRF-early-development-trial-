@@ -2,6 +2,11 @@
 import { api } from './api.js';
 import { showToast } from './utils.js';
 
+function esc(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 export async function renderReconsentTracking(container) {
     container.innerHTML = `
     <div class="p-4 md:p-6 space-y-4">
@@ -54,9 +59,9 @@ async function loadReconsentData() {
             <div class="ph-card p-5 border ${statusCls}">
               <div class="flex items-start justify-between flex-wrap gap-2 mb-3">
                 <div>
-                  <h3 class="font-semibold text-slate-800">${a.amendmentNo}</h3>
-                  <p class="text-xs text-slate-500">${a.summary ?? ''}</p>
-                  <p class="text-xs text-slate-400 mt-0.5">Effective: ${a.effectiveDate ?? '—'} · Status: <span class="font-medium">${a.status}</span></p>
+                  <h3 class="font-semibold text-slate-800">${esc(a.amendmentNo)}</h3>
+                  <p class="text-xs text-slate-500">${esc(a.summary)}</p>
+                  <p class="text-xs text-slate-400 mt-0.5">Effective: ${esc(a.effectiveDate) || '—'} · Status: <span class="font-medium">${esc(a.status)}</span></p>
                 </div>
                 <div class="text-right">
                   <p class="text-2xl font-bold ${donePct === 100 ? 'text-emerald-600' : donePct >= 50 ? 'text-amber-600' : 'text-red-600'}">${donePct}%</p>

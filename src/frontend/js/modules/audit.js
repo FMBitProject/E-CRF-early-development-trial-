@@ -191,7 +191,7 @@ function renderAuditRows(trails) {
         <td class="text-xs">
             ${t.field_name ? `
             <p class="font-mono font-medium text-slate-700">${t.field_name}</p>
-            ${t.old_value !== null ? `<p class="text-slate-400"><span class="text-red-500 line-through">${trunc(t.old_value, 18)}</span> → <span class="text-emerald-600">${trunc(t.new_value, 18)}</span></p>` : ''}
+            ${t.old_value !== null ? `<p class="text-slate-400"><span class="text-red-500 line-through">${esc(trunc(t.old_value, 18))}</span> → <span class="text-emerald-600">${esc(trunc(t.new_value, 18))}</span></p>` : ''}
             ` : '<span class="text-slate-300">—</span>'}
         </td>
         <td class="text-xs text-slate-600 max-w-[160px]">

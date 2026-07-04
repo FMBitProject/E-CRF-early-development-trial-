@@ -708,6 +708,10 @@ export const api = {
         return apiFetch('/api/security/users');
     },
 
+    async getUserDirectory() {
+        return apiFetch('/api/users/directory');
+    },
+
     async deleteUser(userId, reason) {
         return apiFetch(`/api/users/${userId}`, {
             method: 'DELETE',

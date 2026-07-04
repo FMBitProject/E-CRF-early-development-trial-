@@ -409,6 +409,7 @@ const routes = {
         if (el) { const { renderDataStatus } = await import('./modules/datastatus.js'); renderDataStatus(el); }
     },
     'sites': async () => {
+        if (user.role !== 'admin') { window.location.hash = '#dashboard'; return; }
         renderBreadcrumb([{ label: 'Site Management', route: 'sites' }]);
         const el = document.getElementById('main-content');
         if (el) { const { renderSites } = await import('./modules/sites.js'); await renderSites(el); }
@@ -420,16 +421,19 @@ const routes = {
         if (el) { const { renderStudyMgmt } = await import('./modules/studymgmt.js'); await renderStudyMgmt(el); }
     },
     'formbuilder': async () => {
+        if (user.role !== 'admin') { window.location.hash = '#dashboard'; return; }
         renderBreadcrumb([{ label: 'Form Builder', route: 'formbuilder' }]);
         const el = document.getElementById('main-content');
         if (el) { const { renderFormBuilder } = await import('./modules/formbuilder.js'); await renderFormBuilder(el); }
     },
     'visittemplates': async () => {
+        if (!['admin', 'pi'].includes(user.role)) { window.location.hash = '#dashboard'; return; }
         renderBreadcrumb([{ label: 'Visit Templates', route: 'visittemplates' }]);
         const el = document.getElementById('main-content');
         if (el) { const { renderVisitTemplates } = await import('./modules/visittemplates.js'); await renderVisitTemplates(el); }
     },
     'usermgmt': async () => {
+        if (user.role !== 'admin') { window.location.hash = '#dashboard'; return; }
         renderBreadcrumb([{ label: 'Users', route: 'usermgmt' }]);
         const el = document.getElementById('main-content');
         if (el) { const { renderUserMgmt } = await import('./modules/usermgmt.js'); await renderUserMgmt(el); }

@@ -2,6 +2,11 @@
 import { api } from './api.js';
 import { showToast } from './utils.js';
 
+function esc(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 export async function renderAccessReview(container) {
     container.innerHTML = `
     <div class="p-4 md:p-6 space-y-4">
@@ -92,7 +97,7 @@ function renderReviewCard(r) {
           <tbody class="divide-y divide-slate-100">
             ${certs.map(c => `
             <tr class="hover:bg-slate-50">
-              <td class="px-3 py-2 font-medium text-slate-700">${c.userName}</td>
+              <td class="px-3 py-2 font-medium text-slate-700">${esc(c.userName)}</td>
               <td class="px-3 py-2 text-slate-500 capitalize">${c.role?.replace('_', ' ') ?? '—'}</td>
               <td class="px-3 py-2">
                 ${c.certified

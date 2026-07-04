@@ -4,6 +4,11 @@
 import { api } from './api.js';
 import { showToast } from './utils.js';
 
+function escSAE(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 export async function renderSAEReports(container) {
     container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;padding:3rem;">
         <span style="color:#6b7280;">Loading SAE reports…</span></div>`;
@@ -42,7 +47,7 @@ function deadlineBadge(report) {
 function signedBadge(report) {
     if (report.signedAt) {
         const d = new Date(report.signedAt).toLocaleDateString();
-        return `<span style="background:#d1fae5;color:#065f46;padding:0.15rem 0.5rem;border-radius:999px;font-size:0.72rem;font-weight:600;" title="Signed by ${report.signedByName} on ${d}">&#10003; Signed</span>`;
+        return `<span style="background:#d1fae5;color:#065f46;padding:0.15rem 0.5rem;border-radius:999px;font-size:0.72rem;font-weight:600;" title="Signed by ${escSAE(report.signedByName)} on ${d}">&#10003; Signed</span>`;
     }
     return `<span style="background:#fee2e2;color:#991b1b;padding:0.15rem 0.5rem;border-radius:999px;font-size:0.72rem;font-weight:600;">Unsigned</span>`;
 }
@@ -93,7 +98,7 @@ function actionButtons(r, canWrite, canSign) {
 }
 
 function renderSAEPage(reports, overdue, role) {
-    const canWrite = ['admin', 'cra', 'pi'].includes(role);
+    const canWrite = ['admin', 'cra', 'pi', 'data_manager'].includes(role);
     const canSign  = ['admin', 'pi', 'investigator'].includes(role);
 
     const overdueAlert = overdue.length > 0 ? `
@@ -103,7 +108,7 @@ function renderSAEPage(reports, overdue, role) {
             <div>
                 <strong style="color:#991b1b;">${overdue.length} SAE report${overdue.length !== 1 ? 's' : ''} OVERDUE</strong>
                 <div style="margin-top:0.35rem;font-size:0.85rem;color:#7f1d1d;">
-                    ${overdue.map(r => `${r.subjectCode} — ${r.aeTerm} (${r.deadlineDays}-day deadline passed)`).join('<br>')}
+                    ${overdue.map(r => `${escSAE(r.subjectCode)} — ${escSAE(r.aeTerm)} (${escSAE(r.deadlineDays)}-day deadline passed)`).join('<br>')}
                 </div>
             </div>
         </div>` : '';
@@ -116,8 +121,8 @@ function renderSAEPage(reports, overdue, role) {
                     <span style="font-size:0.75rem;color:#6b7280;font-family:monospace;">#${r.id}</span>
                 </td>
                 <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;">
-                    <div style="font-weight:600;font-size:0.88rem;">${r.subjectCode ?? '—'}</div>
-                    <div style="font-size:0.8rem;color:#6b7280;">${r.aeTerm ?? '—'}</div>
+                    <div style="font-weight:600;font-size:0.88rem;">${escSAE(r.subjectCode) || '—'}</div>
+                    <div style="font-size:0.8rem;color:#6b7280;">${escSAE(r.aeTerm) || '—'}</div>
                 </td>
                 <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-size:0.88rem;">
                     ${r.reportType} #${r.reportNumber}
@@ -131,7 +136,7 @@ function renderSAEPage(reports, overdue, role) {
                 </td>
                 <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;">
                     ${signedBadge(r)}
-                    ${r.signedAt ? `<div style="font-size:0.72rem;color:#6b7280;margin-top:0.15rem;">${r.signedByName}</div>` : ''}
+                    ${r.signedAt ? `<div style="font-size:0.72rem;color:#6b7280;margin-top:0.15rem;">${escSAE(r.signedByName)}</div>` : ''}
                 </td>
                 <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-size:0.85rem;color:#6b7280;">
                     ${r.submittedTo ?? '—'}
@@ -321,7 +326,7 @@ function renderSignSAEModal() {
 }
 
 function attachSAEEvents(container, role) {
-    const canWrite = ['admin', 'cra', 'pi'].includes(role);
+    const canWrite = ['admin', 'cra', 'pi', 'data_manager'].includes(role);
 
     // New report modal
     document.getElementById('btn-new-sae-report')?.addEventListener('click', () => {

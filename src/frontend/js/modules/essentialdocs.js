@@ -2,6 +2,17 @@
 import { api } from './api.js';
 import { showToast } from './utils.js';
 
+function esc(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// documentRef is free text — only allow it as a clickable link when it is a
+// plain http(s) URL (a stored javascript: URL would execute on click).
+function safeDocHref(ref) {
+    return /^https?:\/\//i.test(String(ref ?? '').trim()) ? String(ref).trim() : null;
+}
+
 const STATUS_COLOR = {
     Current:           'bg-emerald-100 text-emerald-700',
     Received:          'bg-blue-100 text-blue-700',
@@ -214,7 +225,7 @@ function renderDocList(docs, container) {
                   <p class="font-medium text-slate-700">${artifact.label}</p>
                   ${artifact.description ? `<p class="text-slate-400 text-xs">${artifact.description}</p>` : ''}
                 </td>
-                <td class="px-3 py-2 text-slate-500">${d?.version || '—'}</td>
+                <td class="px-3 py-2 text-slate-500">${esc(d?.version) || '—'}</td>
                 <td class="px-3 py-2 text-slate-500 whitespace-nowrap">${d?.documentDate || '—'}</td>
                 <td class="px-3 py-2 text-slate-500 whitespace-nowrap">
                   ${d?.expiryDate
@@ -228,7 +239,9 @@ function renderDocList(docs, container) {
                 </td>
                 <td class="px-3 py-2 text-slate-500 max-w-[140px] truncate">
                   ${d?.documentRef
-                    ? `<a href="${d.documentRef}" target="_blank" rel="noopener" class="text-blue-600 hover:underline text-xs">${d.documentRef.substring(0, 35)}</a>`
+                    ? (safeDocHref(d.documentRef)
+                        ? `<a href="${esc(safeDocHref(d.documentRef))}" target="_blank" rel="noopener" class="text-blue-600 hover:underline text-xs">${esc(d.documentRef.substring(0, 35))}</a>`
+                        : `<span class="text-xs text-slate-500" title="${esc(d.documentRef)}">${esc(d.documentRef.substring(0, 35))}</span>`)
                     : '—'}
                 </td>
                 <td class="px-3 py-2 text-right">
@@ -284,7 +297,7 @@ function showDocModal(record, container, presetType = null) {
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-medium text-slate-600 mb-1">Version</label>
-            <input id="ed-version" type="text" class="ph-input text-sm w-full" placeholder="e.g. v3.0" value="${record?.version || ''}">
+            <input id="ed-version" type="text" class="ph-input text-sm w-full" placeholder="e.g. v3.0" value="${esc(record?.version)}">
           </div>
           <div>
             <label class="block text-xs font-medium text-slate-600 mb-1">Document Date</label>
@@ -308,11 +321,11 @@ function showDocModal(record, container, presetType = null) {
           <label class="block text-xs font-medium text-slate-600 mb-1">Document Reference / Location</label>
           <input id="ed-ref" type="text" class="ph-input text-sm w-full"
                  placeholder="File path, SharePoint URL, or doc number"
-                 value="${record?.documentRef || ''}">
+                 value="${esc(record?.documentRef)}">
         </div>
         <div>
           <label class="block text-xs font-medium text-slate-600 mb-1">Notes</label>
-          <textarea id="ed-notes" rows="2" class="ph-input text-sm w-full">${record?.notes || ''}</textarea>
+          <textarea id="ed-notes" rows="2" class="ph-input text-sm w-full">${esc(record?.notes)}</textarea>
         </div>
       </div>
       <div class="p-5 border-t flex justify-end gap-2">

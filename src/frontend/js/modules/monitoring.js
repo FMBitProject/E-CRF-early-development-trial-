@@ -3,6 +3,11 @@
 import { api } from './api.js';
 import { showToast } from './utils.js';
 
+function esc(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 const VISIT_TYPES = [
     'Site Initiation', 'Routine Monitoring', 'Close-out', 'Remote',
 ];
@@ -46,7 +51,7 @@ function visitTypeIcon(type) {
 }
 
 function renderMonitoringPage(visits, sites, role) {
-    const canCreate = ['admin', 'cra', 'pi'].includes(role);
+    const canCreate = ['admin', 'cra', 'pi', 'data_manager'].includes(role);
     const canAck    = ['admin', 'pi'].includes(role);
 
     const rows = visits.length === 0
@@ -303,33 +308,33 @@ async function loadMVRDetail(visitId, canWrite) {
         const subjects    = Array.isArray(visit.subjectsReviewed) ? visit.subjectsReviewed : [];
         const sdvRows     = (visit.sdvRecords ?? []).map(r => `
             <tr>
-                <td style="padding:0.5rem 0.6rem;border-bottom:1px solid #f3f4f6;font-size:0.85rem;font-weight:500;">${r.subjectCode}</td>
-                <td style="padding:0.5rem 0.6rem;border-bottom:1px solid #f3f4f6;font-size:0.85rem;">${r.visitName ?? '—'}</td>
-                <td style="padding:0.5rem 0.6rem;border-bottom:1px solid #f3f4f6;font-size:0.85rem;">${r.formName ?? '—'}</td>
+                <td style="padding:0.5rem 0.6rem;border-bottom:1px solid #f3f4f6;font-size:0.85rem;font-weight:500;">${esc(r.subjectCode)}</td>
+                <td style="padding:0.5rem 0.6rem;border-bottom:1px solid #f3f4f6;font-size:0.85rem;">${esc(r.visitName) || '—'}</td>
+                <td style="padding:0.5rem 0.6rem;border-bottom:1px solid #f3f4f6;font-size:0.85rem;">${esc(r.formName) || '—'}</td>
                 <td style="padding:0.5rem 0.6rem;border-bottom:1px solid #f3f4f6;">
-                    <span style="${sdvStatusStyle(r.sdvStatus)};padding:0.15rem 0.55rem;border-radius:4px;font-size:0.78rem;font-weight:600;">${r.sdvStatus}</span>
+                    <span style="${sdvStatusStyle(r.sdvStatus)};padding:0.15rem 0.55rem;border-radius:4px;font-size:0.78rem;font-weight:600;">${esc(r.sdvStatus)}</span>
                 </td>
-                <td style="padding:0.5rem 0.6rem;border-bottom:1px solid #f3f4f6;font-size:0.8rem;color:#6b7280;">${r.discrepancyNote ?? ''}</td>
-                <td style="padding:0.5rem 0.6rem;border-bottom:1px solid #f3f4f6;font-size:0.8rem;color:#9ca3af;">${r.verifiedByName ?? '—'}</td>
+                <td style="padding:0.5rem 0.6rem;border-bottom:1px solid #f3f4f6;font-size:0.8rem;color:#6b7280;">${esc(r.discrepancyNote)}</td>
+                <td style="padding:0.5rem 0.6rem;border-bottom:1px solid #f3f4f6;font-size:0.8rem;color:#9ca3af;">${esc(r.verifiedByName) || '—'}</td>
             </tr>
         `).join('');
 
         bodyEl.innerHTML = `
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0.75rem;margin-bottom:1.25rem;font-size:0.88rem;">
-                <div><span style="color:#6b7280;">CRA:</span><br><strong>${visit.craName}</strong></div>
-                <div><span style="color:#6b7280;">Site:</span><br><strong>${visit.siteName ?? '—'}</strong></div>
+                <div><span style="color:#6b7280;">CRA:</span><br><strong>${esc(visit.craName)}</strong></div>
+                <div><span style="color:#6b7280;">Site:</span><br><strong>${esc(visit.siteName) || '—'}</strong></div>
                 <div><span style="color:#6b7280;">Status:</span><br>${statusBadge(visit.status)}</div>
-                <div><span style="color:#6b7280;">Next Visit:</span><br><strong>${visit.nextVisitDate ?? '—'}</strong></div>
-                ${visit.acknowledgedAt ? `<div><span style="color:#6b7280;">Acknowledged by:</span><br><strong>${visit.acknowledgedByName}</strong></div>` : ''}
+                <div><span style="color:#6b7280;">Next Visit:</span><br><strong>${esc(visit.nextVisitDate) || '—'}</strong></div>
+                ${visit.acknowledgedAt ? `<div><span style="color:#6b7280;">Acknowledged by:</span><br><strong>${esc(visit.acknowledgedByName)}</strong></div>` : ''}
             </div>
-            ${visit.findings ? `<div style="margin-bottom:1rem;"><strong style="font-size:0.88rem;">Findings:</strong><p style="margin:0.3rem 0 0;font-size:0.88rem;color:#374151;white-space:pre-wrap;">${visit.findings}</p></div>` : ''}
-            ${visit.piComments ? `<div style="margin-bottom:1rem;background:#f0fdf4;border-radius:8px;padding:0.75rem;"><strong style="font-size:0.88rem;color:#065f46;">PI Response:</strong><p style="margin:0.3rem 0 0;font-size:0.88rem;color:#374151;">${visit.piComments}</p></div>` : ''}
-            ${subjects.length ? `<div style="margin-bottom:1rem;font-size:0.88rem;"><strong>Subjects Reviewed:</strong> ${subjects.join(', ')}</div>` : ''}
+            ${visit.findings ? `<div style="margin-bottom:1rem;"><strong style="font-size:0.88rem;">Findings:</strong><p style="margin:0.3rem 0 0;font-size:0.88rem;color:#374151;white-space:pre-wrap;">${esc(visit.findings)}</p></div>` : ''}
+            ${visit.piComments ? `<div style="margin-bottom:1rem;background:#f0fdf4;border-radius:8px;padding:0.75rem;"><strong style="font-size:0.88rem;color:#065f46;">PI Response:</strong><p style="margin:0.3rem 0 0;font-size:0.88rem;color:#374151;">${esc(visit.piComments)}</p></div>` : ''}
+            ${subjects.length ? `<div style="margin-bottom:1rem;font-size:0.88rem;"><strong>Subjects Reviewed:</strong> ${esc(subjects.join(', '))}</div>` : ''}
             ${actionItems.length ? `
             <div style="margin-bottom:1rem;">
                 <strong style="font-size:0.88rem;">Action Items:</strong>
                 <ul style="margin:0.35rem 0 0;padding-left:1.25rem;font-size:0.85rem;color:#374151;">
-                    ${actionItems.map(a => `<li>${typeof a === 'string' ? a : JSON.stringify(a)}</li>`).join('')}
+                    ${actionItems.map(a => `<li>${esc(typeof a === 'string' ? a : JSON.stringify(a))}</li>`).join('')}
                 </ul>
             </div>` : ''}
 
@@ -365,7 +370,7 @@ async function loadMVRDetail(visitId, canWrite) {
 }
 
 function attachMonitoringEvents(container, role, sites) {
-    const canCreate = ['admin', 'cra', 'pi'].includes(role);
+    const canCreate = ['admin', 'cra', 'pi', 'data_manager'].includes(role);
     const canAck    = ['admin', 'pi'].includes(role);
 
     // New visit modal

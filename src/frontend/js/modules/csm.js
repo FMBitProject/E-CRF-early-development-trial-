@@ -64,10 +64,10 @@ export async function renderCSM(container) {
                 <p class="text-xs text-slate-500 mt-0.5">Live Key Risk Indicators (KRIs) and Quality Tolerance Limits (QTLs)</p>
             </div>
             ${isAdmin ? `
-            <button onclick="openQTLManager()"
+            <a href="#qtl"
                 class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-blue-700 hover:bg-blue-800 text-white rounded-md transition shadow-sm">
                 <i data-lucide="settings-2" class="w-4 h-4"></i> Manage QTLs
-            </button>` : ''}
+            </a>` : ''}
         </div>
 
         <!-- KRI Cards -->
@@ -172,78 +172,6 @@ function timelinessCell(pct) {
     return `<span class="text-xs font-semibold ${color}">${pct}%</span>`;
 }
 
-window.openQTLManager = async function() {
-    let qtls = [];
-    try {
-        const metrics = await api.request('/api/qtl/metrics');
-        qtls = metrics.qtls || [];
-    } catch {}
-
-    const DEFAULT_INDICATORS = [
-        { key: 'protocol_deviations', label: 'Protocol Deviation Rate' },
-        { key: 'query_rate',           label: 'Query Rate' },
-        { key: 'ae_rate',              label: 'Adverse Event Rate' },
-        { key: 'missing_data',         label: 'Missing Data Rate' },
-        { key: 'screen_failure',       label: 'Screen Failure Rate' },
-        { key: 'dropout_rate',         label: 'Subject Dropout Rate' },
-    ];
-
-    const rows = DEFAULT_INDICATORS.map(ind => {
-        const existing = qtls.find(q => q.indicator === ind.key) || {};
-        return `
-        <div class="flex items-center gap-3 py-2 border-b border-slate-100 last:border-0">
-            <p class="text-sm text-slate-700 flex-1">${ind.label}</p>
-            <div class="flex items-center gap-2">
-                <input type="number" step="0.1" id="qtl-thr-${ind.key}" value="${existing.threshold ?? ''}" placeholder="%"
-                    class="w-20 px-2 py-1.5 border border-slate-300 rounded-md text-sm ph-input outline-none">
-                <select id="qtl-level-${ind.key}" class="px-2 py-1.5 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
-                    <option value="warning" ${existing.alertLevel === 'warning' || !existing.alertLevel ? 'selected' : ''}>Warning</option>
-                    <option value="critical" ${existing.alertLevel === 'critical' ? 'selected' : ''}>Critical</option>
-                </select>
-            </div>
-        </div>`;
-    }).join('');
-
-    showModal({
-        title: 'Manage Quality Tolerance Limits',
-        size: 'lg',
-        body: `
-        <div class="space-y-3">
-            <div class="flex items-start gap-2.5 p-3 rounded-md border text-xs" style="background:#EBF2FD;border-color:#BFD7F5;color:#1554A0">
-                <i data-lucide="info" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
-                Set threshold percentages for each key indicator. Alerts trigger when values approach or exceed thresholds.
-            </div>
-            <div class="space-y-0">
-                <div class="flex items-center gap-3 pb-2 border-b border-slate-200">
-                    <p class="text-xs font-semibold text-slate-500 uppercase flex-1">Indicator</p>
-                    <p class="text-xs font-semibold text-slate-500 uppercase w-20 text-center">Threshold</p>
-                    <p class="text-xs font-semibold text-slate-500 uppercase">Alert Level</p>
-                </div>
-                ${rows}
-            </div>
-        </div>`,
-        footer: `
-        <button onclick="closeModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition">Cancel</button>
-        <button onclick="saveQTLs()" class="px-4 py-2 text-sm font-semibold bg-blue-700 hover:bg-blue-800 text-white rounded-md transition flex items-center gap-2">
-            <i data-lucide="save" class="w-4 h-4"></i> Save All
-        </button>`,
-    });
-};
-
-window.saveQTLs = async function() {
-    const INDICATORS = ['protocol_deviations','query_rate','ae_rate','missing_data','screen_failure','dropout_rate'];
-    const entries = INDICATORS.map(key => ({
-        indicator:  key,
-        threshold:  parseFloat(document.getElementById(`qtl-thr-${key}`)?.value) || null,
-        alertLevel: document.getElementById(`qtl-level-${key}`)?.value || 'warning',
-    })).filter(e => e.threshold != null);
-
-    try {
-        await api.request('/api/qtl', { method: 'POST', body: JSON.stringify({ qtls: entries }) });
-        closeModal();
-        showToast('QTL thresholds saved.', 'success');
-        await renderCSM(document.getElementById('main-content'));
-    } catch (err) {
-        showToast(err.message, 'error');
-    }
-};
+// QTL management lives in the QTL module (#qtl) — its form matches the
+// backend contract. The old modal here posted a payload shape and indicator
+// keys the backend rejects, and clashed with qtl.js's window.openQTLManager.

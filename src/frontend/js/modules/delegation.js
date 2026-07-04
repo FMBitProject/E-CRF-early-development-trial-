@@ -3,6 +3,11 @@
 import { api } from './api.js';
 import { showToast } from './utils.js';
 
+function esc(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 const TASK_OPTIONS = [
     'Data Entry', 'Query Resolution', 'Source Data Verification',
     'Adverse Event Reporting', 'Protocol Deviation Management',
@@ -23,9 +28,9 @@ export async function renderDelegation(container) {
     const user = api.getCurrentUser();
     const role = user?.role ?? '';
 
-    if (!['admin', 'pi', 'cra'].includes(role)) {
+    if (!['admin', 'pi', 'cra', 'data_manager'].includes(role)) {
         container.innerHTML = `<div style="padding:2rem;color:#dc2626;text-align:center;">
-            Access restricted to administrators, principal investigators, and CRA monitors.</div>`;
+            Access restricted to administrators, principal investigators, CRA monitors, and data managers.</div>`;
         return;
     }
 
@@ -33,7 +38,9 @@ export async function renderDelegation(container) {
         api.getDelegations().catch(() => []),
         api.getTrainingRecords().catch(() => []),
         api.getExpiringTrainings(30).catch(() => []),
-        api.getSecurityUsers().catch(() => []),
+        // Slim directory — accessible to PI/CRA/DM, unlike the admin-only
+        // /api/security/users (the staff dropdowns were empty for PI before).
+        api.getUserDirectory().catch(() => []),
     ]);
 
     container.innerHTML = renderDelegationPage(delegations, trainings, expiring, users, role);
@@ -48,7 +55,7 @@ function renderDelegationPage(delegations, trainings, expiring, users, role) {
             <div>
                 <strong>${expiring.length} training record${expiring.length !== 1 ? 's' : ''} expiring within 30 days</strong>
                 <div style="margin-top:0.35rem;font-size:0.85rem;color:#92400e;">
-                    ${expiring.map(t => `${t.userName} — ${t.trainingType} expires ${new Date(t.expiryDate).toLocaleDateString()}`).join('<br>')}
+                    ${expiring.map(t => `${esc(t.userName)} — ${esc(t.trainingType)} expires ${new Date(t.expiryDate).toLocaleDateString()}`).join('<br>')}
                 </div>
             </div>
         </div>` : '';
@@ -139,13 +146,13 @@ function renderDelegationPage(delegations, trainings, expiring, users, role) {
                         <tbody>
                             ${users.map(u => `
                             <tr>
-                                <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-weight:500;">${u.name}</td>
-                                <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;color:#6b7280;font-size:0.88rem;">${u.email}</td>
-                                <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;text-transform:capitalize;font-size:0.88rem;">${u.role}</td>
+                                <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-weight:500;">${esc(u.name)}</td>
+                                <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;color:#6b7280;font-size:0.88rem;">${esc(u.email)}</td>
+                                <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;text-transform:capitalize;font-size:0.88rem;">${esc(u.role)}</td>
                                 <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-size:0.85rem;color:#9ca3af;">${u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}</td>
                                 <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;text-align:right;">
-                                    ${['admin', 'pi'].includes(role) ? `
-                                    <button class="btn-delete-user" data-id="${u.id}" data-name="${u.name}"
+                                    ${role === 'admin' ? `
+                                    <button class="btn-delete-user" data-id="${esc(u.id)}" data-name="${esc(u.name)}"
                                         style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;
                                                padding:0.3rem 0.75rem;cursor:pointer;font-size:0.8rem;font-weight:500;">
                                         Delete
@@ -172,21 +179,33 @@ function renderDelegationRow(d) {
         d.delegationEnd ? `– ${new Date(d.delegationEnd).toLocaleDateString()}` : '(ongoing)',
     ].join(' ');
 
+    // Staff e-sign their own delegation entry (ICH GCP §4.1.5 / 21 CFR Part 11)
+    const me = api.getCurrentUser();
+    const canSignOwn = !d.signedAt && d.userId === me?.id;
+
     return `
         <tr>
-            <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-weight:500;">${d.userName}</td>
-            <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;color:#6b7280;text-transform:capitalize;">${d.userRole}</td>
+            <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-weight:500;">${esc(d.userName)}</td>
+            <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;color:#6b7280;text-transform:capitalize;">${esc(d.userRole)}</td>
             <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;">
                 <div style="display:flex;flex-wrap:wrap;gap:0.3rem;">
-                    ${tasks.map(t => `<span style="background:#eff6ff;color:#2563eb;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.78rem;">${t}</span>`).join('')}
+                    ${tasks.map(t => `<span style="background:#eff6ff;color:#2563eb;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.78rem;">${esc(t)}</span>`).join('')}
                 </div>
             </td>
             <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-size:0.88rem;">${period}</td>
             <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;">
-                <span style="color:${statusColor};font-weight:600;font-size:0.85rem;">${d.status}</span>
+                <span style="color:${statusColor};font-weight:600;font-size:0.85rem;">${esc(d.status)}</span>
             </td>
             <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-size:0.85rem;">
-                ${d.signedAt ? `✓ ${d.signedByName}<br><span style="color:#9ca3af;">${new Date(d.signedAt).toLocaleDateString()}</span>` : '<span style="color:#f59e0b;">⏳ Pending</span>'}
+                ${d.signedAt
+                    ? `✓ ${esc(d.signedByName)}<br><span style="color:#9ca3af;">${new Date(d.signedAt).toLocaleDateString()}</span>`
+                    : canSignOwn
+                        ? `<button class="btn-sign-delegation" data-id="${d.id}"
+                              style="background:#1d4ed8;color:#fff;border:none;border-radius:6px;
+                                     padding:0.3rem 0.75rem;cursor:pointer;font-size:0.8rem;font-weight:500;">
+                              Sign
+                           </button>`
+                        : '<span style="color:#f59e0b;">⏳ Pending</span>'}
             </td>
         </tr>
     `;
@@ -200,13 +219,13 @@ function renderTrainingRow(t) {
 
     return `
         <tr>
-            <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-weight:500;">${t.userName}</td>
-            <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;">${t.trainingType}</td>
+            <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-weight:500;">${esc(t.userName)}</td>
+            <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;">${esc(t.trainingType)}</td>
             <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-size:0.88rem;">${new Date(t.trainingDate).toLocaleDateString()}</td>
             <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-size:0.88rem;color:${expiryColor};">
                 ${t.expiryDate ? new Date(t.expiryDate).toLocaleDateString() + (expired ? ' ⚠ EXPIRED' : expiringSoon ? ' ⚠ Soon' : '') : '—'}
             </td>
-            <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-size:0.85rem;color:#6b7280;">${t.certificateRef ?? '—'}</td>
+            <td style="padding:0.7rem 0.75rem;border-bottom:1px solid #f3f4f6;font-size:0.85rem;color:#6b7280;">${esc(t.certificateRef) || '—'}</td>
         </tr>
     `;
 }
@@ -246,7 +265,7 @@ function renderDeleteUserModal() {
 
 function renderDelegationModal(users) {
     const userOptions = users.map(u =>
-        `<option value="${u.id}">${u.name} (${u.role})</option>`
+        `<option value="${esc(u.id)}">${esc(u.name)} (${esc(u.role)})</option>`
     ).join('');
 
     const taskCheckboxes = TASK_OPTIONS.map(t =>
@@ -308,7 +327,7 @@ function renderDelegationModal(users) {
 
 function renderTrainingModal(users) {
     const userOptions = users.map(u =>
-        `<option value="${u.id}">${u.name} (${u.role})</option>`
+        `<option value="${esc(u.id)}">${esc(u.name)} (${esc(u.role)})</option>`
     ).join('');
 
     const typeOptions = TRAINING_TYPES.map(t =>
@@ -375,6 +394,20 @@ function renderTrainingModal(users) {
 }
 
 function attachDelegationEvents(container) {
+    // Sign own delegation entry (ICH GCP §4.1.5)
+    container.querySelectorAll('.btn-sign-delegation').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!confirm('Sign this delegation entry? This records your electronic signature.')) return;
+            try {
+                await api.signDelegation(parseInt(btn.dataset.id));
+                showToast('Delegation entry signed.', 'success');
+                await renderDelegation(container);
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        });
+    });
+
     // Delegation modal
     document.getElementById('btn-add-delegation')?.addEventListener('click', () => {
         document.getElementById('delegation-modal').style.display = 'flex';

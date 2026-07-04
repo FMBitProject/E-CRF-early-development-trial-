@@ -2,6 +2,11 @@
 import { api } from './api.js';
 import { showToast } from './utils.js';
 
+function esc(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 const STATUS_COLOR = {
     Draft:      'bg-amber-100 text-amber-700',
     Approved:   'bg-emerald-100 text-emerald-700',
@@ -72,14 +77,14 @@ function renderCurrentPlan(plan) {
               ${plan.riskLevel || 'Risk: N/A'}</span>
           </div>
           <p class="text-sm font-semibold text-slate-800">
-            SDV: ${plan.sdvStrategy || 'Not specified'}
-            ${plan.sdvPercentage != null ? ` (${plan.sdvPercentage}%)` : ''}
+            SDV: ${esc(plan.sdvStrategy) || 'Not specified'}
+            ${plan.sdvPercentage != null ? ` (${esc(plan.sdvPercentage)}%)` : ''}
           </p>
           <p class="text-xs text-slate-500 mt-0.5">
-            On-site: ${plan.onSiteFrequency || '—'} · Remote: ${plan.remoteFrequency || '—'}
+            On-site: ${esc(plan.onSiteFrequency) || '—'} · Remote: ${esc(plan.remoteFrequency) || '—'}
           </p>
           <p class="text-xs text-slate-400 mt-1">
-            Approved by ${plan.approvedByName || '—'} on
+            Approved by ${esc(plan.approvedByName) || '—'} on
             ${plan.approvedAt ? new Date(plan.approvedAt).toLocaleDateString() : '—'}
           </p>
         </div>
@@ -110,9 +115,9 @@ function renderPlanList(plans, container) {
               ${plan.riskLevel} Risk</span>` : ''}
           </div>
           <div class="text-xs text-slate-600 space-y-0.5">
-            ${plan.sdvStrategy ? `<p>SDV Strategy: <strong>${plan.sdvStrategy}</strong>${plan.sdvPercentage != null ? ` · ${plan.sdvPercentage}%` : ''}</p>` : ''}
-            ${plan.onSiteFrequency ? `<p>On-site: ${plan.onSiteFrequency}</p>` : ''}
-            ${plan.scope ? `<p class="text-slate-500 mt-1 line-clamp-2">${plan.scope}</p>` : ''}
+            ${plan.sdvStrategy ? `<p>SDV Strategy: <strong>${esc(plan.sdvStrategy)}</strong>${plan.sdvPercentage != null ? ` · ${esc(plan.sdvPercentage)}%` : ''}</p>` : ''}
+            ${plan.onSiteFrequency ? `<p>On-site: ${esc(plan.onSiteFrequency)}</p>` : ''}
+            ${plan.scope ? `<p class="text-slate-500 mt-1 line-clamp-2">${esc(plan.scope)}</p>` : ''}
           </div>
           <p class="text-xs text-slate-400 mt-1.5">
             Created by ${plan.createdByName || '—'} · ${new Date(plan.createdAt).toLocaleDateString()}
@@ -122,8 +127,9 @@ function renderPlanList(plans, container) {
           ${plan.status === 'Draft' ? `
             <button onclick="window._mpEdit(${plan.id})"
                     class="ph-btn ph-btn-ghost text-xs">Edit</button>
+            ${['admin', 'pi'].includes(api.getCurrentUser()?.role) ? `
             <button onclick="window._mpApprove(${plan.id})"
-                    class="ph-btn ph-btn-primary text-xs">Approve</button>` : ''}
+                    class="ph-btn ph-btn-primary text-xs">Approve</button>` : ''}` : ''}
           <button onclick="window._mpView(${plan.id})"
                   class="ph-btn ph-btn-ghost text-xs">View</button>
         </div>
@@ -163,30 +169,30 @@ function showPlanDetail(plan) {
           <dt class="text-slate-500 font-medium">Risk Level</dt>
           <dd class="${RISK_COLOR[plan.riskLevel] || 'text-slate-700'} font-semibold">${plan.riskLevel || '—'}</dd>
           <dt class="text-slate-500 font-medium">SDV Strategy</dt>
-          <dd>${plan.sdvStrategy || '—'} ${plan.sdvPercentage != null ? `(${plan.sdvPercentage}%)` : ''}</dd>
+          <dd>${esc(plan.sdvStrategy) || '—'} ${plan.sdvPercentage != null ? `(${esc(plan.sdvPercentage)}%)` : ''}</dd>
           <dt class="text-slate-500 font-medium">On-site Frequency</dt>
-          <dd>${plan.onSiteFrequency || '—'}</dd>
+          <dd>${esc(plan.onSiteFrequency) || '—'}</dd>
           <dt class="text-slate-500 font-medium">Remote Frequency</dt>
-          <dd>${plan.remoteFrequency || '—'}</dd>
+          <dd>${esc(plan.remoteFrequency) || '—'}</dd>
         </dl>
         ${plan.scope ? `<div><p class="text-xs font-semibold text-slate-600 mb-1">Scope</p>
-          <p class="text-xs text-slate-600">${plan.scope}</p></div>` : ''}
+          <p class="text-xs text-slate-600">${esc(plan.scope)}</p></div>` : ''}
         ${(plan.criticalDataFields || []).length ? `
           <div><p class="text-xs font-semibold text-slate-600 mb-1">Critical Data Fields</p>
             <div class="flex flex-wrap gap-1">
-              ${(plan.criticalDataFields).map(f => `<span class="bg-red-50 text-red-700 px-2 py-0.5 rounded-full text-xs">${f}</span>`).join('')}
+              ${(plan.criticalDataFields).map(f => `<span class="bg-red-50 text-red-700 px-2 py-0.5 rounded-full text-xs">${esc(f)}</span>`).join('')}
             </div>
           </div>` : ''}
         ${(plan.riskFactors || []).length ? `
           <div><p class="text-xs font-semibold text-slate-600 mb-1">Risk Factors</p>
             <ul class="list-disc list-inside text-xs text-slate-600 space-y-0.5">
-              ${(plan.riskFactors).map(f => `<li>${f}</li>`).join('')}
+              ${(plan.riskFactors).map(f => `<li>${esc(f)}</li>`).join('')}
             </ul>
           </div>` : ''}
         ${plan.notes ? `<div><p class="text-xs font-semibold text-slate-600 mb-1">Notes</p>
-          <p class="text-xs text-slate-600">${plan.notes}</p></div>` : ''}
+          <p class="text-xs text-slate-600">${esc(plan.notes)}</p></div>` : ''}
         ${plan.approvedByName ? `<p class="text-xs text-slate-400">
-          Approved by ${plan.approvedByName} on ${new Date(plan.approvedAt).toLocaleDateString()}</p>` : ''}
+          Approved by ${esc(plan.approvedByName)} on ${new Date(plan.approvedAt).toLocaleDateString()}</p>` : ''}
       </div>
     </div>`;
     document.body.appendChild(overlay);

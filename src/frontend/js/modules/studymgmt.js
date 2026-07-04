@@ -55,7 +55,7 @@ function renderPage(studies) {
                         <button class="btn-users-study text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50 px-2 py-1 rounded transition"
                             data-id="${s.id}" data-title="${encodeURIComponent(s.title)}">Users</button>
                         <button class="btn-edit-study text-xs font-medium text-slate-500 hover:text-slate-800 transition"
-                            data-study='${JSON.stringify(s)}'>Edit</button>
+                            data-id="${s.id}">Edit</button>
                     </div>
                 </td>
             </tr>`).join('');
@@ -313,7 +313,8 @@ function attachEvents(container, studies, allUsers) {
     // ─── Edit Study ──────────────────────────────────────────
     container.querySelectorAll('.btn-edit-study').forEach(btn => {
         btn.addEventListener('click', () => {
-            const s = JSON.parse(btn.dataset.study);
+            const s = studies.find(x => x.id === parseInt(btn.dataset.id));
+            if (!s) return;
             editingStudyId = s.id;
             document.getElementById('edit-study-title').value     = s.title;
             document.getElementById('edit-study-phase').value     = s.phase ?? 'N/A';

@@ -167,7 +167,7 @@ export async function renderQTL(container) {
                                                 class="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded transition" title="Edit">
                                                 <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
                                             </button>
-                                            <button onclick="deleteQTL(${q.id},'${esc(q.label)}')"
+                                            <button onclick="deleteQTL(${q.id})"
                                                 class="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded transition" title="Delete">
                                                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                                             </button>
@@ -315,8 +315,8 @@ window.submitQTLForm = async function(qtlId) {
     }
 };
 
-window.deleteQTL = async function(qtlId, label) {
-    const reason = prompt(`Reason for deleting threshold "${label}" (required):`);
+window.deleteQTL = async function(qtlId) {
+    const reason = prompt('Reason for deleting this threshold (required):');
     if (!reason) return;
     try {
         await api.request(`/api/qtl/${qtlId}`, { method: 'DELETE', body: JSON.stringify({ reason }) });

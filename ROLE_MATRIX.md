@@ -137,6 +137,7 @@ The DM role mirrors the data-oversight subset of admin, per the backend route gu
 | Area | Allowed actions |
 |------|-----------------|
 | Queries | Raise query, close query |
+| Audit Trail | View (read-only) |
 | Database Lock | Run pre-lock checks, initiate DB Lock, sign as CRA-slot |
 | Subjects | View status overview (Data Status) |
 | Monitoring | View visits, create visits, SDV summary |

@@ -21,7 +21,7 @@ function esc(s) {
 export async function renderBDReview(container) {
     container.innerHTML = SPINNER;
     const user = api.getCurrentUser();
-    const canManage = ['admin', 'cra'].includes(user?.role);
+    const canManage = ['admin', 'cra', 'pi', 'data_manager'].includes(user?.role);
 
     let bdrStatus = null;
     let lockStatus = null;

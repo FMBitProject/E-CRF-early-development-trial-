@@ -4,7 +4,7 @@
 > Panduan ini mengikuti standar **ICH GCP E6(R3)**, **21 CFR Part 11**, dan **UU PDP Indonesia**.
 
 <!-- AUTO-GENERATED:UPDATED-AT-START -->
-_Panduan ini terakhir diperbarui otomatis: **3/7/2026, 23.59.34 WIB**_
+_Panduan ini terakhir diperbarui otomatis: **4/7/2026, 18.03.44 WIB**_
 <!-- AUTO-GENERATED:UPDATED-AT-END -->
 
 ---

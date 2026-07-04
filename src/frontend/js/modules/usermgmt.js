@@ -3,6 +3,11 @@
 import { api } from './api.js';
 import { showToast, showModal, closeModal } from './utils.js';
 
+function esc(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 let _users   = [];
 let _sites   = [];
 let _studies = [];
@@ -83,26 +88,26 @@ function renderList(users) {
             </div>
             <div class="min-w-0">
               <div class="flex items-center gap-2 flex-wrap">
-                <p class="font-semibold text-slate-800 text-sm truncate">${u.name}</p>
+                <p class="font-semibold text-slate-800 text-sm truncate">${esc(u.name)}</p>
                 ${u.displayName && u.displayName !== u.name
-                    ? `<span class="text-xs text-slate-400 italic truncate max-w-[140px]" title="Display name">"${u.displayName}"</span>`
+                    ? `<span class="text-xs text-slate-400 italic truncate max-w-[140px]" title="Display name">"${esc(u.displayName)}"</span>`
                     : ''}
                 <span class="text-xs px-1.5 py-0.5 rounded-full font-medium ${rc.cls}">${rc.label}</span>
                 ${u.isActive === false ? '<span class="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">Deactivated</span>' : ''}
               </div>
-              <p class="text-xs text-slate-400 truncate">${u.email}</p>
+              <p class="text-xs text-slate-400 truncate">${esc(u.email)}</p>
               <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
                 ${(u.siteAssignments ?? []).length
                     ? (u.siteAssignments ?? []).map(a =>
                         `<span class="text-xs text-slate-500 flex items-center gap-1">
                            <i data-lucide="building-2" class="w-3 h-3 text-emerald-500"></i>
-                           <span>${a.siteCode}</span>
+                           <span>${esc(a.siteCode)}</span>
                            <span class="text-slate-300">/</span>
                            <i data-lucide="flask-conical" class="w-3 h-3 text-blue-400"></i>
-                           <span class="text-blue-600">${a.protocolNo}</span>
+                           <span class="text-blue-600">${esc(a.protocolNo)}</span>
                          </span>`).join('<span class="text-slate-200 text-xs">·</span>')
                     : '<span class="text-xs text-slate-300">No site assigned</span>'}
-                ${studyList && !(u.siteAssignments ?? []).length ? `<span class="text-xs text-slate-500 flex items-center gap-1"><i data-lucide="flask-conical" class="w-3 h-3"></i>${studyList}</span>` : ''}
+                ${studyList && !(u.siteAssignments ?? []).length ? `<span class="text-xs text-slate-500 flex items-center gap-1"><i data-lucide="flask-conical" class="w-3 h-3"></i>${esc(studyList)}</span>` : ''}
               </div>
             </div>
           </div>
@@ -111,10 +116,10 @@ function renderList(users) {
               <i data-lucide="settings" class="w-3.5 h-3.5"></i> Manage
             </button>
             ${u.isActive !== false
-                ? `<button onclick="window.umDeactivate('${u.id}','${u.name.replace(/'/g, "\\'")}')" class="ph-btn ph-btn-ghost text-xs text-red-500" title="Deactivate">
+                ? `<button onclick="window.umDeactivate('${esc(u.id)}')" class="ph-btn ph-btn-ghost text-xs text-red-500" title="Deactivate">
                     <i data-lucide="user-x" class="w-3.5 h-3.5"></i>
                    </button>`
-                : `<button onclick="window.umDeleteUser('${u.id}','${u.name.replace(/'/g, "\\'")}')" class="ph-btn ph-btn-ghost text-xs text-red-600" title="Delete permanently">
+                : `<button onclick="window.umDeleteUser('${esc(u.id)}')" class="ph-btn ph-btn-ghost text-xs text-red-600" title="Delete permanently">
                     <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                    </button>`}
           </div>
@@ -467,7 +472,8 @@ window.umToggleStudy = async (userId, studyId, add) => {
 };
 
 // ── Delete permanently ────────────────────────────────────────────────────────
-window.umDeleteUser = async (userId, userName) => {
+window.umDeleteUser = async (userId) => {
+    const userName = _users.find(u => u.id === userId)?.name ?? userId;
     if (!confirm(`Permanently delete "${userName}"?\n\nThis removes the account from the database and cannot be undone.`)) return;
     const reason = prompt('Reason for deletion (required — retained in audit log):');
     if (!reason) return;
@@ -485,7 +491,8 @@ window.umDeleteUser = async (userId, userName) => {
 };
 
 // ── Deactivate ────────────────────────────────────────────────────────────────
-window.umDeactivate = async (userId, userName) => {
+window.umDeactivate = async (userId) => {
+    const userName = _users.find(u => u.id === userId)?.name ?? userId;
     if (!confirm(`Deactivate "${userName}"? They will be immediately logged out and cannot log in.`)) return;
     const reason = prompt('Reason for deactivation (required):');
     if (!reason) return;

@@ -1,6 +1,14 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/connection.js';
-import { session as sessionTable, user, accountLocks } from '../db/schemas/schema.js';
+import { session as sessionTable, user, accountLocks, passwordMeta } from '../db/schemas/schema.js';
+
+// Paths still allowed while a forced password change is pending — the user
+// must be able to change the password and read why they are blocked.
+const MUST_CHANGE_ALLOWED = new Set([
+    '/api/security/change-password',
+    '/api/security/password-status',
+    '/api/mfa/logout',
+]);
 
 function parseCookies(cookieHeader) {
     const cookies = {};
@@ -57,6 +65,22 @@ export async function requireAuth(req, res, next) {
                 }
             }
         } catch { /* migration pending — skip lock check */ }
+
+        // Admin-forced password reset: block the API (not just the UI) until
+        // the password is actually changed (ICH GCP E6(R3) C.4.3).
+        try {
+            const url = (req.originalUrl || req.url || '').split('?')[0];
+            if (!MUST_CHANGE_ALLOWED.has(url)) {
+                const [meta] = await db.select({ mustChange: passwordMeta.mustChange })
+                    .from(passwordMeta).where(eq(passwordMeta.userId, row.userId));
+                if (meta?.mustChange) {
+                    return res.status(403).json({
+                        error: 'Password change required before continuing.',
+                        mustChangePassword: true,
+                    });
+                }
+            }
+        } catch { /* migration pending — skip must-change check */ }
 
         req.user = {
             id:          row.userId,

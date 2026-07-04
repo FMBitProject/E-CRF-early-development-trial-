@@ -3,6 +3,58 @@
 // ============================================================
 
 import { api } from './api.js';
+import { showToast, showModal, closeModal } from './utils.js';
+
+// Self-service password change (ICH GCP E6(R3) C.4.3 / 21 CFR Part 11)
+window.openChangePasswordModal = function() {
+    showModal({
+        title: 'Change Password',
+        size: 'sm',
+        body: `
+        <div class="space-y-3">
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Current Password</label>
+                <input id="cp-current" type="password" autocomplete="current-password"
+                    class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">New Password</label>
+                <input id="cp-new" type="password" autocomplete="new-password"
+                    class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                <p class="text-xs text-slate-400 mt-1">Min. 12 characters with uppercase, lowercase, number, and symbol. Cannot reuse recent passwords.</p>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Confirm New Password</label>
+                <input id="cp-confirm" type="password" autocomplete="new-password"
+                    class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+            </div>
+            <div id="cp-errors" class="text-xs text-red-600 space-y-0.5"></div>
+        </div>`,
+        footer: `
+        <button onclick="closeModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition">Cancel</button>
+        <button onclick="submitPasswordChange()" class="px-4 py-2 text-sm font-semibold bg-blue-700 hover:bg-blue-800 text-white rounded-md transition">Change Password</button>`,
+    });
+};
+
+window.submitPasswordChange = async function() {
+    const current = document.getElementById('cp-current')?.value ?? '';
+    const next    = document.getElementById('cp-new')?.value ?? '';
+    const confirm = document.getElementById('cp-confirm')?.value ?? '';
+    const errBox  = document.getElementById('cp-errors');
+    errBox.innerHTML = '';
+    if (!current || !next) { errBox.textContent = 'All fields are required.'; return; }
+    if (next !== confirm)  { errBox.textContent = 'New passwords do not match.'; return; }
+    try {
+        await api.changePassword(current, next);
+        closeModal();
+        showToast('Password changed successfully.', 'success');
+    } catch (err) {
+        const details = err.details || err.data?.details;
+        errBox.innerHTML = Array.isArray(details) && details.length
+            ? details.map(d => `<p>• ${String(d).replace(/</g, '&lt;')}</p>`).join('')
+            : `<p>${String(err.message || 'Password change failed.').replace(/</g, '&lt;')}</p>`;
+    }
+};
 
 function fmt(iso) {
     if (!iso) return '—';
@@ -58,7 +110,7 @@ export async function renderDashboard() {
             <div style="flex:1;font-size:0.9rem;">
                 ${pwStatus.mustChange ? '<strong>Password reset required.</strong> Your account requires a password change before continuing.' : `<strong>Password ${pwStatus.expired ? 'expired' : 'expiring soon'}.</strong> ${pwStatus.expired ? 'Your password has expired.' : `${pwStatus.daysLeft} days remaining.`}`}
             </div>
-            <button onclick="window.navigate('account')" style="background:#d97706;color:#fff;border:none;border-radius:6px;padding:0.4rem 1rem;cursor:pointer;font-size:0.85rem;white-space:nowrap;">
+            <button onclick="openChangePasswordModal()" style="background:#d97706;color:#fff;border:none;border-radius:6px;padding:0.4rem 1rem;cursor:pointer;font-size:0.85rem;white-space:nowrap;">
                 Change Password
             </button>
         </div>` : (pwStatus?.warningSoon ? `
@@ -66,7 +118,7 @@ export async function renderDashboard() {
                     display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;font-size:0.88rem;">
             <span>⚠️</span>
             <span>Password expires in <strong>${pwStatus.daysLeft} days</strong> (ICH GCP E6(R3) C.4.3 — 90-day policy).</span>
-            <a href="#account" style="margin-left:auto;color:#92400e;text-decoration:underline;white-space:nowrap;font-size:0.85rem;">Change now</a>
+            <a href="javascript:openChangePasswordModal()" style="margin-left:auto;color:#92400e;text-decoration:underline;white-space:nowrap;font-size:0.85rem;">Change now</a>
         </div>` : '');
 
     content.innerHTML = `
@@ -159,7 +211,7 @@ export async function renderDashboard() {
                             <span class="font-medium text-xs">View All Subjects</span>
                             <i data-lucide="arrow-right" class="w-3.5 h-3.5 ml-auto text-slate-300 group-hover:text-slate-500 transition"></i>
                         </a>
-                        ${['investigator', 'pi', 'admin'].includes(user.role) ? `
+                        ${['investigator', 'pi', 'admin', 'crc'].includes(user.role) ? `
                         <a href="#subjects/new" class="flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-slate-50 transition group text-sm text-slate-700 border border-transparent hover:border-slate-200">
                             <div class="w-7 h-7 rounded-md bg-emerald-50 flex items-center justify-center flex-shrink-0">
                                 <i data-lucide="user-plus" class="w-3.5 h-3.5 text-emerald-600"></i>
@@ -184,7 +236,7 @@ export async function renderDashboard() {
                             ${stats.openQueries > 0 ? `<span class="text-xs font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">${stats.openQueries}</span>` : ''}
                             <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500 transition"></i>
                         </a>
-                        ${['admin', 'pi', 'cra'].includes(user.role) ? `
+                        ${['admin', 'pi', 'cra', 'data_manager'].includes(user.role) ? `
                         <div class="pt-1.5 border-t border-slate-100">
                             <p class="text-xs text-slate-400 font-medium px-1 py-1 uppercase tracking-wide">CDISC Export</p>
                             <div class="flex gap-1.5">

@@ -77,9 +77,10 @@ function renderList() {
               <button onclick="window.vtEdit(${t.id})" class="ph-btn ph-btn-secondary text-xs">
                 <i data-lucide="pencil" class="w-3.5 h-3.5"></i> Edit
               </button>
+              ${api.getCurrentUser()?.role === 'admin' ? `
               <button onclick="window.vtDelete(${t.id})" class="ph-btn ph-btn-ghost text-xs text-red-500">
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-              </button>
+              </button>` : ''}
             </div>
           </div>
         </div>`).join('')}
