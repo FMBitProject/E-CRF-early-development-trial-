@@ -872,6 +872,14 @@ async function runMigrations() {
         `CREATE INDEX IF NOT EXISTS idx_user_org    ON "user" (organization_id)`,
         `CREATE INDEX IF NOT EXISTS idx_studies_org ON studies (organization_id)`,
         `CREATE INDEX IF NOT EXISTS idx_sites_org   ON sites (organization_id)`,
+        // Audit trail tenant column — so one tenant cannot read another's audit
+        // rows. Backfill via the acting user, then fold any orphans into default.
+        `ALTER TABLE audit_trails ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id)`,
+        `UPDATE audit_trails a SET organization_id = u.organization_id
+            FROM "user" u WHERE a.user_id = u.id AND a.organization_id IS NULL`,
+        `UPDATE audit_trails SET organization_id = (SELECT id FROM organizations WHERE slug='default')
+            WHERE organization_id IS NULL`,
+        `CREATE INDEX IF NOT EXISTS idx_audit_org ON audit_trails (organization_id)`,
     ];
     for (const stmt of stmts) {
         try {

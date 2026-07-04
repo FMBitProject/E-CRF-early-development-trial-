@@ -3,6 +3,7 @@ import { eq, and } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { studyUsers, studies, studyDbLock } from '../db/schemas/schema.js';
 import { computeSiteScope } from '../lib/sitescope.js';
+import { isPlatformOwner, sameOrg } from '../lib/tenantscope.js';
 
 const CLOSED_STATUSES = new Set(['Terminated', 'Completed', 'Suspended']);
 
@@ -22,12 +23,20 @@ export async function requireStudy(req, res, next) {
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid study ID' });
 
     try {
-        const [study] = await db.select({ id: studies.id, status: studies.status })
+        const [study] = await db.select({ id: studies.id, status: studies.status, organizationId: studies.organizationId })
             .from(studies).where(eq(studies.id, id));
         if (!study) return res.status(404).json({ error: 'Study not found' });
 
-        // Admin can access any study; others must be assigned
-        if (req.user.role !== 'admin') {
+        // TENANT BOUNDARY: the study must belong to the caller's organization.
+        // Cross-tenant → 404 (never reveal that another tenant's study exists).
+        // This replaces the old blanket admin bypass — admin is now org-scoped.
+        if (!sameOrg(req, study.organizationId)) {
+            return res.status(404).json({ error: 'Study not found' });
+        }
+
+        // Within the org: admin (and platform_owner) reach any study; other
+        // roles must be explicitly assigned to it.
+        if (req.user.role !== 'admin' && !isPlatformOwner(req.user)) {
             const [assignment] = await db.select({ id: studyUsers.id })
                 .from(studyUsers)
                 .where(and(eq(studyUsers.studyId, id), eq(studyUsers.userId, req.user.id)));

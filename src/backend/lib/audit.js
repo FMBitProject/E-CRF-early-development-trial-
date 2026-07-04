@@ -39,6 +39,7 @@ export async function writeAudit(db, {
         userRole:   user?.role ?? null,
         ipAddress:  ipAddress  ?? null,
         auditHash,
+        organizationId: user?.organizationId ?? null,   // tenant isolation of audit reads
         createdAt,
     });
 }

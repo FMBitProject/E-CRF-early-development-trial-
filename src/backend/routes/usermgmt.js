@@ -6,6 +6,7 @@ import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 import { sendUserInviteEmail } from '../lib/email.js';
 import { auth } from '../auth/better-auth.js';
+import { sameOrg, effectiveOrgId } from '../lib/tenantscope.js';
 import crypto from 'crypto';
 
 // Self-healing: ensure user_sites table exists
@@ -28,14 +29,33 @@ const router = Router();
 
 const VALID_ROLES = ['admin', 'investigator', 'pi', 'cra', 'crc', 'data_manager'];
 
+// TENANT BOUNDARY: in usermgmt every :id path segment is a target user id.
+// This guard runs for all /:id* routes and rejects any user outside the
+// caller's organization with 404 (cross-tenant existence stays hidden).
+router.param('id', async (req, res, next, id) => {
+    try {
+        const [target] = await db.select({ organizationId: user.organizationId }).from(user)
+            .where(eq(user.id, id));
+        if (!target || !sameOrg(req, target.organizationId)) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        next();
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ── GET /api/users/directory — slim active-staff directory.
 // PI/CRA/DM need this to pick staff for delegation & training entries
 // (ICH GCP §4.1.5) without the full admin user listing.
-router.get('/directory', requireRole('admin', 'pi', 'cra', 'data_manager'), async (_req, res) => {
+router.get('/directory', requireRole('admin', 'pi', 'cra', 'data_manager'), async (req, res) => {
     try {
+        // Org-scoped: NULL orgId (platform_owner global) sees all; else own org.
+        const orgId = req.orgId ?? null;
         const rows = await client`
             SELECT id, name, email, role FROM "user"
             WHERE COALESCE(is_active, true) = true
+              AND (${orgId}::int IS NULL OR organization_id = ${orgId})
             ORDER BY name`;
         res.json(rows);
     } catch (err) {
@@ -48,12 +68,15 @@ router.get('/', requireRole('admin'), async (req, res) => {
     try {
         // Self-healing: if is_active column doesn't exist yet (first startup race),
         // add it inline and retry rather than returning 500.
+        // Org-scoped: NULL orgId (platform_owner global) sees all; else own org.
+        const orgId = req.orgId ?? null;
         const fetchUsers = () => client`
             SELECT u.id, u.name, u.display_name AS "displayName", u.email, u.role,
                    u.site_id    AS "siteId",
                    u.created_at AS "createdAt",
                    u.is_active  AS "isActive"
             FROM "user" u
+            WHERE (${orgId}::int IS NULL OR u.organization_id = ${orgId})
             ORDER BY u.created_at`;
 
         let users;
@@ -201,10 +224,12 @@ router.post('/invite', requireRole('admin'), async (req, res) => {
 
         const newUserId = signUpResult.user.id;
 
-        // Set role and site
+        // Set role, site, and organization. The invitee lands in the admin's
+        // own organization (a tenant admin cannot create users elsewhere).
         await db.update(user).set({
             role:   role ?? 'investigator',
             siteId: siteId ? parseInt(siteId) : null,
+            organizationId: effectiveOrgId(req),
         }).where(eq(user.id, newUserId));
 
         // Mark password as must-change
@@ -322,13 +347,13 @@ router.post('/:id/sites', requireRole('admin'), async (req, res) => {
         const [targetUser] = await db.select({ id: user.id }).from(user).where(eq(user.id, targetId));
         if (!targetUser) return res.status(404).json({ error: 'User not found' });
 
-        const [site] = await db.select({ id: sites.id, code: sites.code, name: sites.name })
+        const [site] = await db.select({ id: sites.id, code: sites.code, name: sites.name, organizationId: sites.organizationId })
             .from(sites).where(eq(sites.id, parseInt(siteId)));
-        if (!site) return res.status(404).json({ error: 'Site not found' });
+        if (!site || !sameOrg(req, site.organizationId)) return res.status(404).json({ error: 'Site not found' });
 
-        const [study] = await db.select({ id: studies.id, title: studies.title })
+        const [study] = await db.select({ id: studies.id, title: studies.title, organizationId: studies.organizationId })
             .from(studies).where(eq(studies.id, parseInt(studyId)));
-        if (!study) return res.status(404).json({ error: 'Study not found' });
+        if (!study || !sameOrg(req, study.organizationId)) return res.status(404).json({ error: 'Study not found' });
 
         const [row] = await client`
             INSERT INTO user_sites (user_id, site_id, study_id, assigned_by)
@@ -397,9 +422,9 @@ router.post('/:id/studies', requireRole('admin'), async (req, res) => {
         const [targetUser] = await db.select({ id: user.id }).from(user).where(eq(user.id, targetId));
         if (!targetUser) return res.status(404).json({ error: 'User not found' });
 
-        const [study] = await db.select({ id: studies.id, title: studies.title }).from(studies)
+        const [study] = await db.select({ id: studies.id, title: studies.title, organizationId: studies.organizationId }).from(studies)
             .where(eq(studies.id, parseInt(studyId)));
-        if (!study) return res.status(404).json({ error: 'Study not found' });
+        if (!study || !sameOrg(req, study.organizationId)) return res.status(404).json({ error: 'Study not found' });
 
         const [dup] = await db.select({ id: studyUsers.id }).from(studyUsers)
             .where(and(eq(studyUsers.userId, targetId), eq(studyUsers.studyId, parseInt(studyId))));

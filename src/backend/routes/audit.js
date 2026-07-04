@@ -3,16 +3,20 @@ import { eq, and, ilike, desc } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { auditTrails } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
+import { orgCondition } from '../lib/tenantscope.js';
 
 const router = Router();
 
 // GET /api/audit — immutable audit trail.
 // Restricted per ROLE_MATRIX: crc/investigator must not read other users'
 // old/new clinical values, reasons, and IP addresses across the platform.
+// Tenant-scoped: an admin sees only their organization's audit rows.
 router.get('/', requireRole('admin', 'pi', 'cra', 'data_manager'), async (req, res) => {
     try {
         const { action, tableName, userId, search } = req.query;
         const conditions = [];
+        const orgCond = orgCondition(req, auditTrails.organizationId);
+        if (orgCond)   conditions.push(orgCond);
         if (action)    conditions.push(eq(auditTrails.action, action));
         if (tableName) conditions.push(eq(auditTrails.tableName, tableName));
         if (userId)    conditions.push(eq(auditTrails.userId, userId));

@@ -3,14 +3,30 @@
 
 import { Router } from 'express';
 import { eq, desc, and, gt, isNull } from 'drizzle-orm';
-import { db } from '../db/connection.js';
+import { db, client } from '../db/connection.js';
 import { user, account, accountLocks, loginAttempts, passwordHistory, passwordMeta } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 import { validatePassword, POLICY, checkPasswordExpiry } from '../lib/passwordpolicy.js';
 import { verifyPassword, hashPassword } from '@better-auth/utils/password';
+import { orgCondition, sameOrg } from '../lib/tenantscope.js';
 
 const router = Router();
+
+// TENANT BOUNDARY: /unlock/:userId and /force-password-reset/:userId target a
+// user by id — reject any user outside the caller's organization (404).
+router.param('userId', async (req, res, next, userId) => {
+    try {
+        const [target] = await db.select({ organizationId: user.organizationId }).from(user)
+            .where(eq(user.id, userId));
+        if (!target || !sameOrg(req, target.organizationId)) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        next();
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
 // GET /api/security/password-status — check expiry for current user
 router.get('/password-status', async (req, res) => {
@@ -127,18 +143,19 @@ router.post('/change-password', async (req, res) => {
 router.get('/locked-accounts', requireRole('admin'), async (req, res) => {
     try {
         const now = new Date();
-        const locks = await db.select({
-            id:           accountLocks.id,
-            userId:       accountLocks.userId,
-            email:        accountLocks.email,
-            failedCount:  accountLocks.failedCount,
-            lockedAt:     accountLocks.lockedAt,
-            autoUnlockAt: accountLocks.autoUnlockAt,
-            unlockedAt:   accountLocks.unlockedAt,
-            unlockReason: accountLocks.unlockReason,
-        }).from(accountLocks)
-          .where(isNull(accountLocks.unlockedAt))
-          .orderBy(desc(accountLocks.lockedAt));
+        // Org-scoped: only locks for users in the caller's organization.
+        // account_locks has no org column, so resolve tenancy through the user
+        // (by id or email). NULL orgId = platform_owner global → all locks.
+        const orgId = req.orgId ?? null;
+        const locks = await client`
+            SELECT al.id, al.user_id AS "userId", al.email, al.failed_count AS "failedCount",
+                   al.locked_at AS "lockedAt", al.auto_unlock_at AS "autoUnlockAt",
+                   al.unlocked_at AS "unlockedAt", al.unlock_reason AS "unlockReason"
+            FROM account_locks al
+            LEFT JOIN "user" u ON (u.id = al.user_id OR lower(u.email) = lower(al.email))
+            WHERE al.unlocked_at IS NULL
+              AND (${orgId}::int IS NULL OR u.organization_id = ${orgId})
+            ORDER BY al.locked_at DESC`;
 
         // Separate still-locked from auto-unlocked
         const active = locks.filter(l => !l.autoUnlockAt || new Date(l.autoUnlockAt) > now);
@@ -206,7 +223,9 @@ router.get('/users', requireRole('admin'), async (req, res) => {
     try {
         const now = new Date();
         const [users, locks, metas] = await Promise.all([
-            db.select({ id: user.id, name: user.name, email: user.email, role: user.role, createdAt: user.createdAt }).from(user),
+            // Org-scoped: only the caller's organization's users.
+            db.select({ id: user.id, name: user.name, email: user.email, role: user.role, createdAt: user.createdAt })
+              .from(user).where(orgCondition(req, user.organizationId)),
             db.select().from(accountLocks).where(isNull(accountLocks.unlockedAt)),
             db.select().from(passwordMeta),
         ]);
@@ -248,10 +267,17 @@ router.get('/users', requireRole('admin'), async (req, res) => {
 router.get('/login-activity', requireRole('admin'), async (req, res) => {
     try {
         const { email } = req.query;
-        const conditions = [];
-        if (email) conditions.push(eq(loginAttempts.email, email.toLowerCase()));
+        // Login activity may only be queried for a user in the caller's org.
+        // Require an explicit email and verify it belongs to the org, otherwise
+        // this endpoint would expose every tenant's login history.
+        if (!email) return res.status(400).json({ error: 'email query parameter is required' });
+        const [target] = await db.select({ organizationId: user.organizationId }).from(user)
+            .where(eq(user.email, email.toLowerCase()));
+        if (!target || !sameOrg(req, target.organizationId)) {
+            return res.json([]);
+        }
         const rows = await db.select().from(loginAttempts)
-            .where(conditions.length ? and(...conditions) : undefined)
+            .where(eq(loginAttempts.email, email.toLowerCase()))
             .orderBy(desc(loginAttempts.attemptedAt))
             .limit(100);
         res.json(rows);

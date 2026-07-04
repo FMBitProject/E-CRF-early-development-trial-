@@ -393,6 +393,7 @@ export const auditTrails = pgTable('audit_trails', {
     userRole:  text('user_role'),
     ipAddress: text('ip_address'),
     auditHash: text('audit_hash'),
+    organizationId: integer('organization_id'),   // tenant of the acting user
     createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 

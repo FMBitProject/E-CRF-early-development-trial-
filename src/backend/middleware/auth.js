@@ -38,6 +38,7 @@ export async function requireAuth(req, res, next) {
                 email:       user.email,
                 role:        user.role,
                 siteId:      user.siteId,
+                organizationId: user.organizationId,
                 isActive:    user.isActive,
             })
             .from(sessionTable)
@@ -89,7 +90,19 @@ export async function requireAuth(req, res, next) {
             email:       row.email,
             role:        row.role,
             siteId:      row.siteId ?? null,
+            organizationId: row.organizationId ?? null,
         };
+
+        // Tenant the request acts within. Normal users are bound to their own
+        // organization. platform_owner (cross-tenant SaaS operator) may target
+        // a specific tenant via X-Org-ID, or act globally (null) without it.
+        if (row.role === 'platform_owner') {
+            const rawOrg = req.headers['x-org-id'];
+            req.orgId = rawOrg && !isNaN(parseInt(rawOrg)) ? parseInt(rawOrg) : null;
+        } else {
+            req.orgId = row.organizationId ?? null;
+        }
+
         next();
     } catch (err) {
         console.error('requireAuth error:', err.message);
