@@ -22,16 +22,19 @@ export const auth = betterAuth({
     },
     user: {
         additionalFields: {
+            // input: false — role/siteId must NEVER be client-assignable via the
+            // sign-up body (privilege escalation). They are set server-side by
+            // routes/register.js and routes/usermgmt.js via direct db.update.
             role: {
                 type:         'string',
-                required:     true,
+                required:     false,
                 defaultValue: 'investigator',
-                input:        true,
+                input:        false,
             },
             siteId: {
                 type:     'number',
                 required: false,
-                input:    true,
+                input:    false,
             },
         },
     },

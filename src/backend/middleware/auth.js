@@ -30,6 +30,7 @@ export async function requireAuth(req, res, next) {
                 email:       user.email,
                 role:        user.role,
                 siteId:      user.siteId,
+                isActive:    user.isActive,
             })
             .from(sessionTable)
             .innerJoin(user, eq(sessionTable.userId, user.id))
@@ -37,6 +38,12 @@ export async function requireAuth(req, res, next) {
 
         if (!row || new Date(row.expiresAt) < new Date()) {
             return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        // Deactivated staff must not retain access (ICH GCP E6(R3) C.4.2) —
+        // enforced here so every API route is covered even if a session survives.
+        if (row.isActive === false) {
+            return res.status(403).json({ error: 'Account is deactivated. Contact your administrator.' });
         }
 
         // ICH GCP E6(R3) C.4.3 — reject requests from locked accounts

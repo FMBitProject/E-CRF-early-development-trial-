@@ -836,20 +836,44 @@ async function runMigrations() {
 }
 const app = express();
 
+// Behind Vercel/reverse proxy: trust the first hop so req.ip is the real
+// client address (rate limiting and login_attempts would otherwise key on the
+// proxy IP — one shared bucket for every user).
+app.set('trust proxy', 1);
+
+// CORS pinned to the deployment origins — never reflect arbitrary origins
+// while credentials are enabled.
+const _trustedOrigin = process.env.BETTER_AUTH_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+const ALLOWED_ORIGINS = new Set([
+    _trustedOrigin,
+    'http://localhost:3000',
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+].filter(Boolean));
 app.use(cors({
-    origin:      (_origin, cb) => cb(null, true),
+    origin: (origin, cb) => {
+        // Same-origin/no-Origin requests (fetch from own pages, curl) pass.
+        if (!origin || ALLOWED_ORIGINS.has(origin) || /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin)) {
+            return cb(null, true);
+        }
+        cb(null, false);
+    },
     credentials: true,
 }));
 
-// Spoof Origin so Better Auth accepts requests from any deployment URL
-const _trustedOrigin = process.env.BETTER_AUTH_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
-app.all('/api/auth/*', (req, _res, next) => {
+// Only a small allowlist of Better Auth endpoints is reachable over HTTP.
+// sign-up would accept client-supplied fields and sign-in would bypass the
+// account-lockout + TOTP flow in /api/mfa — both stay server-side only
+// (routes/register.js, routes/usermgmt.js, routes/mfa.js call auth.api.* directly).
+const AUTH_PUBLIC_PATHS = new Set(['/api/auth/sign-out', '/api/auth/get-session']);
+app.all('/api/auth/*', rateLimitAuth, (req, res, next) => {
+    if (!AUTH_PUBLIC_PATHS.has(req.path)) {
+        return res.status(403).json({ error: 'This endpoint is disabled. Use /api/mfa for sign-in.' });
+    }
+    // Normalize Origin for Better Auth's own origin check across deploy URLs.
     req.headers['origin'] = _trustedOrigin;
     next();
 });
-
-// Better Auth handles all /api/auth/* routes (sign-in, sign-out, session, etc.)
 app.all('/api/auth/*', toNodeHandler(auth));
 
 app.use(express.json());
@@ -904,8 +928,12 @@ app.use('/api/monitoring-plan',          ...studyAuth, monitoringPlanRouter);
 app.use('/api/reports',                  ...studyAuth, reportRouter);
 app.use('/api/access-review',            ...studyAuth, accessReviewRouter);
 
-// Serve all static frontend files from project root
-app.use(express.static(rootDir));
+// Serve ONLY the frontend assets — never the repo root, which would expose
+// source code, docs with test credentials, and the .git directory.
+app.use('/src/frontend', express.static(path.join(rootDir, 'src/frontend'), { dotfiles: 'deny' }));
+for (const page of ['login.html', 'index.html', 'register.html', 'select.html']) {
+    app.get(`/${page}`, (_req, res) => res.sendFile(path.join(rootDir, page)));
+}
 app.get('/', (_req, res) => res.sendFile(path.join(rootDir, 'login.html')));
 
 const PORT = parseInt(process.env.PORT || '3000', 10);

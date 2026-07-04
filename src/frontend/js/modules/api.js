@@ -709,7 +709,7 @@ export const api = {
     },
 
     async deleteUser(userId, reason) {
-        return apiFetch(`/api/security/users/${userId}`, {
+        return apiFetch(`/api/users/${userId}`, {
             method: 'DELETE',
             body: JSON.stringify({ reason }),
         });

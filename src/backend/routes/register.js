@@ -1,13 +1,20 @@
 import { Router } from 'express';
+import { eq } from 'drizzle-orm';
 import { auth } from '../auth/better-auth.js';
 import { db } from '../db/connection.js';
-import { passwordMeta } from '../db/schemas/schema.js';
+import { passwordMeta, user } from '../db/schemas/schema.js';
 import { validatePassword } from '../lib/passwordpolicy.js';
 
 const router = Router();
 
 const ADMIN_EMAIL  = 'renfael6@gmail.com';
 const ALLOWED_ROLES = ['investigator', 'pi', 'cra', 'crc'];
+
+// Per PANDUAN §1: "Semua akun dibuat oleh Administrator. Tidak ada registrasi
+// mandiri." Self-registration is therefore disabled unless explicitly enabled
+// (dev/demo). The bootstrap admin email is always allowed so a fresh deploy
+// can create its first administrator.
+const SELF_REGISTRATION_OPEN = process.env.ALLOW_SELF_REGISTRATION === 'true';
 
 // POST /api/register — validated signup (blocks admin self-registration)
 router.post('/', async (req, res) => {
@@ -18,6 +25,12 @@ router.post('/', async (req, res) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+
+    if (!SELF_REGISTRATION_OPEN && normalizedEmail !== ADMIN_EMAIL) {
+        return res.status(403).json({
+            message: 'Self-registration is disabled. Accounts are created by the Administrator.',
+        });
+    }
 
     // Validate password against ICH GCP E6(R3) C.4.3 policy
     const policyErrors = validatePassword(password, normalizedEmail);
@@ -39,15 +52,20 @@ router.post('/', async (req, res) => {
 
     try {
         const result = await auth.api.signUpEmail({
-            body: { name, email: normalizedEmail, password, role: assignedRole },
+            body: { name, email: normalizedEmail, password },
         });
 
         if (!result) {
             return res.status(400).json({ message: 'Registration failed. Please try again.' });
         }
 
-        // Initialize password metadata per ICH GCP E6(R3) C.4.3
+        // Role is input:false in Better Auth (privilege-escalation guard), so it
+        // must be assigned server-side after the account is created.
         if (result.user?.id) {
+            await db.update(user).set({ role: assignedRole })
+                .where(eq(user.id, result.user.id));
+
+            // Initialize password metadata per ICH GCP E6(R3) C.4.3
             await db.insert(passwordMeta)
                 .values({ userId: result.user.id, lastChangedAt: new Date(), mustChange: false })
                 .onConflictDoNothing();

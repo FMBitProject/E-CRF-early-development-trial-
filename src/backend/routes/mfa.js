@@ -135,12 +135,15 @@ router.post('/initiate', async (req, res) => {
 
         const { token, user } = signIn;
 
-        // Fetch displayName from our custom column (Better Auth doesn't know about it)
+        // Deactivated accounts must not receive a session (ICH GCP E6(R3) C.4.2)
         let displayName = null;
         try {
             const [uRow] = await client.unsafe(
-                `SELECT display_name FROM "user" WHERE id = $1`, [user.id]
+                `SELECT display_name, is_active FROM "user" WHERE id = $1`, [user.id]
             );
+            if (uRow && uRow.is_active === false) {
+                return res.status(403).json({ error: 'Account is deactivated. Contact your administrator.' });
+            }
             displayName = uRow?.display_name ?? null;
         } catch { /* column may not exist yet on first boot; safe to ignore */ }
 
@@ -194,9 +197,10 @@ router.post('/initiate', async (req, res) => {
             console.error('Audit trail write failed (login will proceed):', auditErr.message);
         }
 
+        // Session token travels only in the httpOnly cookie — never in the body
+        // (an XSS could otherwise exfiltrate it).
         res.json({
             status: 'authenticated',
-            token,
             user: { id: user.id, name: user.name, displayName, role: user.role ?? 'investigator' },
         });
 
@@ -282,7 +286,8 @@ router.post('/totp-verify', async (req, res) => {
             console.error('Audit trail write failed (TOTP login will proceed):', auditErr.message);
         }
 
-        res.json({ token: authToken, user: { id: userId, name, displayName: displayName ?? null, role: role ?? 'investigator' } });
+        // Session token only in the httpOnly cookie — never in the body.
+        res.json({ user: { id: userId, name, displayName: displayName ?? null, role: role ?? 'investigator' } });
 
     } catch (err) {
         console.error('TOTP verify error:', err.message);
@@ -441,85 +446,11 @@ router.post('/verify', async (req, res) => {
     }
 });
 
-// POST /api/mfa/direct-login — no MFA, direct session (backward compat)
-router.post('/direct-login', async (req, res) => {
-    const { email, password } = req.body;
-    if (!email || !password) {
-        return res.status(400).json({ error: 'Email and password are required.' });
-    }
-
-    const normalizedEmail = email.trim().toLowerCase();
-
-    try {
-        const now = new Date();
-        let lockRecord = null;
-        try {
-            [lockRecord] = await db.select().from(accountLocks)
-                .where(eq(accountLocks.email, normalizedEmail));
-        } catch { /* migration pending */ }
-
-        if (lockRecord && !lockRecord.unlockedAt && lockRecord.lockedAt) {
-            if (!lockRecord.autoUnlockAt || new Date(lockRecord.autoUnlockAt) > now) {
-                try {
-                    await db.insert(loginAttempts)
-                        .values({ email: normalizedEmail, ipAddress: req.ip || 'unknown', success: false });
-                } catch { /* migration pending */ }
-                return res.status(423).json({
-                    error: `Account locked after ${POLICY.maxFailedAttempts} failed attempts. ` +
-                           `Auto-unlocks at ${lockRecord.autoUnlockAt?.toISOString() ?? 'N/A'} or contact your administrator.`,
-                    lockedAt:     lockRecord.lockedAt,
-                    autoUnlockAt: lockRecord.autoUnlockAt,
-                });
-            }
-        }
-
-        let signIn;
-        try {
-            signIn = await auth.api.signInEmail({ body: { email: normalizedEmail, password } });
-        } catch (authErr) {
-            await recordFailedAttempt(normalizedEmail, req.ip);
-            return res.status(401).json({ error: 'Invalid email or password.' });
-        }
-
-        if (!signIn || !signIn.token) {
-            await recordFailedAttempt(normalizedEmail, req.ip);
-            return res.status(401).json({ error: 'Invalid email or password.' });
-        }
-
-        try {
-            await db.insert(loginAttempts)
-                .values({ email: normalizedEmail, ipAddress: req.ip || 'unknown', success: true });
-            if (lockRecord && !lockRecord.unlockedAt) {
-                await db.update(accountLocks)
-                    .set({ unlockedAt: new Date(), unlockReason: 'Successful login' })
-                    .where(eq(accountLocks.id, lockRecord.id));
-            }
-        } catch { /* migration pending */ }
-
-        const { token, user } = signIn;
-
-        const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
-        res.cookie(SESSION_COOKIE, token, {
-            httpOnly: true,
-            secure:   isSecure,
-            sameSite: 'lax',
-            path:     '/',
-            maxAge:   SESSION_MAX_AGE * 1000,
-        });
-
-        await writeAudit(db, {
-            tableName: 'user', recordId: user.id, action: 'LOGIN',
-            reason: 'Successful login (direct)',
-            user: { id: user.id, name: user.name, role: user.role ?? 'investigator' },
-            ipAddress: req.ip,
-        });
-
-        res.json({ token, user: { id: user.id, name: user.name, role: user.role ?? 'investigator' } });
-
-    } catch (err) {
-        console.error('Direct login error:', err.message);
-        res.status(500).json({ error: `Server error: ${err.message}` });
-    }
+// POST /api/mfa/direct-login — REMOVED. It authenticated with password only,
+// bypassing a user's enabled TOTP and returning the session token in the body.
+// All sign-ins must go through /initiate (+ /totp-verify when TOTP is enabled).
+router.post('/direct-login', (_req, res) => {
+    res.status(410).json({ error: 'This endpoint has been removed. Use /api/mfa/initiate.' });
 });
 
 // POST /api/mfa/resend

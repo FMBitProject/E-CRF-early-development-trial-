@@ -2,7 +2,7 @@
 // Password change, account lockout management, password expiry status
 
 import { Router } from 'express';
-import { eq, desc, and, gt } from 'drizzle-orm';
+import { eq, desc, and, gt, isNull } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { user, account, accountLocks, loginAttempts, passwordHistory, passwordMeta } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
@@ -137,7 +137,7 @@ router.get('/locked-accounts', requireRole('admin'), async (req, res) => {
             unlockedAt:   accountLocks.unlockedAt,
             unlockReason: accountLocks.unlockReason,
         }).from(accountLocks)
-          .where(eq(accountLocks.unlockedAt, null))
+          .where(isNull(accountLocks.unlockedAt))
           .orderBy(desc(accountLocks.lockedAt));
 
         // Separate still-locked from auto-unlocked
@@ -156,7 +156,7 @@ router.post('/unlock/:userId', requireRole('admin'), async (req, res) => {
         if (!reason) return res.status(400).json({ error: 'Unlock reason is required' });
 
         const [lock] = await db.select().from(accountLocks)
-            .where(and(eq(accountLocks.userId, userId), eq(accountLocks.unlockedAt, null)));
+            .where(and(eq(accountLocks.userId, userId), isNull(accountLocks.unlockedAt)));
         if (!lock) return res.status(404).json({ error: 'No active lock found for this user' });
 
         await db.update(accountLocks)
@@ -207,7 +207,7 @@ router.get('/users', requireRole('admin'), async (req, res) => {
         const now = new Date();
         const [users, locks, metas] = await Promise.all([
             db.select({ id: user.id, name: user.name, email: user.email, role: user.role, createdAt: user.createdAt }).from(user),
-            db.select().from(accountLocks).where(eq(accountLocks.unlockedAt, null)),
+            db.select().from(accountLocks).where(isNull(accountLocks.unlockedAt)),
             db.select().from(passwordMeta),
         ]);
 
@@ -240,31 +240,9 @@ router.get('/users', requireRole('admin'), async (req, res) => {
     }
 });
 
-// DELETE /api/security/users/:userId — admin deletes a user account
-router.delete('/users/:userId', requireRole('admin'), async (req, res) => {
-    try {
-        const { userId } = req.params;
-        const { reason } = req.body;
-        if (!reason) return res.status(400).json({ error: 'Reason is required for audit trail' });
-        if (userId === req.user.id) return res.status(400).json({ error: 'Cannot delete your own account' });
-
-        const [target] = await db.select({ name: user.name, email: user.email, role: user.role })
-            .from(user).where(eq(user.id, userId));
-        if (!target) return res.status(404).json({ error: 'User not found' });
-
-        await writeAudit(db, {
-            tableName: 'user', recordId: userId, action: 'DELETE',
-            oldValue: `${target.name} (${target.email}) — ${target.role}`,
-            reason,
-            user: req.user, ipAddress: req.ip,
-        });
-
-        await db.delete(user).where(eq(user.id, userId));
-        res.json({ ok: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+// DELETE /api/security/users/:userId — REMOVED. It deleted active users
+// directly, bypassing the deactivate-first control and the related-row cleanup
+// that DELETE /api/users/:id performs. Use that route instead.
 
 // GET /api/security/login-activity?email= — recent login attempts (admin only)
 router.get('/login-activity', requireRole('admin'), async (req, res) => {
