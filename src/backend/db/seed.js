@@ -137,9 +137,11 @@ async function main() {
     await db.update(user).set({ organizationId: defaultOrg.id }).where(isNull(user.organizationId));
     console.log();
 
-    // 3. CRF Forms
+    // 3. CRF Forms (owned by the default org)
     console.log('→ CRF Form Templates');
-    const insertedForms = await db.insert(crfForms).values(seedForms).onConflictDoNothing().returning();
+    const insertedForms = await db.insert(crfForms)
+        .values(seedForms.map(f => ({ ...f, organizationId: defaultOrg.id })))
+        .onConflictDoNothing().returning();
     console.log(`   ${insertedForms.length} forms inserted\n`);
 
     // 4. Subjects (attach to first site)

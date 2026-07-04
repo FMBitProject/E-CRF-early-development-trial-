@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/connection.js';
-import { session as sessionTable, user, accountLocks, passwordMeta } from '../db/schemas/schema.js';
+import { session as sessionTable, user, accountLocks, passwordMeta, organizations } from '../db/schemas/schema.js';
 
 // Paths still allowed while a forced password change is pending — the user
 // must be able to change the password and read why they are blocked.
@@ -39,10 +39,12 @@ export async function requireAuth(req, res, next) {
                 role:        user.role,
                 siteId:      user.siteId,
                 organizationId: user.organizationId,
+                orgStatus:   organizations.status,
                 isActive:    user.isActive,
             })
             .from(sessionTable)
             .innerJoin(user, eq(sessionTable.userId, user.id))
+            .leftJoin(organizations, eq(user.organizationId, organizations.id))
             .where(eq(sessionTable.token, token));
 
         if (!row || new Date(row.expiresAt) < new Date()) {
@@ -53,6 +55,12 @@ export async function requireAuth(req, res, next) {
         // enforced here so every API route is covered even if a session survives.
         if (row.isActive === false) {
             return res.status(403).json({ error: 'Account is deactivated. Contact your administrator.' });
+        }
+
+        // Tenant lifecycle: users of a suspended/closed organization lose access
+        // (platform_owner has no org and is exempt). One level above isActive.
+        if (row.role !== 'platform_owner' && row.orgStatus && row.orgStatus !== 'Active') {
+            return res.status(403).json({ error: `Organization is ${row.orgStatus}. Contact your administrator.` });
         }
 
         // ICH GCP E6(R3) C.4.3 — reject requests from locked accounts

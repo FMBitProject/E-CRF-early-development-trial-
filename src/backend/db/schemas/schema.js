@@ -348,6 +348,7 @@ export const visits = pgTable('visits', {
 
 export const crfForms = pgTable('crf_forms', {
     id:          integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    organizationId: integer('organization_id').references(() => organizations.id),
     name:        text('name').notNull(),
     description: text('description'),
     version:     varchar('version', { length: 20 }).notNull().default('1.0'),

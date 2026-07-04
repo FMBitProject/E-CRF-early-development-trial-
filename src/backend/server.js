@@ -16,6 +16,7 @@ import auditRouter         from './routes/audit.js';
 import queriesRouter       from './routes/queries.js';
 import mfaRouter           from './routes/mfa.js';
 import registerRouter      from './routes/register.js';
+import organizationsRouter from './routes/organizations.js';
 import sitesRouter         from './routes/sites.js';
 import dashboardRouter     from './routes/dashboard.js';
 import signaturesRouter    from './routes/signatures.js';
@@ -880,6 +881,11 @@ async function runMigrations() {
         `UPDATE audit_trails SET organization_id = (SELECT id FROM organizations WHERE slug='default')
             WHERE organization_id IS NULL`,
         `CREATE INDEX IF NOT EXISTS idx_audit_org ON audit_trails (organization_id)`,
+        // CRF form template library becomes per-tenant (custom forms must not
+        // leak between tenants). Existing templates fold into the default org.
+        `ALTER TABLE crf_forms ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id)`,
+        `UPDATE crf_forms SET organization_id = (SELECT id FROM organizations WHERE slug='default') WHERE organization_id IS NULL`,
+        `CREATE INDEX IF NOT EXISTS idx_crf_forms_org ON crf_forms (organization_id)`,
     ];
     for (const stmt of stmts) {
         try {
@@ -967,6 +973,7 @@ app.use('/api/studies',    requireAuth, studiesRouter);
 app.use('/api/audit',      requireAuth, auditRouter);
 app.use('/api/forms',      requireAuth, formsRouter);
 app.use('/api/users',         requireAuth, userMgmtRouter);
+app.use('/api/organizations', requireAuth, organizationsRouter);   // platform_owner only (enforced in-router)
 app.use('/api/notifications', requireAuth, requireStudy, notificationsRouter);
 // Liveness — process is up (cheap, no dependencies).
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', uptime: process.uptime() }));

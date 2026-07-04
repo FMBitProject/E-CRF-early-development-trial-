@@ -1,4 +1,7 @@
 // System Validation Documentation — ICH GCP E6(R3) Appendix C.2
+// Platform-level (vendor) software validation, not tenant data: only the
+// platform_owner may author records; tenant admins may read them as compliance
+// evidence for their own use.
 import { Router } from 'express';
 import { eq, desc } from 'drizzle-orm';
 import { db, client } from '../db/connection.js';
@@ -9,7 +12,7 @@ import { writeAudit } from '../lib/audit.js';
 const router = Router();
 
 // GET /api/sysval/info — system metadata (app version, environment)
-router.get('/info', requireRole('admin'), (_req, res) => {
+router.get('/info', requireRole('admin', 'platform_owner'), (_req, res) => {
     res.json({
         appVersion:        process.env.npm_package_version || '1.0.0',
         environment:       process.env.NODE_ENV === 'production' ? 'Production' : 'Development',
@@ -19,7 +22,7 @@ router.get('/info', requireRole('admin'), (_req, res) => {
 });
 
 // GET /api/sysval — list all validation records (admin only)
-router.get('/', requireRole('admin'), async (req, res) => {
+router.get('/', requireRole('admin', 'platform_owner'), async (req, res) => {
     try {
         // Self-heal: ensure table exists before querying
         await client.unsafe(`CREATE TABLE IF NOT EXISTS system_validation_log (
@@ -45,7 +48,7 @@ router.get('/', requireRole('admin'), async (req, res) => {
 });
 
 // POST /api/sysval — create validation record (admin only)
-router.post('/', requireRole('admin'), async (req, res) => {
+router.post('/', requireRole('platform_owner'), async (req, res) => {
     try {
         const { version, validationDate, validationType, status, performedBy,
                 summary, changesSince, approvedBy } = req.body;
@@ -75,7 +78,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
 });
 
 // PATCH /api/sysval/:id — update record (admin only)
-router.patch('/:id', requireRole('admin'), async (req, res) => {
+router.patch('/:id', requireRole('platform_owner'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const { status, performedBy, summary, changesSince, approvedBy, validationDate } = req.body;
@@ -104,7 +107,7 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
 });
 
 // PATCH /api/sysval/:id/approve — mark as Validated (admin only)
-router.patch('/:id/approve', requireRole('admin'), async (req, res) => {
+router.patch('/:id/approve', requireRole('platform_owner'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const [row] = await db.update(systemValidationLog)
@@ -125,7 +128,7 @@ router.patch('/:id/approve', requireRole('admin'), async (req, res) => {
 });
 
 // DELETE /api/sysval/:id — delete validation record (admin only)
-router.delete('/:id', requireRole('admin'), async (req, res) => {
+router.delete('/:id', requireRole('platform_owner'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const [row] = await db.delete(systemValidationLog)

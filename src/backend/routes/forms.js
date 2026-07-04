@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { eq, desc, count } from 'drizzle-orm';
+import { eq, and, desc, count } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { crfForms, crfDataEntries } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
+import { orgCondition, sameOrg, effectiveOrgId } from '../lib/tenantscope.js';
 
 const router = Router();
 
@@ -34,16 +35,16 @@ function validateSchema(schemaJson) {
 router.get('/', async (req, res) => {
     try {
         const { all } = req.query;
-        let query = db.select({
+        const rows = await db.select({
             id:          crfForms.id,
             name:        crfForms.name,
             description: crfForms.description,
             version:     crfForms.version,
             isActive:    crfForms.isActive,
             createdAt:   crfForms.createdAt,
-        }).from(crfForms).orderBy(desc(crfForms.createdAt));
-
-        const rows = await query;
+        }).from(crfForms)
+            .where(orgCondition(req, crfForms.organizationId))   // tenant-scoped library
+            .orderBy(desc(crfForms.createdAt));
         // By default return only active; admin can pass ?all=1 to see all
         const filtered = (all && req.user?.role === 'admin') ? rows : rows.filter(r => r.isActive);
         res.json(filtered);
@@ -57,7 +58,7 @@ router.get('/:id', async (req, res) => {
     try {
         const [row] = await db.select().from(crfForms)
             .where(eq(crfForms.id, parseInt(req.params.id)));
-        if (!row) return res.status(404).json({ error: 'Form not found' });
+        if (!row || !sameOrg(req, row.organizationId)) return res.status(404).json({ error: 'Form not found' });
         res.json(row);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -75,6 +76,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
         if (schemaErrors.length) return res.status(422).json({ error: 'Invalid schema', details: schemaErrors });
 
         const [created] = await db.insert(crfForms).values({
+            organizationId: effectiveOrgId(req),
             name:        name.trim(),
             description: description ?? null,
             version:     version ?? '1.0',
@@ -107,7 +109,7 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
         if (schemaErrors.length) return res.status(422).json({ error: 'Invalid schema', details: schemaErrors });
 
         const [existing] = await db.select().from(crfForms).where(eq(crfForms.id, id));
-        if (!existing) return res.status(404).json({ error: 'Form not found' });
+        if (!existing || !sameOrg(req, existing.organizationId)) return res.status(404).json({ error: 'Form not found' });
 
         // Captured data was entered and validated against the current schema —
         // rewriting it in place silently changes the meaning of existing entries
@@ -157,7 +159,7 @@ router.patch('/:id/status', requireRole('admin'), async (req, res) => {
         if (!reason) return res.status(400).json({ error: 'reason is required' });
 
         const [existing] = await db.select().from(crfForms).where(eq(crfForms.id, id));
-        if (!existing) return res.status(404).json({ error: 'Form not found' });
+        if (!existing || !sameOrg(req, existing.organizationId)) return res.status(404).json({ error: 'Form not found' });
 
         const [updated] = await db.update(crfForms)
             .set({ isActive: !!isActive })
@@ -185,7 +187,7 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
         if (!reason) return res.status(400).json({ error: 'reason is required' });
 
         const [existing] = await db.select().from(crfForms).where(eq(crfForms.id, id));
-        if (!existing) return res.status(404).json({ error: 'Form not found' });
+        if (!existing || !sameOrg(req, existing.organizationId)) return res.status(404).json({ error: 'Form not found' });
 
         // Check for data entries that reference this form
         const { crfDataEntries } = await import('../db/schemas/schema.js');

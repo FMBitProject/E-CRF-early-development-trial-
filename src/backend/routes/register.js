@@ -2,21 +2,36 @@ import { Router } from 'express';
 import { eq } from 'drizzle-orm';
 import { auth } from '../auth/better-auth.js';
 import { db } from '../db/connection.js';
-import { passwordMeta, user } from '../db/schemas/schema.js';
+import { passwordMeta, user, organizations } from '../db/schemas/schema.js';
 import { validatePassword } from '../lib/passwordpolicy.js';
 
 const router = Router();
 
+// Legacy single-tenant bootstrap admin (kept for deployment continuity —
+// becomes an admin of the default organization).
 const ADMIN_EMAIL  = 'renfael6@gmail.com';
+// SaaS bootstrap: the platform operator. This email may self-register once as
+// platform_owner (cross-tenant, no organization). Set in production env.
+const PLATFORM_OWNER_EMAIL = (process.env.PLATFORM_OWNER_EMAIL || '').trim().toLowerCase();
 const ALLOWED_ROLES = ['investigator', 'pi', 'cra', 'crc'];
 
-// Per PANDUAN §1: "Semua akun dibuat oleh Administrator. Tidak ada registrasi
-// mandiri." Self-registration is therefore disabled unless explicitly enabled
-// (dev/demo). The bootstrap admin email is always allowed so a fresh deploy
-// can create its first administrator.
+// Per PANDUAN §1: accounts are created by an administrator. Self-registration
+// is disabled unless explicitly enabled (dev/demo); the two bootstrap emails
+// are always allowed so a fresh deploy can create its first operator/admin.
 const SELF_REGISTRATION_OPEN = process.env.ALLOW_SELF_REGISTRATION === 'true';
 
-// POST /api/register — validated signup (blocks admin self-registration)
+// The default organization absorbs legacy/self-registered non-platform accounts.
+async function defaultOrgId() {
+    try {
+        const [org] = await db.select({ id: organizations.id }).from(organizations)
+            .where(eq(organizations.slug, 'default'));
+        return org?.id ?? null;
+    } catch {
+        return null;
+    }
+}
+
+// POST /api/register — validated signup (blocks privilege self-assignment)
 router.post('/', async (req, res) => {
     const { name, email, password, role } = req.body;
 
@@ -25,8 +40,10 @@ router.post('/', async (req, res) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+    const isPlatformBootstrap = PLATFORM_OWNER_EMAIL && normalizedEmail === PLATFORM_OWNER_EMAIL;
+    const isAdminBootstrap    = normalizedEmail === ADMIN_EMAIL;
 
-    if (!SELF_REGISTRATION_OPEN && normalizedEmail !== ADMIN_EMAIL) {
+    if (!SELF_REGISTRATION_OPEN && !isPlatformBootstrap && !isAdminBootstrap) {
         return res.status(403).json({
             message: 'Self-registration is disabled. Accounts are created by the Administrator.',
         });
@@ -38,16 +55,20 @@ router.post('/', async (req, res) => {
         return res.status(400).json({ message: 'Password does not meet security requirements.', details: policyErrors });
     }
 
+    // Resolve the role + organization the new account will receive.
     let assignedRole;
-    if (role === 'admin') {
-        if (normalizedEmail !== ADMIN_EMAIL) {
-            return res.status(403).json({ message: 'Administrator role is not available for self-registration.' });
-        }
+    let assignedOrgId = null;   // null = platform_owner (cross-tenant)
+    if (isPlatformBootstrap) {
+        assignedRole = 'platform_owner';           // no organization
+    } else if (role === 'admin' && isAdminBootstrap) {
         assignedRole = 'admin';
+        assignedOrgId = await defaultOrgId();       // legacy single-tenant admin
     } else if (ALLOWED_ROLES.includes(role)) {
         assignedRole = role;
+        assignedOrgId = await defaultOrgId();
     } else {
         assignedRole = 'investigator';
+        assignedOrgId = await defaultOrgId();
     }
 
     try {
@@ -59,10 +80,10 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ message: 'Registration failed. Please try again.' });
         }
 
-        // Role is input:false in Better Auth (privilege-escalation guard), so it
-        // must be assigned server-side after the account is created.
+        // Role/org are input:false in Better Auth (privilege-escalation guard),
+        // so they must be assigned server-side after the account is created.
         if (result.user?.id) {
-            await db.update(user).set({ role: assignedRole })
+            await db.update(user).set({ role: assignedRole, organizationId: assignedOrgId })
                 .where(eq(user.id, result.user.id));
 
             // Initialize password metadata per ICH GCP E6(R3) C.4.3
