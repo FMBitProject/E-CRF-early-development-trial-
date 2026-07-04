@@ -2,8 +2,14 @@
    E-CRF System — Pharmaceutical-Grade Design System
    ============================================================ */
 
-/* ---- Google Font: Inter ---- */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+/* ---- Inter (self-hosted variable font — no external CDN, CSP-compliant) ---- */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 300 700;
+    font-display: swap;
+    src: url('../vendor/Inter.woff2') format('woff2');
+}
 
 /* ---- CSS Custom Properties ---- */
 :root {
