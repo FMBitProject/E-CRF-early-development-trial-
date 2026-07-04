@@ -824,6 +824,54 @@ async function runMigrations() {
         `ALTER TABLE protocol_deviations ADD COLUMN IF NOT EXISTS visit_id INTEGER REFERENCES visits(id) ON DELETE SET NULL`,
         `ALTER TABLE protocol_deviations ADD COLUMN IF NOT EXISTS auto_generated BOOLEAN NOT NULL DEFAULT false`,
         `CREATE INDEX IF NOT EXISTS idx_devs_visit ON protocol_deviations (visit_id)`,
+
+        // ── SaaS Multi-Tenancy (Phase 1) — organizations + backfill ──────────
+        // Top-level tenant boundary. Existing single-org data is folded into a
+        // "default" organization so no data is lost; new columns stay nullable
+        // (platform_owner rows are intentionally NULL — cross-tenant operator).
+        `CREATE TABLE IF NOT EXISTS organizations (
+            id         INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+            name       TEXT NOT NULL,
+            slug       TEXT NOT NULL UNIQUE,
+            status     TEXT NOT NULL DEFAULT 'Active',
+            plan       TEXT DEFAULT 'standard',
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+        // Seed the default tenant that absorbs all pre-existing data (idempotent).
+        `INSERT INTO organizations (name, slug) VALUES ('Default Organization', 'default') ON CONFLICT (slug) DO NOTHING`,
+        // Tenant column on the three tenant-root tables.
+        `ALTER TABLE "user"  ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id)`,
+        `ALTER TABLE studies ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id)`,
+        `ALTER TABLE sites   ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id)`,
+        // Backfill existing rows into the default org (only untenanted rows).
+        `UPDATE "user"  SET organization_id = (SELECT id FROM organizations WHERE slug='default') WHERE organization_id IS NULL AND role <> 'platform_owner'`,
+        `UPDATE studies SET organization_id = (SELECT id FROM organizations WHERE slug='default') WHERE organization_id IS NULL`,
+        `UPDATE sites   SET organization_id = (SELECT id FROM organizations WHERE slug='default') WHERE organization_id IS NULL`,
+        // Uniqueness becomes per-organization: drop the old global UNIQUE and
+        // add a composite unique index so two tenants may reuse protocol/site codes.
+        `DO $$
+            DECLARE r record;
+            BEGIN
+                FOR r IN SELECT conname FROM pg_constraint
+                    WHERE conrelid = 'studies'::regclass AND contype = 'u'
+                      AND pg_get_constraintdef(oid) = 'UNIQUE (protocol_no)'
+                LOOP EXECUTE format('ALTER TABLE studies DROP CONSTRAINT %I', r.conname); END LOOP;
+            END $$`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS uq_studies_org_protocol ON studies (organization_id, protocol_no)`,
+        `DO $$
+            DECLARE r record;
+            BEGIN
+                FOR r IN SELECT conname FROM pg_constraint
+                    WHERE conrelid = 'sites'::regclass AND contype = 'u'
+                      AND pg_get_constraintdef(oid) = 'UNIQUE (code)'
+                LOOP EXECUTE format('ALTER TABLE sites DROP CONSTRAINT %I', r.conname); END LOOP;
+            END $$`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS uq_sites_org_code ON sites (organization_id, code)`,
+        // Indexes for tenant-filtered lookups.
+        `CREATE INDEX IF NOT EXISTS idx_user_org    ON "user" (organization_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_studies_org ON studies (organization_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_sites_org   ON sites (organization_id)`,
     ];
     for (const stmt of stmts) {
         try {

@@ -3,9 +3,10 @@
  * Usage: npm run db:seed
  */
 import 'dotenv/config';
+import { eq, isNull } from 'drizzle-orm';
 import { db } from './connection.js';
 import { auth } from '../auth/better-auth.js';
-import { sites, subjects, visits, crfForms } from './schemas/schema.js';
+import { organizations, sites, subjects, visits, crfForms, user } from './schemas/schema.js';
 
 // ─── Sites ───────────────────────────────────────────────────────────────────
 const seedSites = [
@@ -101,22 +102,39 @@ const seedSubjects = [
 async function main() {
     console.log('🌱 Seeding database...\n');
 
-    // 1. Sites
+    // 0. Default organization (tenant that owns all seeded data)
+    console.log('→ Organization');
+    await db.insert(organizations)
+        .values({ name: 'Default Organization', slug: 'default' })
+        .onConflictDoNothing();
+    const [defaultOrg] = await db.select().from(organizations).where(eq(organizations.slug, 'default'));
+    console.log(`   default org id=${defaultOrg.id}\n`);
+
+    // 1. Sites (owned by the default org)
     console.log('→ Sites');
-    const insertedSites = await db.insert(sites).values(seedSites).onConflictDoNothing().returning();
+    const insertedSites = await db.insert(sites)
+        .values(seedSites.map(s => ({ ...s, organizationId: defaultOrg.id })))
+        .onConflictDoNothing().returning();
     console.log(`   ${insertedSites.length} sites inserted\n`);
 
     // 2. Users via Better Auth (creates user + account + hashes password)
     console.log('→ Users');
     for (const u of seedUsers) {
         try {
-            await auth.api.signUpEmail({ body: u });
+            await auth.api.signUpEmail({ body: { name: u.name, email: u.email, password: u.password } });
             console.log(`   ✓ ${u.email} (${u.role})`);
         } catch (err) {
             // User might already exist
             console.log(`   ~ ${u.email} already exists`);
         }
+        // role/siteId/org are input:false in Better Auth (privilege-escalation
+        // guard) — assign them server-side after signup, and into the default org.
+        await db.update(user)
+            .set({ role: u.role, organizationId: defaultOrg.id })
+            .where(eq(user.email, u.email.toLowerCase()));
     }
+    // Safety net: any remaining untenanted users → default org
+    await db.update(user).set({ organizationId: defaultOrg.id }).where(isNull(user.organizationId));
     console.log();
 
     // 3. CRF Forms

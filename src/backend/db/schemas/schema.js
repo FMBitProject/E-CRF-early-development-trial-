@@ -8,12 +8,15 @@ export const user = pgTable('user', {
     id:            text('id').primaryKey(),
     name:          text('name').notNull(),
     displayName:   text('display_name'),
-    email:         text('email').notNull().unique(),
+    email:         text('email').notNull().unique(),   // global identity (one login per person)
     emailVerified: boolean('email_verified').notNull().default(false),
     image:         text('image'),
     createdAt:     timestamp('created_at').notNull().defaultNow(),
     updatedAt:     timestamp('updated_at').notNull().defaultNow(),
     role:          varchar('role', { length: 20 }).notNull().default('investigator'),
+    // Tenant the user belongs to. NULL only for platform_owner (cross-tenant
+    // SaaS operator). Every other role must have an organizationId.
+    organizationId: integer('organization_id'),
     siteId:        integer('site_id'),
     isActive:      boolean('is_active').notNull().default(true),
 });
@@ -54,12 +57,30 @@ export const verification = pgTable('verification', {
     updatedAt:  timestamp('updated_at').defaultNow(),
 });
 
+// ─── Organizations (Tenant — top-level SaaS isolation boundary) ─────────────
+// Each customer (sponsor/CRO) is one organization. Users, studies, and sites
+// belong to an organization; all clinical data inherits tenancy through
+// studyId → study.organizationId. The `platform_owner` role has a NULL
+// organizationId and is the only role permitted to act across tenants.
+
+export const organizations = pgTable('organizations', {
+    id:          integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    name:        text('name').notNull(),
+    slug:        text('slug').notNull().unique(),   // URL-safe tenant key
+    status:      text('status').notNull().default('Active'), // Active | Suspended | Closed
+    plan:        text('plan').default('standard'),
+    createdAt:   timestamp('created_at').notNull().defaultNow(),
+    updatedAt:   timestamp('updated_at').notNull().defaultNow(),
+});
+
 // ─── Studies / Trials (Tier 4 multi-study isolation) ────────────────────────
 
 export const studies = pgTable('studies', {
     id:          integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    organizationId: integer('organization_id').references(() => organizations.id),
     title:       text('title').notNull(),
-    protocolNo:  text('protocol_no').notNull().unique(),
+    // Unique per organization (composite index in migration), not globally.
+    protocolNo:  text('protocol_no').notNull(),
     phase:       text('phase'),          // Phase I | II | III | IV | N/A
     sponsor:     text('sponsor'),
     indication:  text('indication'),
@@ -273,8 +294,10 @@ export const siteStatusEnum = pgEnum('site_status', ['Active', 'Inactive']);
 
 export const sites = pgTable('sites', {
     id:        integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    organizationId: integer('organization_id').references(() => organizations.id),
     name:      text('name').notNull(),
-    code:      varchar('code', { length: 20 }).notNull().unique(),
+    // Unique per organization (composite index in migration), not globally.
+    code:      varchar('code', { length: 20 }).notNull(),
     country:   text('country'),
     piName:    text('pi_name'),
     status:    siteStatusEnum('status').notNull().default('Active'),
