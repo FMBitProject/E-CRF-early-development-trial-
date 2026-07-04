@@ -840,6 +840,30 @@ const app = express();
 // client address (rate limiting and login_attempts would otherwise key on the
 // proxy IP — one shared bucket for every user).
 app.set('trust proxy', 1);
+app.disable('x-powered-by');
+
+// Security headers (helmet-equivalent, no extra dependency).
+// CSP notes: all JS/CSS is self-hosted (Tailwind/Lucide vendored under
+// src/frontend/vendor); 'unsafe-inline' is required by the SPA's inline
+// onclick handlers and Tailwind Play's injected styles.
+app.use((req, res, next) => {
+    res.setHeader('Content-Security-Policy',
+        "default-src 'self'; " +
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +   // unsafe-eval: Tailwind Play JIT
+        "style-src 'self' 'unsafe-inline'; " +
+        "img-src 'self' data:; " +
+        "font-src 'self' data:; " +
+        "connect-src 'self'; " +
+        "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'");
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
+        res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+    next();
+});
 
 // CORS pinned to the deployment origins — never reflect arbitrary origins
 // while credentials are enabled.
