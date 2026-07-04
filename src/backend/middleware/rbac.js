@@ -1,5 +1,5 @@
 export function requireRole(...roles) {
-    return (req, res, next) => {
+    const middleware = (req, res, next) => {
         if (!req.user) {
             return res.status(401).json({ error: 'Unauthorized' });
         }
@@ -8,4 +8,8 @@ export function requireRole(...roles) {
         }
         next();
     };
+    // Exposed for automated RBAC tests (tests/rbac-matrix.test.js) — allows the
+    // permission matrix to be read off the live route table without a database.
+    middleware.allowedRoles = roles;
+    return middleware;
 }
