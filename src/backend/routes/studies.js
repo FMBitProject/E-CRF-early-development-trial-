@@ -5,6 +5,7 @@ import { studies, studyUsers, user as userTable } from '../db/schemas/schema.js'
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 import { orgCondition, sameOrg, effectiveOrgId } from '../lib/tenantscope.js';
+import { checkLimit } from '../lib/plans.js';
 
 const router = Router();
 
@@ -46,6 +47,14 @@ router.post('/', requireRole('admin'), async (req, res) => {
     const { title, protocolNo, phase, sponsor, indication, startDate, endDate } = req.body;
     if (!title || !protocolNo) return res.status(400).json({ error: 'title and protocolNo are required' });
     try {
+        // Plan limit: number of studies per organization.
+        const limit = await checkLimit(effectiveOrgId(req), 'studies');
+        if (!limit.ok) {
+            return res.status(402).json({
+                error: `Plan limit reached: ${limit.current}/${limit.limit} studies. Upgrade the plan to add more.`,
+                limit: limit.limit, current: limit.current,
+            });
+        }
         const [row] = await db.insert(studies).values({
             organizationId: effectiveOrgId(req),
             title, protocolNo, phase: phase || null,

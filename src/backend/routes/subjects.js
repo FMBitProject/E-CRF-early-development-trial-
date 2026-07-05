@@ -5,6 +5,8 @@ import { subjects, sites, visits, ieAssessments, crfDataEntries, queries, subjec
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 import { siteCondition, subjectInSiteScope } from '../lib/sitescope.js';
+import { effectiveOrgId } from '../lib/tenantscope.js';
+import { checkLimit } from '../lib/plans.js';
 
 const router = Router();
 
@@ -191,6 +193,15 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
     try {
         const { subjectCode, siteId, initials, dateOfBirth, sex, genderIdentity, enrolledAt } = req.body;
         if (!subjectCode) return res.status(400).json({ error: 'subjectCode is required' });
+
+        // Plan limit: number of enrolled subjects per organization.
+        const limit = await checkLimit(effectiveOrgId(req), 'subjects');
+        if (!limit.ok) {
+            return res.status(402).json({
+                error: `Plan limit reached: ${limit.current}/${limit.limit} subjects. Upgrade the plan to enroll more.`,
+                limit: limit.limit, current: limit.current,
+            });
+        }
 
         // Site-bound staff may only enroll subjects at their own site(s)
         if (Array.isArray(req.siteScope) && !req.siteScope.includes(siteId ? parseInt(siteId) : null)) {

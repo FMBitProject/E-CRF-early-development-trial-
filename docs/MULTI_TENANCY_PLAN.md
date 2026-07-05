@@ -93,10 +93,29 @@ The single most important rule: **`admin` becomes org-scoped**; a brand-new
 
 ## Phase 4 — SaaS operations (beyond isolation)
 
-Billing/subscription, usage metering, self-service onboarding, per-tenant rate
-limits, tenant-aware backups/export-my-data (GDPR/UU PDP portability &
-erasure), status page. These are product features, sequenced after isolation
-is proven.
+**Implemented:**
+- Plans + limits (`lib/plans.js`: trial / standard / enterprise → max
+  studies/users/subjects). Enforced on study creation, user invite, and
+  subject enrollment (HTTP 402 when over limit; platform-global exempt).
+- Usage metering per tenant (`orgUsage`) exposed via
+  `GET /api/organizations/overview` (all tenants) and `/:id/usage`.
+- Subscription state on `organizations` (plan, subscription_status,
+  trial_ends_at), editable via `PATCH /api/organizations/:id`.
+- Per-tenant API rate limit (`rateLimitTenant`, keyed on org) so one tenant
+  cannot exhaust capacity for others.
+- Data portability export (`GET /api/organizations/:id/export`) — GDPR / UU PDP
+  operator-mediated tenant data bundle (JSON, no secrets). Erasure is Close +
+  access revocation, since clinical data is under trial retention (~25 yr).
+
+**Not implemented (needs external services / product decisions):**
+- Actual billing/charging — requires a payment processor (Stripe/Xendit) and
+  its API keys + webhooks to drive `subscription_status`. The state model is in
+  place; wire a processor webhook to it.
+- Self-service onboarding UI + platform-operator console (frontend). Backend
+  provisioning endpoints exist; a `platform_owner` console UI is a frontend
+  build.
+- Per-tenant backups / status page — infrastructure concerns
+  (see `docs/DEPLOYMENT_OPERATIONS.md`).
 
 ---
 

@@ -7,6 +7,7 @@ import { writeAudit } from '../lib/audit.js';
 import { sendUserInviteEmail } from '../lib/email.js';
 import { auth } from '../auth/better-auth.js';
 import { sameOrg, effectiveOrgId } from '../lib/tenantscope.js';
+import { checkLimit } from '../lib/plans.js';
 import crypto from 'crypto';
 
 // Self-healing: ensure user_sites table exists
@@ -205,6 +206,15 @@ router.post('/invite', requireRole('admin'), async (req, res) => {
         const [existing] = await db.select({ id: user.id }).from(user)
             .where(eq(user.email, email.toLowerCase().trim()));
         if (existing) return res.status(409).json({ error: 'A user with this email already exists' });
+
+        // Plan limit: number of users per organization.
+        const limit = await checkLimit(effectiveOrgId(req), 'users');
+        if (!limit.ok) {
+            return res.status(402).json({
+                error: `Plan limit reached: ${limit.current}/${limit.limit} users. Upgrade the plan to add more.`,
+                limit: limit.limit, current: limit.current,
+            });
+        }
 
         // Generate a secure temporary password
         const tempPassword = crypto.randomBytes(8).toString('hex');

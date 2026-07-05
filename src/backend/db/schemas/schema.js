@@ -68,7 +68,9 @@ export const organizations = pgTable('organizations', {
     name:        text('name').notNull(),
     slug:        text('slug').notNull().unique(),   // URL-safe tenant key
     status:      text('status').notNull().default('Active'), // Active | Suspended | Closed
-    plan:        text('plan').default('standard'),
+    plan:        text('plan').default('standard'),           // trial | standard | enterprise
+    subscriptionStatus: text('subscription_status').default('Active'), // Trialing | Active | PastDue | Canceled
+    trialEndsAt: timestamp('trial_ends_at'),
     createdAt:   timestamp('created_at').notNull().defaultNow(),
     updatedAt:   timestamp('updated_at').notNull().defaultNow(),
 });

@@ -54,7 +54,7 @@ import monitoringPlanRouter  from './routes/monitoringplan.js';
 import reportRouter          from './routes/report.js';
 import accessReviewRouter    from './routes/accessreview.js';
 import { requireStudy }      from './middleware/study.js';
-import { rateLimitAuth }     from './middleware/ratelimit.js';
+import { rateLimitAuth, rateLimitTenant } from './middleware/ratelimit.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir   = path.resolve(__dirname, '../../');
@@ -886,6 +886,9 @@ async function runMigrations() {
         `ALTER TABLE crf_forms ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id)`,
         `UPDATE crf_forms SET organization_id = (SELECT id FROM organizations WHERE slug='default') WHERE organization_id IS NULL`,
         `CREATE INDEX IF NOT EXISTS idx_crf_forms_org ON crf_forms (organization_id)`,
+        // Subscription state (Phase 4) — plan already exists; add billing status.
+        `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS subscription_status TEXT DEFAULT 'Active'`,
+        `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMP`,
     ];
     for (const stmt of stmts) {
         try {
@@ -990,7 +993,8 @@ app.get('/api/ready', async (_req, res) => {
 });
 
 // Study-scoped routes — require both auth and X-Study-ID header
-const studyAuth = [requireAuth, requireStudy];
+// requireAuth sets req.orgId, which rateLimitTenant keys on, before requireStudy.
+const studyAuth = [requireAuth, rateLimitTenant, requireStudy];
 app.use('/api/subjects',                  ...studyAuth, subjectsRouter);
 app.use('/api/subjects/:subjectId/visits', ...studyAuth, visitsRouter);
 app.use('/api/entries',                   ...studyAuth, entriesRouter);

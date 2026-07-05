@@ -12,10 +12,13 @@ import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 import { auth } from '../auth/better-auth.js';
 import { sendUserInviteEmail } from '../lib/email.js';
+import { orgUsage, planLimits, PLANS } from '../lib/plans.js';
+import { client } from '../db/connection.js';
 
 const router = Router();
 
 const VALID_STATUS = ['Active', 'Suspended', 'Closed'];
+const VALID_SUB_STATUS = ['Trialing', 'Active', 'PastDue', 'Canceled'];
 const slugify = (s) => String(s).toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
 // Everything here is platform-operator only.
@@ -26,6 +29,26 @@ router.get('/', async (_req, res) => {
     try {
         const rows = await db.select().from(organizations).orderBy(organizations.createdAt);
         res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/organizations/overview — all tenants with usage vs plan limits.
+// (Defined before /:id so the literal path is not shadowed.)
+router.get('/overview', async (_req, res) => {
+    try {
+        const orgs = await db.select().from(organizations).orderBy(organizations.createdAt);
+        const rows = await Promise.all(orgs.map(async (o) => {
+            const usage  = await orgUsage(o.id);
+            const limits = planLimits(o.plan);
+            return {
+                id: o.id, name: o.name, slug: o.slug, status: o.status,
+                plan: o.plan, subscriptionStatus: o.subscriptionStatus,
+                trialEndsAt: o.trialEndsAt, usage, limits,
+            };
+        }));
+        res.json({ plans: PLANS, tenants: rows });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -106,9 +129,15 @@ router.post('/', async (req, res) => {
 router.patch('/:id', async (req, res) => {
     try {
         const id = parseInt(req.params.id);
-        const { name, status, plan } = req.body;
+        const { name, status, plan, subscriptionStatus, trialEndsAt } = req.body;
         if (status !== undefined && !VALID_STATUS.includes(status)) {
             return res.status(400).json({ error: `status must be one of: ${VALID_STATUS.join(', ')}` });
+        }
+        if (plan !== undefined && !PLANS[plan]) {
+            return res.status(400).json({ error: `plan must be one of: ${Object.keys(PLANS).join(', ')}` });
+        }
+        if (subscriptionStatus !== undefined && !VALID_SUB_STATUS.includes(subscriptionStatus)) {
+            return res.status(400).json({ error: `subscriptionStatus must be one of: ${VALID_SUB_STATUS.join(', ')}` });
         }
 
         const [before] = await db.select().from(organizations).where(eq(organizations.id, id));
@@ -118,6 +147,8 @@ router.patch('/:id', async (req, res) => {
         if (name   !== undefined) updates.name   = name;
         if (status !== undefined) updates.status = status;
         if (plan   !== undefined) updates.plan   = plan;
+        if (subscriptionStatus !== undefined) updates.subscriptionStatus = subscriptionStatus;
+        if (trialEndsAt !== undefined) updates.trialEndsAt = trialEndsAt ? new Date(trialEndsAt) : null;
 
         const [org] = await db.update(organizations).set(updates)
             .where(eq(organizations.id, id)).returning();
@@ -132,6 +163,61 @@ router.patch('/:id', async (req, res) => {
         });
 
         res.json(org);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/organizations/:id/usage — resource usage vs plan limits.
+router.get('/:id/usage', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const [org] = await db.select().from(organizations).where(eq(organizations.id, id));
+        if (!org) return res.status(404).json({ error: 'Organization not found' });
+        res.json({ plan: org.plan, usage: await orgUsage(id), limits: planLimits(org.plan) });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/organizations/:id/export — tenant data portability bundle (JSON).
+// Supports GDPR / UU PDP data-portability requests, operator-mediated.
+// NOTE: this is a portability EXPORT, not erasure — clinical data is subject to
+// trial retention (ICH ~25 yr); "forgetting" a tenant = Close + revoke access.
+router.get('/:id/export', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const [org] = await db.select().from(organizations).where(eq(organizations.id, id));
+        if (!org) return res.status(404).json({ error: 'Organization not found' });
+
+        // Core tenant tables (org-owned) + clinical data scoped via the org's
+        // studies. Passwords/tokens are never exported.
+        const [studies, sites, users, subjects, ae, deviations, consents, queries, audit] = await Promise.all([
+            client`SELECT * FROM studies WHERE organization_id = ${id}`,
+            client`SELECT * FROM sites WHERE organization_id = ${id}`,
+            client`SELECT id, name, email, role, site_id, is_active, created_at FROM "user" WHERE organization_id = ${id}`,
+            client`SELECT s.* FROM subjects s JOIN studies st ON st.id = s.study_id WHERE st.organization_id = ${id}`,
+            client`SELECT * FROM adverse_events WHERE study_id IN (SELECT id FROM studies WHERE organization_id = ${id})`,
+            client`SELECT * FROM protocol_deviations WHERE study_id IN (SELECT id FROM studies WHERE organization_id = ${id})`,
+            client`SELECT * FROM informed_consents WHERE study_id IN (SELECT id FROM studies WHERE organization_id = ${id})`,
+            client`SELECT * FROM queries WHERE study_id IN (SELECT id FROM studies WHERE organization_id = ${id})`,
+            client`SELECT * FROM audit_trails WHERE organization_id = ${id}`,
+        ]);
+
+        await writeAudit(db, {
+            tableName: 'organizations', recordId: String(id), action: 'EXPORT',
+            newValue: `Tenant data export generated (${subjects.length} subjects)`,
+            reason: 'Data portability export by platform operator',
+            user: req.user, ipAddress: req.ip,
+        });
+
+        res.setHeader('Content-Disposition', `attachment; filename="tenant-${org.slug}-export.json"`);
+        res.json({
+            exportedAt: new Date().toISOString(),
+            organization: org,
+            counts: { studies: studies.length, sites: sites.length, users: users.length, subjects: subjects.length },
+            data: { studies, sites, users, subjects, adverseEvents: ae, deviations, consents, queries, auditTrails: audit },
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
