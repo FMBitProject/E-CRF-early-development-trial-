@@ -16,6 +16,12 @@ if (!user) {
     window.location.href = 'login.html';
     throw new Error('Not authenticated');
 }
+// The platform operator has no study/site context — it belongs in the platform
+// console, not the clinical SPA.
+if (user.role === 'platform_owner') {
+    window.location.href = 'platform.html';
+    throw new Error('Platform operator redirected to console');
+}
 
 // ---- Navigation Config ----
 const DM = 'data_manager';

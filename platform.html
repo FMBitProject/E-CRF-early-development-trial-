@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-CRF — Platform Console</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e3a5f'/%3E%3Cpath d='M10 9h8a5 5 0 0 1 0 10h-8zm2 2v6h6a3 3 0 0 0 0-6z' fill='white'/%3E%3Crect x='10' y='21' width='10' height='2' rx='1' fill='white'/%3E%3C/svg%3E">
+    <script src="src/frontend/vendor/tailwind-play.js"></script>
+    <script src="src/frontend/vendor/lucide.js"></script>
+    <link rel="stylesheet" href="src/frontend/css/style.css">
+</head>
+<body class="h-full" style="background:#F0F3F8">
+
+    <!-- Header -->
+    <header class="h-14 px-5 flex items-center justify-between text-white flex-shrink-0"
+            style="background:linear-gradient(90deg,#0A2E5C,#1554A0)">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-md bg-white/10 flex items-center justify-center border border-white/15">
+                <i data-lucide="layers" class="w-4 h-4 text-white"></i>
+            </div>
+            <div>
+                <p class="text-sm font-bold leading-tight">Platform Console</p>
+                <p class="text-xs text-white/60 leading-tight">Tenant operations</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <span class="text-xs px-2 py-1 rounded-full bg-white/10 border border-white/15" id="op-name">Platform Operator</span>
+            <button id="btn-logout" class="text-xs px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 transition">
+                Sign out
+            </button>
+        </div>
+    </header>
+
+    <main id="platform-main" class="p-5 max-w-6xl mx-auto">
+        <div class="flex items-center justify-center py-20 text-slate-400 text-sm">Loading tenants…</div>
+    </main>
+
+    <script type="module" src="src/frontend/js/modules/platform.js"></script>
+</body>
+</html>

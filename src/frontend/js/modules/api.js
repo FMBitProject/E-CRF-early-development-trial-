@@ -990,6 +990,21 @@ export const api = {
     // ── Amendment Re-consent Status ──────────────────────────
     async getAmendmentReconsentStatus(id) { return apiFetch(`/api/amendments/${id}/reconsent-status`); },
 
+    // ── SaaS Platform (platform_owner only) ───────────────────
+    async getPlatformOverview()          { return apiFetch('/api/organizations/overview'); },
+    async getOrganizations()             { return apiFetch('/api/organizations'); },
+    async getOrganization(id)            { return apiFetch(`/api/organizations/${id}`); },
+    async getOrgUsage(id)                { return apiFetch(`/api/organizations/${id}/usage`); },
+    async provisionOrganization(payload) {
+        return apiFetch('/api/organizations', { method: 'POST', body: JSON.stringify(payload) });
+    },
+    async updateOrganization(id, payload) {
+        return apiFetch(`/api/organizations/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+    },
+    async exportOrganization(id, slug) {
+        return apiDownload(`/api/organizations/${id}/export`, `tenant-${slug}-export.json`, 'application/json');
+    },
+
     // ── Subject-level Data Lock ───────────────────────────────
     async getSubjectLockStatus(subjectId) { return apiFetch(`/api/subjects/${subjectId}/lock-status`); },
     async lockSubject(subjectId, reason, visitId = null) {

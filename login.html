@@ -193,7 +193,11 @@
                 role:        data.user.role || 'investigator',
                 loginAt:     new Date().toISOString(),
             }));
-            window.location.href = 'select.html';
+            // The platform operator has no study/site context — go straight to
+            // the tenant console instead of the study picker.
+            window.location.href = (data.user.role === 'platform_owner')
+                ? 'platform.html'
+                : 'select.html';
         }
 
         // ── Step 1: Submit password ────────────────────────────

@@ -257,6 +257,11 @@
             window.location.replace('login.html');
             throw new Error('Not authenticated');
         }
+        // Platform operator has no study/site — belongs in the platform console.
+        if (user.role === 'platform_owner') {
+            window.location.replace('platform.html');
+            throw new Error('Platform operator redirected to console');
+        }
 
         // ── If context is already fully set AND user has a display name, skip straight to app ──
         const alreadyHasStudy = !!api.getCurrentStudy();
