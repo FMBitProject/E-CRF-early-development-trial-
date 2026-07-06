@@ -45,19 +45,20 @@
                     trail, electronic signatures, and role-based access control.
                 </p>
                 <div class="flex flex-wrap items-center gap-3">
-                    <a href="login.html" class="bg-white text-[#0A2E5C] font-semibold text-sm px-5 py-2.5 rounded-md hover:bg-blue-50 transition flex items-center gap-2">
+                    <!-- Primary CTA — sales enquiry (Model A: contact sales / request a demo). -->
+                    <a href="mailto:renfael6@gmail.com?subject=E-CRF%20System%20—%20Demo%20Request&body=Hi%2C%20I%27d%20like%20to%20request%20a%20demo%20of%20the%20E-CRF%20System.%0A%0AOrganisation%3A%0AName%3A%0ARole%3A%0A"
+                       class="bg-white text-[#0A2E5C] font-semibold text-sm px-5 py-2.5 rounded-md hover:bg-blue-50 transition flex items-center gap-2">
+                        <i data-lucide="calendar-check" class="w-4 h-4"></i> Request a demo
+                    </a>
+                    <!-- Sign in — for existing customers who already have accounts. -->
+                    <a href="login.html" class="border border-white/40 text-white font-semibold text-sm px-5 py-2.5 rounded-md hover:bg-white/10 transition flex items-center gap-2">
                         <i data-lucide="log-in" class="w-4 h-4"></i> Sign in
                     </a>
-                    <!-- Register CTA — revealed conditionally (first-run admin or open registration). -->
+                    <!-- Register CTA — revealed only on a fresh on-prem install needing its first admin. -->
                     <a href="register.html" id="cta-register"
                        class="hidden border border-white/40 text-white font-semibold text-sm px-5 py-2.5 rounded-md hover:bg-white/10 transition flex items-center gap-2">
                         <i data-lucide="user-plus" class="w-4 h-4"></i>
                         <span id="cta-register-text">Register</span>
-                    </a>
-                    <!-- SaaS free-trial CTA — revealed only when self-service tenant signup is enabled. -->
-                    <a href="signup.html" id="cta-signup"
-                       class="hidden border border-white/40 text-white font-semibold text-sm px-5 py-2.5 rounded-md hover:bg-white/10 transition flex items-center gap-2">
-                        <i data-lucide="rocket" class="w-4 h-4"></i> Start free trial
                     </a>
                 </div>
             </div>
@@ -128,19 +129,14 @@
     <script>
         lucide.createIcons();
 
-        // Reveal the Register CTA when registration is open OR on a fresh install
-        // that still needs its first administrator (on-prem bootstrap).
+        // Reveal the Register CTA only on a fresh on-prem install that still needs
+        // its first administrator (or when self-registration is explicitly enabled).
         fetch('/api/register/config').then(r => r.json()).then(c => {
             if (!c.selfRegistration && !c.bootstrapNeeded) return;
             if (c.bootstrapNeeded) {
                 document.getElementById('cta-register-text').textContent = 'Create administrator account';
             }
             document.getElementById('cta-register')?.classList.remove('hidden');
-        }).catch(() => {});
-
-        // Reveal the free-trial CTA only when self-service tenant signup is enabled.
-        fetch('/api/signup/config').then(r => r.json()).then(c => {
-            if (c.enabled) document.getElementById('cta-signup')?.classList.remove('hidden');
         }).catch(() => {});
     </script>
 </body>
