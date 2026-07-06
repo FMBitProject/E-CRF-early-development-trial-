@@ -7,9 +7,11 @@ import { validatePassword } from '../lib/passwordpolicy.js';
 
 const router = Router();
 
-// Legacy single-tenant bootstrap admin (kept for deployment continuity —
-// becomes an admin of the default organization).
-const ADMIN_EMAIL  = 'renfael6@gmail.com';
+// First-run bootstrap admin (becomes an admin of the default organization).
+// On-premise installs set ADMIN_EMAIL in their .env so the customer's own IT
+// admin can register the first account. Falls back to the original hosted-
+// deployment address for continuity when the variable is unset.
+const ADMIN_EMAIL  = (process.env.ADMIN_EMAIL || 'renfael6@gmail.com').trim().toLowerCase();
 // SaaS bootstrap: the platform operator. This email may self-register once as
 // platform_owner (cross-tenant, no organization). Set in production env.
 const PLATFORM_OWNER_EMAIL = (process.env.PLATFORM_OWNER_EMAIL || '').trim().toLowerCase();
