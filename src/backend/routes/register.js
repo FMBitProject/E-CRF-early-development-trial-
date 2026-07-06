@@ -62,9 +62,12 @@ router.post('/', async (req, res) => {
     let assignedOrgId = null;   // null = platform_owner (cross-tenant)
     if (isPlatformBootstrap) {
         assignedRole = 'platform_owner';           // no organization
-    } else if (role === 'admin' && isAdminBootstrap) {
+    } else if (isAdminBootstrap) {
+        // The designated bootstrap email always becomes the admin of the default
+        // organization, regardless of which role the form submitted (the register
+        // form does not expose an "admin" option). This is the first-run admin.
         assignedRole = 'admin';
-        assignedOrgId = await defaultOrgId();       // legacy single-tenant admin
+        assignedOrgId = await defaultOrgId();
     } else if (ALLOWED_ROLES.includes(role)) {
         assignedRole = role;
         assignedOrgId = await defaultOrgId();
