@@ -135,14 +135,18 @@ router.post('/initiate', async (req, res) => {
 
         const { token, user } = signIn;
 
-        // Deactivated accounts must not receive a session (ICH GCP E6(R3) C.4.2)
+        // Deactivated accounts must not receive a session (ICH GCP E6(R3) C.4.2);
+        // self-service signups must verify their email before first login.
         let displayName = null;
         try {
             const [uRow] = await client.unsafe(
-                `SELECT display_name, is_active FROM "user" WHERE id = $1`, [user.id]
+                `SELECT display_name, is_active, email_verified FROM "user" WHERE id = $1`, [user.id]
             );
             if (uRow && uRow.is_active === false) {
                 return res.status(403).json({ error: 'Account is deactivated. Contact your administrator.' });
+            }
+            if (uRow && uRow.email_verified === false) {
+                return res.status(403).json({ error: 'Please verify your email address first — check your inbox for the verification link.' });
             }
             displayName = uRow?.display_name ?? null;
         } catch { /* column may not exist yet on first boot; safe to ignore */ }

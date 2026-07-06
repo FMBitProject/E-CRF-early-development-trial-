@@ -240,6 +240,7 @@ router.post('/invite', requireRole('admin'), async (req, res) => {
             role:   role ?? 'investigator',
             siteId: siteId ? parseInt(siteId) : null,
             organizationId: effectiveOrgId(req),
+            emailVerified: true,   // operator-vouched (invite sent to this address)
         }).where(eq(user.id, newUserId));
 
         // Mark password as must-change

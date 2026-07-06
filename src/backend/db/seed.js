@@ -130,7 +130,7 @@ async function main() {
         // role/siteId/org are input:false in Better Auth (privilege-escalation
         // guard) — assign them server-side after signup, and into the default org.
         await db.update(user)
-            .set({ role: u.role, organizationId: defaultOrg.id })
+            .set({ role: u.role, organizationId: defaultOrg.id, emailVerified: true })
             .where(eq(user.email, u.email.toLowerCase()));
     }
     // Safety net: any remaining untenanted users → default org

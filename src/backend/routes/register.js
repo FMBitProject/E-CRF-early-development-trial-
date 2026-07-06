@@ -83,7 +83,7 @@ router.post('/', async (req, res) => {
         // Role/org are input:false in Better Auth (privilege-escalation guard),
         // so they must be assigned server-side after the account is created.
         if (result.user?.id) {
-            await db.update(user).set({ role: assignedRole, organizationId: assignedOrgId })
+            await db.update(user).set({ role: assignedRole, organizationId: assignedOrgId, emailVerified: true })
                 .where(eq(user.id, result.user.id));
 
             // Initialize password metadata per ICH GCP E6(R3) C.4.3

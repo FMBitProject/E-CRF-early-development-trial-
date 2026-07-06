@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-CRF — Start your free trial</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e3a5f'/%3E%3Cpath d='M10 9h8a5 5 0 0 1 0 10h-8zm2 2v6h6a3 3 0 0 0 0-6z' fill='white'/%3E%3Crect x='10' y='21' width='10' height='2' rx='1' fill='white'/%3E%3C/svg%3E">
+    <script src="src/frontend/vendor/tailwind-play.js"></script>
+    <link rel="stylesheet" href="src/frontend/css/style.css">
+</head>
+<body class="h-full flex items-center justify-center" style="background:linear-gradient(145deg,#0A2E5C,#0F3872,#1554A0)">
+
+    <div class="w-full max-w-md m-4">
+        <div class="bg-white rounded-xl shadow-2xl overflow-hidden">
+            <div style="background:#0A2E5C" class="px-8 py-6 text-white">
+                <p class="text-lg font-bold">Start your free trial</p>
+                <p class="text-xs text-blue-200 mt-1">Create your organization — 14 days, no card required</p>
+            </div>
+
+            <div id="disabled-panel" class="p-8 hidden">
+                <p class="text-sm text-slate-700">Self-service signup is not currently open.</p>
+                <p class="text-sm text-slate-500 mt-2">Please contact sales to have your organization provisioned.</p>
+                <a href="login.html" class="inline-block mt-4 text-sm text-blue-700 hover:underline">← Back to sign in</a>
+            </div>
+
+            <div id="success-panel" class="p-8 hidden text-center">
+                <div class="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-4 text-2xl">✓</div>
+                <p class="text-base font-semibold text-slate-800">Almost there!</p>
+                <p class="text-sm text-slate-500 mt-2" id="success-msg">Check your email to verify your address and activate your trial.</p>
+                <a href="login.html" class="inline-block mt-5 text-sm text-blue-700 hover:underline">Go to sign in</a>
+            </div>
+
+            <form id="signup-form" class="p-8 space-y-4 hidden">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Organization name</label>
+                    <input id="orgName" type="text" required class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none" placeholder="Acme Clinical Research">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Your name</label>
+                        <input id="adminName" type="text" required class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none" placeholder="Jane Doe">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Work email</label>
+                        <input id="adminEmail" type="email" required autocomplete="email" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none" placeholder="jane@acme.org">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Password</label>
+                    <input id="password" type="password" required autocomplete="new-password" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                    <p class="text-xs text-slate-400 mt-1">Min. 12 chars with uppercase, lowercase, number, and symbol.</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Confirm password</label>
+                    <input id="confirm" type="password" required autocomplete="new-password" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                </div>
+                <label class="flex items-start gap-2 text-xs text-slate-600">
+                    <input id="acceptTos" type="checkbox" class="mt-0.5">
+                    <span>I agree to the <strong>Terms of Service</strong> and <strong>Data Processing Agreement</strong>. The trial is for evaluation with non-production/synthetic data; processing real patient data requires a signed DPA and a paid plan.</span>
+                </label>
+                <div id="err" class="text-xs text-red-600 space-y-0.5"></div>
+                <button type="submit" id="submit-btn"
+                    class="w-full py-2.5 text-sm font-semibold bg-blue-700 hover:bg-blue-800 text-white rounded-md transition">
+                    Create organization
+                </button>
+                <p class="text-center text-xs text-slate-500">Already have an account? <a href="login.html" class="text-blue-700 hover:underline">Sign in</a></p>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const $ = (id) => document.getElementById(id);
+
+        (async function init() {
+            try {
+                const cfg = await (await fetch('/api/signup/config')).json();
+                if (cfg.enabled) $('signup-form').classList.remove('hidden');
+                else $('disabled-panel').classList.remove('hidden');
+            } catch {
+                $('disabled-panel').classList.remove('hidden');
+            }
+        })();
+
+        $('signup-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const err = $('err'); err.innerHTML = '';
+            const password = $('password').value;
+            if (password !== $('confirm').value) { err.textContent = 'Passwords do not match.'; return; }
+            if (!$('acceptTos').checked) { err.textContent = 'You must accept the Terms of Service and DPA.'; return; }
+            const btn = $('submit-btn'); btn.disabled = true; btn.textContent = 'Creating…';
+            try {
+                const res = await fetch('/api/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        orgName:    $('orgName').value.trim(),
+                        adminName:  $('adminName').value.trim(),
+                        adminEmail: $('adminEmail').value.trim(),
+                        password,
+                        acceptTos:  true,
+                    }),
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    err.innerHTML = (data.details && data.details.length)
+                        ? data.details.map(d => `<p>• ${String(d).replace(/</g,'&lt;')}</p>`).join('')
+                        : `<p>${String(data.message || 'Signup failed.').replace(/</g,'&lt;')}</p>`;
+                    btn.disabled = false; btn.textContent = 'Create organization';
+                    return;
+                }
+                $('signup-form').classList.add('hidden');
+                $('success-msg').textContent = data.message || 'Check your email to verify your address.';
+                $('success-panel').classList.remove('hidden');
+            } catch (ex) {
+                err.textContent = ex.message; btn.disabled = false; btn.textContent = 'Create organization';
+            }
+        });
+    </script>
+</body>
+</html>

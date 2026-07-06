@@ -99,7 +99,7 @@ router.post('/', async (req, res) => {
             return res.status(500).json({ error: 'Organization created but admin account failed' });
         }
         await db.update(user)
-            .set({ role: 'admin', organizationId: org.id })
+            .set({ role: 'admin', organizationId: org.id, emailVerified: true })
             .where(eq(user.id, signUp.user.id));
         await db.insert(passwordMeta)
             .values({ userId: signUp.user.id, lastChangedAt: new Date(), mustChange: true })

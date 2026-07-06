@@ -239,6 +239,41 @@ export async function sendDBLockRequestEmail(toEmail, toName, { studyTitle, prot
     });
 }
 
+export async function sendVerificationEmail(toEmail, toName, { verifyUrl, orgName }) {
+    if (!process.env.SMTP_HOST) return;
+    const transporter = createTransport();
+    const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+    await transporter.sendMail({
+        from: `"E-CRF System" <${from}>`,
+        to:   toEmail,
+        subject: '[E-CRF] Verify your email to activate your organization',
+        html: `
+<!DOCTYPE html><html><body style="margin:0;padding:0;background:#F0F3F8;font-family:Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 20px">
+  <tr><td align="center">
+    <table width="480" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+      <tr><td style="background:#0A2E5C;padding:24px 32px">
+        <p style="margin:0;color:#fff;font-size:18px;font-weight:bold">Confirm your email</p>
+        <p style="margin:4px 0 0;color:#93C5FD;font-size:12px">${orgName ? String(orgName).replace(/</g,'&lt;') : 'E-CRF'} — free trial</p>
+      </td></tr>
+      <tr><td style="padding:32px">
+        <p style="margin:0 0 16px;color:#1E293B;font-size:15px">Hello, <strong>${String(toName).replace(/</g,'&lt;')}</strong></p>
+        <p style="margin:0 0 20px;color:#64748B;font-size:14px">Confirm this email address to activate your organization's 14-day trial.</p>
+        <p style="text-align:center;margin:0 0 24px">
+          <a href="${verifyUrl}" style="display:inline-block;background:#1554A0;color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:bold">Verify email</a>
+        </p>
+        <p style="margin:0;color:#94A3B8;font-size:12px">Or paste this link: <br><span style="font-family:monospace;font-size:11px">${verifyUrl}</span></p>
+        <p style="margin:16px 0 0;color:#64748B;font-size:12px">This link expires in 24 hours. If you didn't sign up, ignore this email.</p>
+      </td></tr>
+      <tr><td style="padding:16px 32px;border-top:1px solid #E2E8F0">
+        <p style="margin:0;color:#94A3B8;font-size:11px">FDA 21 CFR Part 11 · ICH GCP E6 (R3) · Secure &amp; Encrypted</p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table></body></html>`,
+    });
+}
+
 export async function sendOTPEmail(toEmail, toName, otp) {
     const transporter = createTransport();
     const from = process.env.SMTP_FROM || process.env.SMTP_USER;

@@ -16,6 +16,7 @@ import auditRouter         from './routes/audit.js';
 import queriesRouter       from './routes/queries.js';
 import mfaRouter           from './routes/mfa.js';
 import registerRouter      from './routes/register.js';
+import signupRouter        from './routes/signup.js';
 import organizationsRouter from './routes/organizations.js';
 import billingRouter, { handleBillingWebhook } from './routes/billing.js';
 import sitesRouter         from './routes/sites.js';
@@ -978,6 +979,7 @@ app.use(express.json());
 // Auth-required API routes
 app.use('/api/mfa',      rateLimitAuth, mfaRouter);
 app.use('/api/register', rateLimitAuth, registerRouter);
+app.use('/api/signup',   rateLimitAuth, signupRouter);   // public self-service tenant signup (gated by ALLOW_TENANT_SIGNUP)
 app.use('/api/sites',      requireAuth, sitesRouter);
 app.use('/api/security',   requireAuth, securityRouter);
 app.use('/api/studies',    requireAuth, studiesRouter);
@@ -1043,7 +1045,7 @@ app.use('/api/access-review',            ...studyAuth, accessReviewRouter);
 // Serve ONLY the frontend assets — never the repo root, which would expose
 // source code, docs with test credentials, and the .git directory.
 app.use('/src/frontend', express.static(path.join(rootDir, 'src/frontend'), { dotfiles: 'deny' }));
-for (const page of ['login.html', 'index.html', 'register.html', 'select.html', 'platform.html']) {
+for (const page of ['login.html', 'index.html', 'register.html', 'select.html', 'platform.html', 'signup.html']) {
     app.get(`/${page}`, (_req, res) => res.sendFile(path.join(rootDir, page)));
 }
 app.get('/', (_req, res) => res.sendFile(path.join(rootDir, 'login.html')));
