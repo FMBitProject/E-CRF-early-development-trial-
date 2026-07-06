@@ -119,6 +119,10 @@
                         <span id="btn-text">Sign In</span>
                     </button>
                 </form>
+                <p id="register-link" class="text-center text-xs text-slate-500 mt-4 hidden">
+                    <span id="register-lead">Don't have an account?</span>
+                    <a href="register.html" class="text-blue-700 font-medium hover:underline" id="register-anchor">Register</a>
+                </p>
                 <p id="signup-link" class="text-center text-xs text-slate-500 mt-4 hidden">
                     New organization? <a href="signup.html" class="text-blue-700 font-medium hover:underline">Start a free trial</a>
                 </p>
@@ -164,6 +168,17 @@
         // Reveal the "start a free trial" link only when self-service signup is open.
         fetch('/api/signup/config').then(r => r.json()).then(c => {
             if (c.enabled) document.getElementById('signup-link')?.classList.remove('hidden');
+        }).catch(() => {});
+
+        // Reveal the "Register" link when registration is open OR on a fresh
+        // install that still needs its first administrator (on-prem bootstrap).
+        fetch('/api/register/config').then(r => r.json()).then(c => {
+            if (!c.selfRegistration && !c.bootstrapNeeded) return;
+            if (c.bootstrapNeeded) {
+                document.getElementById('register-lead').textContent = 'First-time setup?';
+                document.getElementById('register-anchor').textContent = 'Create the administrator account';
+            }
+            document.getElementById('register-link')?.classList.remove('hidden');
         }).catch(() => {});
 
         let _tempToken = null;

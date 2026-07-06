@@ -116,13 +116,16 @@ curl http://localhost:3000/api/health
 ## 5. Buat akun administrator pertama
 
 1. Buka aplikasi di browser: `http://SERVER-ANDA:3000` (atau URL/port Anda).
-2. Masuk ke halaman **Register**.
+2. Pada halaman login, karena instalasi masih baru (belum ada pengguna), akan
+   muncul tautan **"First-time setup? Create the administrator account"**.
+   Klik tautan itu untuk membuka halaman pendaftaran.
 3. Daftar menggunakan **email yang sama persis** dengan `ADMIN_EMAIL` di `.env`.
    Pada pilihan peran, pilih salah satu saja (mis. *Principal Investigator*) —
    karena email ini terdaftar sebagai `ADMIN_EMAIL`, sistem **otomatis**
    menetapkan Anda sebagai **administrator**. Buat password yang memenuhi
    kebijakan keamanan.
-4. Setelah berhasil, login sebagai admin tersebut.
+4. Setelah berhasil, login sebagai admin tersebut. Tautan pendaftaran tadi akan
+   **hilang otomatis** setelah admin pertama dibuat.
 
 > Pendaftaran mandiri (self-registration) **dimatikan** demi keamanan. Hanya
 > email `ADMIN_EMAIL` yang boleh mendaftar. Semua pengguna lain (PI, CRA, CRC,

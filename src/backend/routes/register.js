@@ -33,6 +33,21 @@ async function defaultOrgId() {
     }
 }
 
+// GET /api/register/config — lets the login page decide whether to show a
+// "Register" link. Shown when self-registration is open, or on a fresh install
+// with no users yet (so the first administrator can be bootstrapped). The
+// bootstrap email itself is NOT returned (avoids leaking it before setup).
+router.get('/config', async (_req, res) => {
+    let bootstrapNeeded = false;
+    try {
+        const rows = await db.select({ id: user.id }).from(user).limit(1);
+        bootstrapNeeded = rows.length === 0;
+    } catch {
+        bootstrapNeeded = false;
+    }
+    res.json({ selfRegistration: SELF_REGISTRATION_OPEN, bootstrapNeeded });
+});
+
 // POST /api/register — validated signup (blocks privilege self-assignment)
 router.post('/', async (req, res) => {
     const { name, email, password, role } = req.body;
