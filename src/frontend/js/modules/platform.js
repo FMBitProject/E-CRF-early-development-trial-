@@ -54,6 +54,7 @@ async function render() {
     }
 
     const { tenants, plans } = overview;
+    try { window._billing = await api.getBillingConfig(); } catch { window._billing = { enabled: false, plans: {} }; }
     const totals = tenants.reduce((a, t) => {
         a.studies += t.usage.studies; a.users += t.usage.users; a.subjects += t.usage.subjects;
         if (t.status === 'Active') a.active++;
@@ -207,6 +208,17 @@ window.openManageModal = function (id) {
             </div>
             <div class="flex items-center justify-between p-3 rounded-md bg-slate-50 border border-slate-200">
                 <div class="text-xs text-slate-500">
+                    <p class="font-semibold text-slate-700 mb-0.5">Billing</p>
+                    ${window._billing?.enabled
+                        ? `Send a checkout link for the selected plan (Stripe).`
+                        : `Billing not configured. Set STRIPE_SECRET_KEY + price ids to enable checkout.`}
+                </div>
+                ${window._billing?.enabled
+                    ? `<button onclick="startCheckout(${JSON.stringify(id)})" class="text-xs font-semibold px-3 py-1.5 rounded-md bg-blue-700 hover:bg-blue-800 text-white transition whitespace-nowrap">Start checkout</button>`
+                    : `<span class="text-xs text-slate-400 whitespace-nowrap">Disabled</span>`}
+            </div>
+            <div class="flex items-center justify-between p-3 rounded-md bg-slate-50 border border-slate-200">
+                <div class="text-xs text-slate-500">
                     <p class="font-semibold text-slate-700 mb-0.5">Data portability</p>
                     Export this tenant's data (GDPR / UU PDP). Clinical data stays under trial retention.
                 </div>
@@ -243,6 +255,18 @@ window.exportTenant = async function (id) {
         showToast('Export downloaded.', 'success');
     } catch (err) {
         showToast(err.message, 'error');
+    }
+};
+
+window.startCheckout = async function (id) {
+    // Use the plan currently selected in the manage modal.
+    const plan = document.getElementById('mng-plan')?.value || window._tenants[id]?.plan;
+    try {
+        const { url } = await api.startCheckout(id, plan);
+        window.open(url, '_blank');   // Stripe-hosted checkout
+    } catch (err) {
+        const errBox = document.getElementById('mng-error');
+        if (errBox) errBox.textContent = err.message; else showToast(err.message, 'error');
     }
 };
 

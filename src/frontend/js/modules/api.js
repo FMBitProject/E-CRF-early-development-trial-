@@ -1004,6 +1004,10 @@ export const api = {
     async exportOrganization(id, slug) {
         return apiDownload(`/api/organizations/${id}/export`, `tenant-${slug}-export.json`, 'application/json');
     },
+    async getBillingConfig()             { return apiFetch('/api/billing/config'); },
+    async startCheckout(orgId, plan) {
+        return apiFetch('/api/billing/checkout', { method: 'POST', body: JSON.stringify({ orgId, plan }) });
+    },
 
     // ── Subject-level Data Lock ───────────────────────────────
     async getSubjectLockStatus(subjectId) { return apiFetch(`/api/subjects/${subjectId}/lock-status`); },

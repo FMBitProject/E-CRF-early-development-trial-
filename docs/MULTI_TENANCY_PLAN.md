@@ -107,14 +107,31 @@ The single most important rule: **`admin` becomes org-scoped**; a brand-new
   operator-mediated tenant data bundle (JSON, no secrets). Erasure is Close +
   access revocation, since clinical data is under trial retention (~25 yr).
 
-**Not implemented (needs external services / product decisions):**
-- Actual billing/charging — requires a payment processor (Stripe/Xendit) and
-  its API keys + webhooks to drive `subscription_status`. The state model is in
-  place; wire a processor webhook to it.
-- Self-service onboarding UI + platform-operator console (frontend). Backend
-  provisioning endpoints exist; a `platform_owner` console UI is a frontend
-  build.
-- Per-tenant backups / status page — infrastructure concerns
+**Billing (Stripe) — implemented, activates when configured:**
+- `lib/billing.js`: webhook signature verification (HMAC, timestamp-tolerant)
+  and Stripe event → subscription mapping — pure, unit-tested (no SDK, no keys
+  needed to test). `organizations` stores `billing_customer_id` /
+  `billing_subscription_id`.
+- `routes/billing.js`: `POST /api/billing/webhook` (raw body, signature-
+  verified, drives plan + subscription_status), `POST /api/billing/checkout`
+  (platform_owner starts a Stripe Checkout for a tenant), `GET /api/billing/
+  config`. Inert (503) until `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` /
+  price ids are set — see `.env.example`.
+- Platform console surfaces billing status + a per-tenant "Start checkout".
+- Verified end-to-end offline: a signed `customer.subscription.updated` event
+  flips a tenant to plan=standard / status=Active; a tampered signature → 400.
+
+**Platform-operator console — implemented** (`platform.html` + `platform.js`):
+tenant overview with usage bars, provisioning, plan/lifecycle management, data
+export, and billing checkout.
+
+**Still deferred (product / infra decisions):**
+- Choosing/configuring the actual Stripe account, products, and prices, and a
+  tenant self-service customer portal (Stripe Billing Portal) — configuration,
+  not code.
+- Customer self-service signup UI (currently operator-mediated provisioning —
+  the safer default for a regulated EDC).
+- Per-tenant backups / public status page — infrastructure
   (see `docs/DEPLOYMENT_OPERATIONS.md`).
 
 ---

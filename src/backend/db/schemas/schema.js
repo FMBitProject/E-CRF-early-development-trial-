@@ -71,6 +71,8 @@ export const organizations = pgTable('organizations', {
     plan:        text('plan').default('standard'),           // trial | standard | enterprise
     subscriptionStatus: text('subscription_status').default('Active'), // Trialing | Active | PastDue | Canceled
     trialEndsAt: timestamp('trial_ends_at'),
+    billingCustomerId:     text('billing_customer_id'),     // e.g. Stripe customer id
+    billingSubscriptionId: text('billing_subscription_id'), // e.g. Stripe subscription id
     createdAt:   timestamp('created_at').notNull().defaultNow(),
     updatedAt:   timestamp('updated_at').notNull().defaultNow(),
 });

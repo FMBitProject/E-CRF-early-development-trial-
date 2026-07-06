@@ -17,6 +17,7 @@ import queriesRouter       from './routes/queries.js';
 import mfaRouter           from './routes/mfa.js';
 import registerRouter      from './routes/register.js';
 import organizationsRouter from './routes/organizations.js';
+import billingRouter, { handleBillingWebhook } from './routes/billing.js';
 import sitesRouter         from './routes/sites.js';
 import dashboardRouter     from './routes/dashboard.js';
 import signaturesRouter    from './routes/signatures.js';
@@ -889,6 +890,9 @@ async function runMigrations() {
         // Subscription state (Phase 4) — plan already exists; add billing status.
         `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS subscription_status TEXT DEFAULT 'Active'`,
         `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMP`,
+        // Billing processor linkage (Stripe customer/subscription ids).
+        `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS billing_customer_id TEXT`,
+        `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS billing_subscription_id TEXT`,
     ];
     for (const stmt of stmts) {
         try {
@@ -965,6 +969,10 @@ app.all('/api/auth/*', rateLimitAuth, (req, res, next) => {
 });
 app.all('/api/auth/*', toNodeHandler(auth));
 
+// Billing webhook needs the RAW body for Stripe signature verification — mount
+// it before express.json() so the payload isn't parsed/re-serialized.
+app.post('/api/billing/webhook', express.raw({ type: '*/*' }), handleBillingWebhook);
+
 app.use(express.json());
 
 // Auth-required API routes
@@ -977,6 +985,7 @@ app.use('/api/audit',      requireAuth, auditRouter);
 app.use('/api/forms',      requireAuth, formsRouter);
 app.use('/api/users',         requireAuth, userMgmtRouter);
 app.use('/api/organizations', requireAuth, organizationsRouter);   // platform_owner only (enforced in-router)
+app.use('/api/billing',       requireAuth, billingRouter);          // config + checkout (webhook mounted above, raw)
 app.use('/api/notifications', requireAuth, requireStudy, notificationsRouter);
 // Liveness — process is up (cheap, no dependencies).
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
