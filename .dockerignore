@@ -1,0 +1,16 @@
+# Never copy these into the image
+node_modules
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
+.DS_Store
+Dockerfile
+docker-compose.yml
+.dockerignore
+# scratch / local-only
+/tmp
+scratch*

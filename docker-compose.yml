@@ -1,0 +1,49 @@
+# E-CRF System — on-premise deployment (app + PostgreSQL).
+# One command:  docker compose up -d
+# Configure secrets in a .env file next to this file (see .env.example).
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-ecrf}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB:       ${POSTGRES_DB:-ecrf}
+    volumes:
+      - ecrf_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ecrf} -d ${POSTGRES_DB:-ecrf}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # App → db over the internal Docker network (no TLS needed inside the host).
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ecrf}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ecrf}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
+      BETTER_AUTH_URL:    ${BETTER_AUTH_URL:-http://localhost:3000}
+      # Access control — self-service signup off by default for on-prem.
+      ALLOW_SELF_REGISTRATION: ${ALLOW_SELF_REGISTRATION:-false}
+      ALLOW_TENANT_SIGNUP:     ${ALLOW_TENANT_SIGNUP:-false}
+      PLATFORM_OWNER_EMAIL:    ${PLATFORM_OWNER_EMAIL:-}
+      # SMTP (optional — email is skipped if SMTP_HOST is empty).
+      SMTP_HOST:   ${SMTP_HOST:-}
+      SMTP_PORT:   ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER:   ${SMTP_USER:-}
+      SMTP_PASS:   ${SMTP_PASS:-}
+      SMTP_FROM:   ${SMTP_FROM:-}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+
+volumes:
+  ecrf_pgdata:

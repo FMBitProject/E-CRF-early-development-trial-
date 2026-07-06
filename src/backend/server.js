@@ -1052,12 +1052,28 @@ app.get('/', (_req, res) => res.sendFile(path.join(rootDir, 'login.html')));
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
+// On a FRESH database (e.g. a new on-premise install) the core tables don't
+// exist yet — apply the drizzle base migrations once to create them. On an
+// existing install (core tables already present, possibly created via
+// drizzle-kit push with no tracking table) we skip this so migrate() never
+// tries to re-CREATE existing tables; runMigrations() then handles all
+// incremental columns/tables on top.
+async function ensureBaseSchema() {
+    const [{ exists }] = await client`SELECT to_regclass('public."user"') AS exists`;
+    if (exists) return;   // existing DB → leave the base schema alone
+    const { migrate } = await import('drizzle-orm/postgres-js/migrator');
+    const { db } = await import('./db/connection.js');
+    await migrate(db, { migrationsFolder: path.join(__dirname, 'db/migrations') });
+    console.log('Base schema created (fresh database).');
+}
+
 // Start listening immediately so the port is bound on deploy, then migrate in the background.
 // Per-statement try/catch inside runMigrations() ensures one failing DDL never blocks the rest.
 app.listen(PORT, () => {
     console.log(`E-CRF Server running on http://localhost:${PORT}`);
     console.log(`Better Auth endpoint: http://localhost:${PORT}/api/auth`);
-    runMigrations()
+    ensureBaseSchema()
+        .then(runMigrations)
         .then(() => console.log('DB migrations applied.'))
         .catch(err => console.warn('Migration warning (non-fatal):', err.message));
 });
