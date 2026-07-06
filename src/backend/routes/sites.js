@@ -6,6 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import { db, client } from '../db/connection.js';
 import { sites } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
+import { licenseGuardCreate } from '../lib/licenseguard.js';
 import { writeAudit } from '../lib/audit.js';
 import { orgCondition, sameOrg, effectiveOrgId } from '../lib/tenantscope.js';
 
@@ -62,7 +63,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/sites — create a new site (admin only)
-router.post('/', requireRole('admin'), async (req, res) => {
+router.post('/', licenseGuardCreate, requireRole('admin'), async (req, res) => {
     try {
         const { name, code, country, piName } = req.body;
         if (!name || !code) {

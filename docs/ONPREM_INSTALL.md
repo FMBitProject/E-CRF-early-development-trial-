@@ -131,7 +131,32 @@ curl http://localhost:3000/api/health
 
 ---
 
-## 6. Operasional harian
+## 6. Lisensi
+
+Aplikasi memerlukan **license key** dari penyedia (vendor). Tanpa lisensi aktif,
+pembuatan **data baru** (enroll subjek baru, membuat studi/site baru) **dinonaktifkan**
+— tetapi membaca, mengekspor, mengedit data yang sudah ada, dan pelaporan
+keselamatan (adverse event/SAE) **tetap berfungsi**. Data pasien tidak pernah terkunci.
+
+Cara memasang lisensi:
+1. Vendor mengirim Anda nilai `LICENSE_KEY` (teks panjang).
+2. Tempel ke file `.env`:  `LICENSE_KEY=<nilai-dari-vendor>`
+3. Terapkan:  `docker compose up -d`  (atau `docker compose restart app`).
+
+Cek status lisensi kapan saja (sebagai admin, setelah login):
+
+```bash
+curl -s http://localhost:3000/api/license/status -H "Cookie: <sesi-admin>"
+```
+
+atau lihat log saat boot — akan tertulis `License: active for "<nama>" (expires ...)`.
+
+Saat lisensi mendekati/melewati masa berlaku, hubungi vendor untuk perpanjangan;
+Anda hanya perlu mengganti `LICENSE_KEY` dengan yang baru lalu restart.
+
+---
+
+## 7. Operasional harian
 
 **Menghentikan aplikasi** (data tetap aman di volume):
 ```bash
@@ -157,7 +182,7 @@ Migrasi database berjalan otomatis saat boot — data lama tidak dihapus.
 
 ---
 
-## 7. Backup & restore database
+## 8. Backup & restore database
 
 Data pasien tersimpan di volume Docker `ecrf_pgdata`. **Backup rutin wajib.**
 
@@ -176,7 +201,7 @@ klinis). Jadwalkan lewat cron, mis. harian.
 
 ---
 
-## 8. Keamanan yang disarankan (produksi)
+## 9. Keamanan yang disarankan (produksi)
 
 - Letakkan aplikasi di belakang **reverse proxy dengan HTTPS** (Nginx/Caddy/Traefik)
   dan set `BETTER_AUTH_URL` ke URL HTTPS.
@@ -187,7 +212,7 @@ klinis). Jadwalkan lewat cron, mis. harian.
 
 ---
 
-## 9. Pemecahan masalah
+## 10. Pemecahan masalah
 
 | Gejala | Penyebab & solusi |
 |---|---|

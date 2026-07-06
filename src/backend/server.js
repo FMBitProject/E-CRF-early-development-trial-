@@ -55,6 +55,7 @@ import agreementsRouter      from './routes/agreements.js';
 import monitoringPlanRouter  from './routes/monitoringplan.js';
 import reportRouter          from './routes/report.js';
 import accessReviewRouter    from './routes/accessreview.js';
+import licenseRouter        from './routes/license.js';
 import { requireStudy }      from './middleware/study.js';
 import { rateLimitAuth, rateLimitTenant } from './middleware/ratelimit.js';
 
@@ -1033,6 +1034,7 @@ app.use('/api/bdreview',                 ...studyAuth, bdReviewRouter);
 // Phase 3 — Quality Management & Validation
 app.use('/api/qtl',                      ...studyAuth, qtlRouter);
 app.use('/api/sysval',                   requireAuth,  sysValRouter);
+app.use('/api/license',                  requireAuth,  licenseRouter);
 // ICH E6(R3) Gap Closure
 app.use('/api/screening',                ...studyAuth, screeningRouter);
 app.use('/api/ip',                       ...studyAuth, ipDispensingRouter);
@@ -1072,6 +1074,16 @@ async function ensureBaseSchema() {
 app.listen(PORT, () => {
     console.log(`E-CRF Server running on http://localhost:${PORT}`);
     console.log(`Better Auth endpoint: http://localhost:${PORT}/api/auth`);
+    if (process.env.LICENSE_ENFORCEMENT === 'true') {
+        import('./lib/license.js').then(({ getLicense }) => {
+            const lic = getLicense();
+            if (lic.active) {
+                console.log(`License: active for "${lic.customer}" (expires ${lic.expiresAt}).`);
+            } else {
+                console.warn(`License: NOT ACTIVE (${lic.reason}). New-record creation (enrollment/studies/sites) is blocked; reads/exports continue.`);
+            }
+        }).catch(() => {});
+    }
     ensureBaseSchema()
         .then(runMigrations)
         .then(() => console.log('DB migrations applied.'))

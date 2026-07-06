@@ -39,6 +39,11 @@ services:
       # even while self-registration is disabled. Set it to the customer's IT
       # administrator before first boot.
       ADMIN_EMAIL:             ${ADMIN_EMAIL:-}
+      # Licensing — on-prem enforces the license by default. When the license is
+      # missing/expired, creating NEW records (enrollment/studies/sites) is
+      # blocked; reads, exports, edits and safety reporting keep working.
+      LICENSE_ENFORCEMENT: ${LICENSE_ENFORCEMENT:-true}
+      LICENSE_KEY:         ${LICENSE_KEY:-}
       # SMTP (optional — email is skipped if SMTP_HOST is empty).
       SMTP_HOST:   ${SMTP_HOST:-}
       SMTP_PORT:   ${SMTP_PORT:-587}

@@ -1,3 +1,7 @@
 node_modules/
 .env
 TEST_ACCOUNTS.md
+
+# License signing keys — private key must never be committed
+license-keys/
+*.license.json

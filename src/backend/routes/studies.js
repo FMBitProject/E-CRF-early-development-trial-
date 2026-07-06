@@ -3,6 +3,7 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { studies, studyUsers, user as userTable } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
+import { licenseGuardCreate } from '../lib/licenseguard.js';
 import { writeAudit } from '../lib/audit.js';
 import { orgCondition, sameOrg, effectiveOrgId } from '../lib/tenantscope.js';
 import { checkLimit } from '../lib/plans.js';
@@ -43,7 +44,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/studies — create study (admin only)
-router.post('/', requireRole('admin'), async (req, res) => {
+router.post('/', licenseGuardCreate, requireRole('admin'), async (req, res) => {
     const { title, protocolNo, phase, sponsor, indication, startDate, endDate } = req.body;
     if (!title || !protocolNo) return res.status(400).json({ error: 'title and protocolNo are required' });
     try {

@@ -4,6 +4,7 @@ import { eq, and, desc } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { screeningLog, subjects, sites } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
+import { licenseGuardCreate } from '../lib/licenseguard.js';
 import { writeAudit } from '../lib/audit.js';
 
 const router = Router();
@@ -60,7 +61,7 @@ router.get('/stats', async (req, res) => {
 });
 
 // POST /api/screening
-router.post('/', requireRole('admin', 'investigator', 'pi', 'crc'), async (req, res) => {
+router.post('/', licenseGuardCreate, requireRole('admin', 'investigator', 'pi', 'crc'), async (req, res) => {
     try {
         const { screeningDate, screeningCode, subjectInitials, disposition,
                 failReason, eligibilityCriteria, notes, siteId } = req.body;

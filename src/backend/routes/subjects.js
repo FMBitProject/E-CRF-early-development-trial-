@@ -3,6 +3,7 @@ import { eq, ilike, and, count, sql } from 'drizzle-orm';
 import { db, client } from '../db/connection.js';
 import { subjects, sites, visits, ieAssessments, crfDataEntries, queries, subjectRandomization } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
+import { licenseGuardCreate } from '../lib/licenseguard.js';
 import { writeAudit } from '../lib/audit.js';
 import { siteCondition, subjectInSiteScope } from '../lib/sitescope.js';
 import { effectiveOrgId } from '../lib/tenantscope.js';
@@ -189,7 +190,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/subjects — enroll new subject (investigator, pi, admin, crc)
-router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, res) => {
+router.post('/', licenseGuardCreate, requireRole('investigator', 'pi', 'admin', 'crc'), async (req, res) => {
     try {
         const { subjectCode, siteId, initials, dateOfBirth, sex, genderIdentity, enrolledAt } = req.body;
         if (!subjectCode) return res.status(400).json({ error: 'subjectCode is required' });
