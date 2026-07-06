@@ -1047,10 +1047,10 @@ app.use('/api/access-review',            ...studyAuth, accessReviewRouter);
 // Serve ONLY the frontend assets — never the repo root, which would expose
 // source code, docs with test credentials, and the .git directory.
 app.use('/src/frontend', express.static(path.join(rootDir, 'src/frontend'), { dotfiles: 'deny' }));
-for (const page of ['login.html', 'index.html', 'register.html', 'select.html', 'platform.html', 'signup.html']) {
+for (const page of ['landing.html', 'login.html', 'index.html', 'register.html', 'select.html', 'platform.html', 'signup.html']) {
     app.get(`/${page}`, (_req, res) => res.sendFile(path.join(rootDir, page)));
 }
-app.get('/', (_req, res) => res.sendFile(path.join(rootDir, 'login.html')));
+app.get('/', (_req, res) => res.sendFile(path.join(rootDir, 'landing.html')));
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 

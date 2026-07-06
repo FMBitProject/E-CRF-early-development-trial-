@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-CRF System — Clinical Data Platform</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e3a5f'/%3E%3Cpath d='M10 9h8a5 5 0 0 1 0 10h-8zm2 2v6h6a3 3 0 0 0 0-6z' fill='white'/%3E%3Crect x='10' y='21' width='10' height='2' rx='1' fill='white'/%3E%3C/svg%3E">
+    <script src="src/frontend/vendor/tailwind-play.js"></script>
+    <script src="src/frontend/vendor/lucide.js"></script>
+    <link rel="stylesheet" href="src/frontend/css/style.css">
+</head>
+<body class="min-h-full flex flex-col bg-slate-50 text-slate-800">
+
+    <!-- ── Top bar ── -->
+    <header class="w-full">
+        <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background-color:#0A2E5C">
+                    <i data-lucide="clipboard-list" class="w-5 h-5 text-white"></i>
+                </div>
+                <div>
+                    <span class="text-sm font-bold tracking-tight text-slate-900">E-CRF System</span>
+                    <span class="block text-xs text-slate-500 leading-none mt-0.5">Clinical Data Platform</span>
+                </div>
+            </div>
+            <a href="login.html" class="btn-primary text-sm px-4 py-2 flex items-center gap-2">
+                <i data-lucide="log-in" class="w-4 h-4"></i> Sign in
+            </a>
+        </div>
+    </header>
+
+    <!-- ── Hero ── -->
+    <section class="login-left text-white">
+        <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+            <div class="max-w-2xl">
+                <span class="inline-flex items-center gap-2 text-xs font-medium text-blue-200 bg-white/10 border border-white/15 rounded-full px-3 py-1 mb-5">
+                    <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> 21 CFR Part 11 &middot; ICH GCP E6(R3)
+                </span>
+                <h1 class="text-4xl lg:text-5xl font-bold leading-tight mb-4">
+                    Electronic Case Report Form System
+                </h1>
+                <p class="text-blue-100 text-base lg:text-lg leading-relaxed mb-8">
+                    Secure, compliant clinical trial data management for investigational
+                    research sites, sponsors, and monitoring teams — with an immutable audit
+                    trail, electronic signatures, and role-based access control.
+                </p>
+                <div class="flex flex-wrap items-center gap-3">
+                    <a href="login.html" class="bg-white text-[#0A2E5C] font-semibold text-sm px-5 py-2.5 rounded-md hover:bg-blue-50 transition flex items-center gap-2">
+                        <i data-lucide="log-in" class="w-4 h-4"></i> Sign in
+                    </a>
+                    <!-- Register CTA — revealed conditionally (first-run admin or open registration). -->
+                    <a href="register.html" id="cta-register"
+                       class="hidden border border-white/40 text-white font-semibold text-sm px-5 py-2.5 rounded-md hover:bg-white/10 transition flex items-center gap-2">
+                        <i data-lucide="user-plus" class="w-4 h-4"></i>
+                        <span id="cta-register-text">Register</span>
+                    </a>
+                    <!-- SaaS free-trial CTA — revealed only when self-service tenant signup is enabled. -->
+                    <a href="signup.html" id="cta-signup"
+                       class="hidden border border-white/40 text-white font-semibold text-sm px-5 py-2.5 rounded-md hover:bg-white/10 transition flex items-center gap-2">
+                        <i data-lucide="rocket" class="w-4 h-4"></i> Start free trial
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Features ── -->
+    <section class="max-w-6xl mx-auto px-6 py-16 w-full">
+        <h2 class="text-xl font-bold text-slate-900 mb-2">Built for regulated clinical research</h2>
+        <p class="text-sm text-slate-500 mb-10">Compliance and data integrity at the core of every record.</p>
+        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div class="bg-white border border-slate-200 rounded-xl p-6">
+                <div class="w-10 h-10 rounded-lg flex items-center justify-center mb-4" style="background-color:#EAF1FB">
+                    <i data-lucide="file-check-2" class="w-5 h-5" style="color:#1554A0"></i>
+                </div>
+                <h3 class="font-semibold text-slate-900 mb-1">FDA 21 CFR Part 11</h3>
+                <p class="text-sm text-slate-500 leading-relaxed">Electronic records and signatures with attributable, verifiable e-sign workflows.</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-6">
+                <div class="w-10 h-10 rounded-lg flex items-center justify-center mb-4" style="background-color:#EAF1FB">
+                    <i data-lucide="clipboard-check" class="w-5 h-5" style="color:#1554A0"></i>
+                </div>
+                <h3 class="font-semibold text-slate-900 mb-1">ICH GCP E6(R3)</h3>
+                <p class="text-sm text-slate-500 leading-relaxed">Good Clinical Practice controls for data quality, traceability, and oversight.</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-6">
+                <div class="w-10 h-10 rounded-lg flex items-center justify-center mb-4" style="background-color:#EAF1FB">
+                    <i data-lucide="history" class="w-5 h-5" style="color:#1554A0"></i>
+                </div>
+                <h3 class="font-semibold text-slate-900 mb-1">Immutable Audit Trail</h3>
+                <p class="text-sm text-slate-500 leading-relaxed">Field-level change tracking — who, what, when, and why — that cannot be altered.</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-6">
+                <div class="w-10 h-10 rounded-lg flex items-center justify-center mb-4" style="background-color:#EAF1FB">
+                    <i data-lucide="shield-check" class="w-5 h-5" style="color:#1554A0"></i>
+                </div>
+                <h3 class="font-semibold text-slate-900 mb-1">Two-Factor Authentication</h3>
+                <p class="text-sm text-slate-500 leading-relaxed">TOTP-based MFA to protect access to sensitive trial data.</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-6">
+                <div class="w-10 h-10 rounded-lg flex items-center justify-center mb-4" style="background-color:#EAF1FB">
+                    <i data-lucide="users" class="w-5 h-5" style="color:#1554A0"></i>
+                </div>
+                <h3 class="font-semibold text-slate-900 mb-1">Role-Based Access Control</h3>
+                <p class="text-sm text-slate-500 leading-relaxed">Granular permissions for PI, investigator, CRA, CRC, and data management roles.</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-6">
+                <div class="w-10 h-10 rounded-lg flex items-center justify-center mb-4" style="background-color:#EAF1FB">
+                    <i data-lucide="server" class="w-5 h-5" style="color:#1554A0"></i>
+                </div>
+                <h3 class="font-semibold text-slate-900 mb-1">On-Premise or Cloud</h3>
+                <p class="text-sm text-slate-500 leading-relaxed">Self-host inside your institution so trial data never leaves your control.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Footer ── -->
+    <footer class="mt-auto border-t border-slate-200 bg-white">
+        <div class="max-w-6xl mx-auto px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+            <p class="flex items-center gap-1.5">
+                <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+                Restricted access — authorized personnel only. All access is logged and monitored.
+            </p>
+            <p>FDA 21 CFR Part 11 &middot; ICH GCP E6(R3) &middot; Secure &amp; Encrypted</p>
+        </div>
+    </footer>
+
+    <script>
+        lucide.createIcons();
+
+        // Reveal the Register CTA when registration is open OR on a fresh install
+        // that still needs its first administrator (on-prem bootstrap).
+        fetch('/api/register/config').then(r => r.json()).then(c => {
+            if (!c.selfRegistration && !c.bootstrapNeeded) return;
+            if (c.bootstrapNeeded) {
+                document.getElementById('cta-register-text').textContent = 'Create administrator account';
+            }
+            document.getElementById('cta-register')?.classList.remove('hidden');
+        }).catch(() => {});
+
+        // Reveal the free-trial CTA only when self-service tenant signup is enabled.
+        fetch('/api/signup/config').then(r => r.json()).then(c => {
+            if (c.enabled) document.getElementById('cta-signup')?.classList.remove('hidden');
+        }).catch(() => {});
+    </script>
+</body>
+</html>
