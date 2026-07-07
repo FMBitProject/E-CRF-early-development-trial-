@@ -208,14 +208,43 @@ window.umDoInvite = async () => {
     if (!name || !email) return showToast('Name and email are required', 'error');
 
     try {
-        await api.request('/api/users/invite', {
+        const created = await api.request('/api/users/invite', {
             method: 'POST',
             body: JSON.stringify({ name, email, role, siteId }),
         });
-        showToast(`Invite sent to ${email}`, 'success');
         closeModal();
         _users = await api.request('/api/users');
         renderList(_users);
+        if (created.tempPassword) {
+            // No SMTP configured — show the one-time credential to the admin.
+            showModal({
+                title: 'User created — temporary password',
+                size:  'sm',
+                body: `
+                  <div class="space-y-3">
+                    <p class="text-sm text-slate-600">
+                      Email is not configured on this server, so no invite email was sent.
+                      Give this temporary password to <b>${esc(name)}</b> (${esc(email)}) directly.
+                      They must change it on first login.
+                    </p>
+                    <div class="flex items-center gap-2">
+                      <code id="um-temp-pass" class="flex-1 text-sm font-mono bg-slate-100 border border-slate-200 rounded px-3 py-2 select-all">${esc(created.tempPassword)}</code>
+                      <button onclick="navigator.clipboard.writeText(document.getElementById('um-temp-pass').textContent).then(()=>window.showToast('Copied','success'))"
+                        class="ph-btn ph-btn-secondary text-xs flex items-center gap-1">
+                        <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy
+                      </button>
+                    </div>
+                    <p class="text-xs text-amber-600 flex items-center gap-1">
+                      <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
+                      Shown only once — it cannot be retrieved later.
+                    </p>
+                  </div>`,
+                footer: `<button onclick="window.closeModal()" class="ph-btn ph-btn-primary text-sm">Done</button>`,
+            });
+            lucide.createIcons();
+        } else {
+            showToast(`Invite sent to ${email}`, 'success');
+        }
     } catch (err) {
         showToast(err.message, 'error');
     }

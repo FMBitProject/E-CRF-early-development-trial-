@@ -250,13 +250,17 @@ router.post('/invite', requireRole('admin'), async (req, res) => {
             mustChange:    true,
         }).onConflictDoNothing();
 
-        // Send invite email (fire-and-forget)
-        sendUserInviteEmail(email, name, {
-            tempPassword,
-            role:     role ?? 'investigator',
-            invitedBy: req.user.name,
-            appUrl:   process.env.BETTER_AUTH_URL ?? 'http://localhost:3000',
-        }).catch(() => {});
+        // Send invite email (fire-and-forget). Without SMTP configured the email
+        // is silently skipped, so the temp password must reach the admin instead.
+        const emailEnabled = !!process.env.SMTP_HOST;
+        if (emailEnabled) {
+            sendUserInviteEmail(email, name, {
+                tempPassword,
+                role:     role ?? 'investigator',
+                invitedBy: req.user.name,
+                appUrl:   process.env.BETTER_AUTH_URL ?? 'http://localhost:3000',
+            }).catch(() => {});
+        }
 
         await writeAudit(db, {
             tableName: 'user', recordId: newUserId, action: 'INSERT',
@@ -271,7 +275,10 @@ router.post('/invite', requireRole('admin'), async (req, res) => {
             email: email.toLowerCase().trim(),
             role:  role ?? 'investigator',
             siteId: siteId ?? null,
-            tempPasswordSent: true,
+            tempPasswordSent: emailEnabled,
+            // No SMTP → show the one-time credential to the inviting admin so
+            // they can hand it over out-of-band (it is must-change on first login).
+            ...(emailEnabled ? {} : { tempPassword }),
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
