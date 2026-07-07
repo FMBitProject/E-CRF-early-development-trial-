@@ -107,6 +107,11 @@ async function runMigrations() {
         `CREATE INDEX IF NOT EXISTS idx_queries_status ON queries (status)`,
         // Performance: index for subjects by status (dashboard active count)
         `CREATE INDEX IF NOT EXISTS idx_subjects_status ON subjects (status)`,
+        // Gender identity column (FDA 2023 / ICH E3). Migration 0002 adds this,
+        // but the drizzle journal only registers 0000/0001, so migrate() skips it
+        // on a fresh install — add it idempotently here so every DB (fresh or
+        // existing) has the column the subjects query selects.
+        `ALTER TABLE subjects ADD COLUMN IF NOT EXISTS gender_identity varchar(50)`,
         // Tier 1 — Adverse Events / SAE
         `CREATE TABLE IF NOT EXISTS adverse_events (
             id                        SERIAL PRIMARY KEY,
