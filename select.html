@@ -305,10 +305,60 @@
 
         function showError(title, msg) {
             hide($loading); hide($panelStudy); hide($panelSite); hide($panelName);
+            document.getElementById('pg-gate')?.remove();   // clear any injected password form
             $errorTitle.textContent = title;
             $errorMsg.textContent   = msg;
             show($error);
             lucide.createIcons();
+        }
+
+        // First login with a temporary password: the API blocks everything until
+        // the password is changed, so offer the change form right here instead of
+        // dead-ending on "Could not load studies".
+        function showPasswordChangeGate() {
+            showError('Set your new password', 'You signed in with a temporary password. Choose your own password to continue.');
+            $error.insertAdjacentHTML('beforeend', `
+                <div id="pg-gate" class="mt-5 max-w-sm mx-auto text-left space-y-3">
+                    <div>
+                        <label for="pg-current" class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Temporary Password</label>
+                        <input id="pg-current" type="password" autocomplete="current-password"
+                            class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                    </div>
+                    <div>
+                        <label for="pg-new" class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">New Password</label>
+                        <input id="pg-new" type="password" autocomplete="new-password" placeholder="Min. 8 characters, mixed case + number"
+                            class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                    </div>
+                    <div>
+                        <label for="pg-confirm" class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Confirm New Password</label>
+                        <input id="pg-confirm" type="password" autocomplete="new-password"
+                            class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                    </div>
+                    <div id="pg-errors" class="text-xs text-red-600 space-y-0.5"></div>
+                    <button id="pg-submit"
+                        class="w-full flex items-center justify-center gap-2 btn-primary py-2.5 px-4 text-sm rounded-md">
+                        <i data-lucide="key-round" class="w-4 h-4"></i> Change Password & Continue
+                    </button>
+                </div>`);
+            lucide.createIcons();
+            document.getElementById('pg-submit').addEventListener('click', async () => {
+                const current = document.getElementById('pg-current').value;
+                const next    = document.getElementById('pg-new').value;
+                const confirm = document.getElementById('pg-confirm').value;
+                const errBox  = document.getElementById('pg-errors');
+                errBox.innerHTML = '';
+                if (!current || !next) { errBox.textContent = 'All fields are required.'; return; }
+                if (next !== confirm)  { errBox.textContent = 'New passwords do not match.'; return; }
+                try {
+                    await api.changePassword(current, next);
+                    loadStudies();   // gate lifted — continue the normal flow
+                } catch (err) {
+                    const details = err.details || err.data?.details;
+                    errBox.innerHTML = Array.isArray(details) && details.length
+                        ? details.map(d => `<p>• ${String(d).replace(/</g, '&lt;')}</p>`).join('')
+                        : `<p>${String(err.message || 'Password change failed.').replace(/</g, '&lt;')}</p>`;
+                }
+            });
         }
 
         const DOT_DONE    = 'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-blue-100 text-blue-600';
@@ -375,6 +425,10 @@
             try {
                 allStudies = await api.getStudies();
             } catch (e) {
+                if (e.data?.mustChangePassword || /password change required/i.test(e.message || '')) {
+                    showPasswordChangeGate();
+                    return;
+                }
                 showError('Could not load studies', e.message || 'Server error. Please try again.');
                 return;
             }

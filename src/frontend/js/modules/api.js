@@ -43,11 +43,17 @@ async function apiFetch(path, options = {}) {
             }
         }
         const err = await res.json().catch(() => ({ error: 'Unauthorized' }));
-        throw new Error(err.error || 'Unauthorized');
+        const e401 = new Error(err.error || 'Unauthorized');
+        e401.data = err; e401.details = err.details;
+        throw e401;
     }
     if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err.error || 'Request failed');
+        // Keep the full payload so callers can react to flags
+        // (e.g. mustChangePassword) and show policy details.
+        const e = new Error(err.error || 'Request failed');
+        e.data = err; e.details = err.details;
+        throw e;
     }
     return res.json();
 }
