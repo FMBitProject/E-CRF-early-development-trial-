@@ -106,7 +106,12 @@ function renderList(users) {
                            <i data-lucide="flask-conical" class="w-3 h-3 text-blue-400"></i>
                            <span class="text-blue-600">${esc(a.protocolNo)}</span>
                          </span>`).join('<span class="text-slate-200 text-xs">·</span>')
-                    : '<span class="text-xs text-slate-300">No site assigned</span>'}
+                    : (u.siteName
+                        ? `<span class="text-xs text-slate-500 flex items-center gap-1">
+                             <i data-lucide="building-2" class="w-3 h-3 text-emerald-500"></i>
+                             <span>${esc(u.siteName)}</span>
+                           </span>`
+                        : '<span class="text-xs text-slate-300">No site assigned</span>')}
                 ${studyList && !(u.siteAssignments ?? []).length ? `<span class="text-xs text-slate-500 flex items-center gap-1"><i data-lucide="flask-conical" class="w-3 h-3"></i>${esc(studyList)}</span>` : ''}
               </div>
             </div>
