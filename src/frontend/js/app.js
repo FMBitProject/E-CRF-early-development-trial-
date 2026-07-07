@@ -87,6 +87,15 @@ function getAppState() {
     };
 }
 
+// Admin setup routes (creating the FIRST study/site) must stay reachable even
+// before any study/site/display-name exists — otherwise a fresh install
+// deadlocks: you can't select a study because none exist, yet you can't reach
+// Study Management to create one. Only admins can hit these routes anyway.
+function isAdminSetupRoute() {
+    const hash = (window.location.hash || '').replace(/^#/, '').split(/[/?]/)[0];
+    return user.role === 'admin' && (hash === 'studymgmt' || hash === 'sites');
+}
+
 // ---- Sidebar ----
 function renderSidebar(currentRoute) {
     const nav        = document.getElementById('sidebar-nav');
@@ -582,7 +591,7 @@ let _appReady = false;
 
 function navigateByState() {
     const { hasStudy, hasSite } = getAppState();
-    if (!hasStudy || !hasSite || !user.displayName) {
+    if (!isAdminSetupRoute() && (!hasStudy || !hasSite || !user.displayName)) {
         window.location.replace('select.html');
         return;
     }
@@ -611,9 +620,10 @@ window.addEventListener('site-context-changed', () => {
     }
 });
 
-// If no study+site context, or display name not yet set → redirect to selection/name page
+// If no study+site context, or display name not yet set → redirect to selection/name page.
+// Exception: admins may open the study/site setup routes to create the first ones.
 const _initState = getAppState();
-if (!_initState.hasStudy || !_initState.hasSite || !user.displayName) {
+if (!isAdminSetupRoute() && (!_initState.hasStudy || !_initState.hasSite || !user.displayName)) {
     window.location.replace('select.html');
     throw new Error('Redirecting to study/site selection');
 }
