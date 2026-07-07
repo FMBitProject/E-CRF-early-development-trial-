@@ -4,6 +4,7 @@ import { db } from '../db/connection.js';
 import { studies, studyUsers, user as userTable } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { licenseGuardCreate } from '../lib/licenseguard.js';
+import { isUniqueViolation } from '../lib/dberrors.js';
 import { writeAudit } from '../lib/audit.js';
 import { orgCondition, sameOrg, effectiveOrgId } from '../lib/tenantscope.js';
 import { checkLimit } from '../lib/plans.js';
@@ -68,8 +69,9 @@ router.post('/', licenseGuardCreate, requireRole('admin'), async (req, res) => {
         await writeAudit(db, { tableName: 'studies', recordId: row.id, action: 'INSERT', newValue: row.title, reason: 'Study created', user: req.user, ipAddress: req.ip });
         res.status(201).json(row);
     } catch (err) {
-        if (err.code === '23505') return res.status(409).json({ error: 'Protocol number already exists' });
-        res.status(500).json({ error: err.message });
+        if (isUniqueViolation(err)) return res.status(409).json({ error: 'Protocol number already exists. Please use a different protocol number.' });
+        console.error('Create study failed:', err);
+        res.status(500).json({ error: 'Could not create the study due to a server error. Please try again or contact your administrator.' });
     }
 });
 
@@ -98,8 +100,9 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
         await writeAudit(db, { tableName: 'studies', recordId: id, action: 'UPDATE', newValue: JSON.stringify(updates), reason: 'Study updated', user: req.user, ipAddress: req.ip });
         res.json(row);
     } catch (err) {
-        if (err.code === '23505') return res.status(409).json({ error: 'Protocol number already exists' });
-        res.status(500).json({ error: err.message });
+        if (isUniqueViolation(err)) return res.status(409).json({ error: 'Protocol number already exists. Please use a different protocol number.' });
+        console.error('Update study failed:', err);
+        res.status(500).json({ error: 'Could not update the study due to a server error. Please try again or contact your administrator.' });
     }
 });
 

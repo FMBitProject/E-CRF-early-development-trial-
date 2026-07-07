@@ -7,6 +7,7 @@ import { db, client } from '../db/connection.js';
 import { sites } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { licenseGuardCreate } from '../lib/licenseguard.js';
+import { isUniqueViolation } from '../lib/dberrors.js';
 import { writeAudit } from '../lib/audit.js';
 import { orgCondition, sameOrg, effectiveOrgId } from '../lib/tenantscope.js';
 
@@ -88,10 +89,11 @@ router.post('/', licenseGuardCreate, requireRole('admin'), async (req, res) => {
 
         res.status(201).json(site);
     } catch (err) {
-        if (err.message?.includes('unique') || err.code === '23505') {
-            return res.status(409).json({ error: 'Site code already exists' });
+        if (isUniqueViolation(err)) {
+            return res.status(409).json({ error: 'Site code already exists. Please use a different site code.' });
         }
-        res.status(500).json({ error: err.message });
+        console.error('Create site failed:', err);
+        res.status(500).json({ error: 'Could not create the site due to a server error. Please try again or contact your administrator.' });
     }
 });
 

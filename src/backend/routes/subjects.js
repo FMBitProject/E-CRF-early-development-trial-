@@ -4,6 +4,7 @@ import { db, client } from '../db/connection.js';
 import { subjects, sites, visits, ieAssessments, crfDataEntries, queries, subjectRandomization } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { licenseGuardCreate } from '../lib/licenseguard.js';
+import { isUniqueViolation } from '../lib/dberrors.js';
 import { writeAudit } from '../lib/audit.js';
 import { siteCondition, subjectInSiteScope } from '../lib/sitescope.js';
 import { effectiveOrgId } from '../lib/tenantscope.js';
@@ -229,10 +230,11 @@ router.post('/', licenseGuardCreate, requireRole('investigator', 'pi', 'admin', 
 
         res.status(201).json(created);
     } catch (err) {
-        if (err.message.includes('unique') || err.message.includes('duplicate')) {
-            return res.status(409).json({ error: 'Subject code already exists in this study.' });
+        if (isUniqueViolation(err)) {
+            return res.status(409).json({ error: 'Subject number already exists in this study. Please use a different subject number.' });
         }
-        res.status(500).json({ error: err.message });
+        console.error('Enroll subject failed:', err);
+        res.status(500).json({ error: 'Could not enroll the subject due to a server error. Please try again or contact your administrator.' });
     }
 });
 
