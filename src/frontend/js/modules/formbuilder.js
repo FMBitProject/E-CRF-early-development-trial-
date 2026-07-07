@@ -173,17 +173,13 @@ function renderFieldList() {
             <i data-lucide="chevron-down" class="w-3 h-3"></i>
           </button>
         </div>
-        <div class="flex-1 grid grid-cols-3 gap-2">
+        <div class="flex-1 grid grid-cols-2 gap-2">
           <div>
-            <label class="ph-label text-xs">Key *</label>
-            <input class="ph-input text-xs" value="${f.key}" onchange="window.fbUpdateField(${i},'key',this.value)" placeholder="snake_case">
+            <label class="ph-label text-xs">Question / Label *</label>
+            <input class="ph-input text-xs" value="${f.label}" onchange="window.fbUpdateField(${i},'label',this.value)" placeholder="e.g. Serum Creatinine">
           </div>
           <div>
-            <label class="ph-label text-xs">Label *</label>
-            <input class="ph-input text-xs" value="${f.label}" onchange="window.fbUpdateField(${i},'label',this.value)" placeholder="Display label">
-          </div>
-          <div>
-            <label class="ph-label text-xs">Type *</label>
+            <label class="ph-label text-xs">Answer Type *</label>
             <select class="ph-input text-xs" onchange="window.fbUpdateField(${i},'type',this.value)">
               ${FIELD_TYPES.map(t => `<option value="${t.value}" ${f.type === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}
             </select>
@@ -204,24 +200,6 @@ function renderFieldList() {
         </label>
         <div class="flex-1">
           <input class="ph-input text-xs" value="${f.placeholder ?? ''}" onchange="window.fbUpdateField(${i},'placeholder',this.value)" placeholder="Placeholder text (optional)">
-        </div>
-      </div>
-      <div class="flex items-center gap-2 pl-6 flex-wrap">
-        <div class="flex items-center gap-1">
-          <span class="text-xs text-slate-400 whitespace-nowrap">CDASH:</span>
-          <input class="ph-input text-xs w-24" value="${f.cdashVar ?? ''}"
-                 onchange="window.fbUpdateField(${i},'cdashVar',this.value)"
-                 placeholder="e.g. AESTDTC" title="CDASH variable name">
-        </div>
-        <div class="flex items-center gap-1">
-          <span class="text-xs text-slate-400 whitespace-nowrap">SDTM:</span>
-          <input class="ph-input text-xs w-20" value="${f.sdtmDomain ?? ''}"
-                 onchange="window.fbUpdateField(${i},'sdtmDomain',this.value)"
-                 placeholder="AE" title="SDTM domain (e.g. AE, CM, VS)">
-          <span class="text-xs text-slate-300">.</span>
-          <input class="ph-input text-xs w-24" value="${f.sdtmVar ?? ''}"
-                 onchange="window.fbUpdateField(${i},'sdtmVar',this.value)"
-                 placeholder="AETERM" title="SDTM variable name">
         </div>
       </div>
       ${(f.type === 'number') ? `
@@ -265,41 +243,69 @@ function renderFieldList() {
           <span class="text-slate-400">(reject values not in the list above)</span>
         </label>
       </div>` : ''}
-      ${(f.type === 'text' || f.type === 'textarea') ? `
-      <div class="pl-6 space-y-1.5">
-        <div class="flex gap-2">
-          <div class="flex-1">
-            <label class="ph-label text-xs">Pattern (regex)</label>
-            <input class="ph-input text-xs font-mono" value="${f.pattern ?? ''}" onchange="window.fbUpdateField(${i},'pattern',this.value||null)" placeholder="e.g. ^[A-Z]{2}\\d{4}$">
-          </div>
-          <div class="flex-1">
-            <label class="ph-label text-xs">Pattern error message</label>
-            <input class="ph-input text-xs" value="${f.patternMessage ?? ''}" onchange="window.fbUpdateField(${i},'patternMessage',this.value||null)" placeholder="e.g. Must be 2 letters + 4 digits">
-          </div>
-        </div>
-      </div>` : ''}
       <div class="pl-6">
         <details class="group">
           <summary class="text-xs text-slate-400 cursor-pointer hover:text-slate-600 select-none list-none flex items-center gap-1">
             <i data-lucide="chevron-right" class="w-3 h-3 transition-transform group-open:rotate-90"></i>
-            Conditional required rule
-            ${f.conditionalRequired?.ifField ? `<span class="ml-1 px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">active</span>` : ''}
+            Advanced <span class="text-slate-300">(optional — for data managers)</span>
+            ${(f.cdashVar || f.sdtmDomain || f.sdtmVar || f.pattern || f.conditionalRequired?.ifField)
+                ? `<span class="ml-1 px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">configured</span>` : ''}
           </summary>
-          <div class="mt-2 flex gap-2 items-end">
-            <div class="flex-1">
-              <label class="ph-label text-xs">Required if field key</label>
-              <input class="ph-input text-xs font-mono" value="${f.conditionalRequired?.ifField ?? ''}"
-                     onchange="window.fbUpdateConditional(${i},'ifField',this.value)"
-                     placeholder="other_field_key">
+          <div class="mt-2 space-y-3">
+            <div class="flex items-center gap-2 flex-wrap">
+              <div class="flex items-center gap-1" title="Internal field ID used in exports & queries. Auto-generated from the label.">
+                <span class="text-xs text-slate-400 whitespace-nowrap">Field ID:</span>
+                <input class="ph-input text-xs w-40 font-mono" value="${f.key}"
+                       onchange="window.fbUpdateField(${i},'key',this.value)" placeholder="auto-generated">
+              </div>
+              <div class="flex items-center gap-1">
+                <span class="text-xs text-slate-400 whitespace-nowrap" title="CDISC CDASH variable mapping (for standards-compliant export)">CDASH:</span>
+                <input class="ph-input text-xs w-24" value="${f.cdashVar ?? ''}"
+                       onchange="window.fbUpdateField(${i},'cdashVar',this.value)"
+                       placeholder="e.g. AESTDTC" title="CDASH variable name">
+              </div>
+              <div class="flex items-center gap-1">
+                <span class="text-xs text-slate-400 whitespace-nowrap" title="CDISC SDTM domain.variable mapping (for standards-compliant export)">SDTM:</span>
+                <input class="ph-input text-xs w-20" value="${f.sdtmDomain ?? ''}"
+                       onchange="window.fbUpdateField(${i},'sdtmDomain',this.value)"
+                       placeholder="AE" title="SDTM domain (e.g. AE, CM, VS)">
+                <span class="text-xs text-slate-300">.</span>
+                <input class="ph-input text-xs w-24" value="${f.sdtmVar ?? ''}"
+                       onchange="window.fbUpdateField(${i},'sdtmVar',this.value)"
+                       placeholder="AETERM" title="SDTM variable name">
+              </div>
             </div>
-            <div class="flex items-center text-xs text-slate-400 pb-2">=</div>
-            <div class="flex-1">
-              <label class="ph-label text-xs">equals value</label>
-              <input class="ph-input text-xs" value="${f.conditionalRequired?.ifValue ?? ''}"
-                     onchange="window.fbUpdateConditional(${i},'ifValue',this.value)"
-                     placeholder="Yes">
+            ${(f.type === 'text' || f.type === 'textarea') ? `
+            <div class="flex gap-2">
+              <div class="flex-1">
+                <label class="ph-label text-xs">Input format rule (regex)</label>
+                <input class="ph-input text-xs font-mono" value="${f.pattern ?? ''}" onchange="window.fbUpdateField(${i},'pattern',this.value||null)" placeholder="e.g. ^[A-Z]{2}\\d{4}$">
+              </div>
+              <div class="flex-1">
+                <label class="ph-label text-xs">Message shown when format is wrong</label>
+                <input class="ph-input text-xs" value="${f.patternMessage ?? ''}" onchange="window.fbUpdateField(${i},'patternMessage',this.value||null)" placeholder="e.g. Must be 2 letters + 4 digits">
+              </div>
+            </div>` : ''}
+            <div>
+              <p class="text-xs text-slate-500 mb-1">Conditionally required — make this field required only when another field has a certain answer
+                ${f.conditionalRequired?.ifField ? `<span class="ml-1 px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">active</span>` : ''}</p>
+              <div class="flex gap-2 items-end">
+                <div class="flex-1">
+                  <label class="ph-label text-xs">Required if field (Field ID)</label>
+                  <input class="ph-input text-xs font-mono" value="${f.conditionalRequired?.ifField ?? ''}"
+                         onchange="window.fbUpdateConditional(${i},'ifField',this.value)"
+                         placeholder="other_field_id">
+                </div>
+                <div class="flex items-center text-xs text-slate-400 pb-2">=</div>
+                <div class="flex-1">
+                  <label class="ph-label text-xs">equals value</label>
+                  <input class="ph-input text-xs" value="${f.conditionalRequired?.ifValue ?? ''}"
+                         onchange="window.fbUpdateConditional(${i},'ifValue',this.value)"
+                         placeholder="Yes">
+                </div>
+                <button onclick="window.fbClearConditional(${i})" class="pb-2 text-xs text-red-400 hover:text-red-600" title="Clear rule">✕</button>
+              </div>
             </div>
-            <button onclick="window.fbClearConditional(${i})" class="pb-2 text-xs text-red-400 hover:text-red-600" title="Clear rule">✕</button>
           </div>
         </details>
       </div>
@@ -325,8 +331,21 @@ window.fbMoveField = (i, dir) => {
     renderFieldList();
 };
 
+// Derive a machine key from a human label ("Serum Creatinine" → "serum_creatinine")
+// so form designers never have to know what snake_case is.
+function slugifyKey(label) {
+    const s = (label || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    return /^[a-z_]/.test(s) ? s : (s ? `f_${s}` : '');
+}
+
 window.fbUpdateField = (i, key, value) => {
-    _fields[i] = { ..._fields[i], [key]: value };
+    const prev = _fields[i];
+    _fields[i] = { ...prev, [key]: value };
+    // Auto-generate the field key from the label unless the user customized it.
+    if (key === 'label' && (!prev.key || prev.key === slugifyKey(prev.label))) {
+        _fields[i].key = slugifyKey(value);
+        renderFieldList();
+    }
     if (key === 'type') renderFieldList(); // re-render for type-specific inputs
 };
 
@@ -360,11 +379,11 @@ window.fbSave = async () => {
     // Validate fields
     for (let i = 0; i < _fields.length; i++) {
         const f = _fields[i];
-        if (!f.key)   return showToast(`Field ${i + 1}: key is required`, 'error');
-        if (!f.label) return showToast(`Field ${i + 1}: label is required`, 'error');
-        if (!f.type)  return showToast(`Field ${i + 1}: type is required`, 'error');
+        if (!f.label) return showToast(`Field ${i + 1}: please fill in the question/label`, 'error');
+        if (!f.key) f.key = slugifyKey(f.label);   // auto-derive — designers never type keys
+        if (!f.type)  return showToast(`Field ${i + 1}: please choose an answer type`, 'error');
         if (!f.key.match(/^[a-z_][a-z0-9_]*$/))
-            return showToast(`Field ${i + 1}: key must be snake_case (lowercase letters, digits, underscores)`, 'error');
+            return showToast(`Field ${i + 1}: the Field ID (under Advanced) may only contain lowercase letters, digits and underscores`, 'error');
     }
 
     if (_editForm && !reason) return showToast('Reason for change is required', 'error');
