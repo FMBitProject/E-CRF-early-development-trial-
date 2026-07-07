@@ -291,6 +291,12 @@ window.umEditUser = async (userId) => {
 
           <!-- Existing assignments list -->
           <div id="um-site-list-${userId}" class="space-y-1.5">
+            ${u.siteName && !siteAssignments.some(a => a.siteId === u.siteId) ? `
+              <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-100">
+                <i data-lucide="building-2" class="w-3.5 h-3.5 text-emerald-500 flex-shrink-0"></i>
+                <span class="text-xs font-semibold text-slate-700">${esc(u.siteName)}</span>
+                <span class="text-xs text-slate-400">— primary site</span>
+              </div>` : ''}
             ${siteAssignments.length ? siteAssignments.map(a => `
               <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-100">
                 <i data-lucide="building-2" class="w-3.5 h-3.5 text-emerald-500 flex-shrink-0"></i>
@@ -306,7 +312,7 @@ window.umEditUser = async (userId) => {
                   <i data-lucide="x" class="w-3 h-3"></i> Remove
                 </button>
               </div>`) .join('')
-            : '<p class="text-xs text-slate-400 py-1">No site assignments yet.</p>'}
+            : (u.siteName ? '' : '<p class="text-xs text-slate-400 py-1">No site assignments yet.</p>')}
           </div>
 
           <!-- Add new assignment -->
