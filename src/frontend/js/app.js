@@ -26,48 +26,55 @@ if (user.role === 'platform_owner') {
 // ---- Navigation Config ----
 const DM = 'data_manager';
 
+// Sidebar sections — shown as headers so 30+ modules read as a workflow, not a
+// wall of tabs. "Daily work" is the required core flow; the rest support it.
+const NAV_SECTIONS = [
+    { id: 'core',       label: 'Daily Clinical Work' },
+    { id: 'safety',     label: 'Safety' },
+    { id: 'quality',    label: 'Monitoring & Data Quality' },
+    { id: 'compliance', label: 'Compliance & Documents' },
+    { id: 'setup',      label: 'Study Setup · one-time' },
+];
+
 const NAV_ITEMS = [
-    { id: 'dashboard',      label: 'Dashboard',       icon: 'layout-dashboard', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
-    { id: 'subjects',       label: 'Subjects',        icon: 'users',            roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
-    // ── Phase 1: Core Clinical Modules ────────────────────────────────────────
-    { id: 'medhistory',     label: 'Medical History', icon: 'file-heart',       roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
-    { id: 'conmeds',        label: 'Con. Medications',icon: 'pill',             roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
-    { id: 'vitalsigns',     label: 'Vital Signs',     icon: 'heart-pulse',      roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
-    { id: 'lab',            label: 'Laboratory',      icon: 'test-tube-2',      roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
-    // ── Safety & Compliance ───────────────────────────────────────────────────
-    { id: 'ae',             label: 'Adverse Events',  icon: 'activity',         roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
-    { id: 'deviations',     label: 'Deviations',      icon: 'alert-triangle',   roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
-    { id: 'consents',       label: 'Consent',         icon: 'file-check',       roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
-    { id: 'randomization',  label: 'Randomization',   icon: 'shuffle',          roles: ['admin', 'investigator', 'pi'] },
-    { id: 'queries',        label: 'Queries',         icon: 'message-square',   roles: ['admin', 'cra', 'investigator', 'pi', 'crc', DM] },
-    // ── Phase 2: Regulatory ───────────────────────────────────────────────────
-    { id: 'amendments',     label: 'Amendments',      icon: 'file-pen',         roles: ['admin', 'pi', 'cra', DM] },
-    { id: 'bdreview',       label: 'Blind Review',    icon: 'eye-off',          roles: ['admin', 'cra', 'pi', DM] },
-    // ── Operations ────────────────────────────────────────────────────────────
-    { id: 'audit',          label: 'Audit Trail',     icon: 'shield-check',     roles: ['admin', 'cra', 'pi', DM] },
-    { id: 'dblock',         label: 'DB Lock',         icon: 'lock',             roles: ['admin', 'cra', 'pi', DM] },
-    { id: 'delegation',     label: 'Delegation',      icon: 'user-check',       roles: ['admin', 'cra', 'pi', DM] },
-    { id: 'saereports',     label: 'SAE Reports',     icon: 'alert-octagon',    roles: ['admin', 'cra', 'pi', DM] },
-    { id: 'monitoring',     label: 'Monitoring',      icon: 'clipboard-check',  roles: ['admin', 'cra', 'pi', DM] },
-    { id: 'datastatus',     label: 'Data Status',     icon: 'table-2',          roles: ['admin', 'cra', 'pi', DM] },
-    // ── Phase 3: Quality Management ───────────────────────────────────────────
-    { id: 'csm',            label: 'CSM / KRI',         icon: 'bar-chart-3',      roles: ['admin', 'cra', 'pi', DM] },
-    { id: 'qtl',            label: 'QTL Thresholds',    icon: 'sliders-horizontal',roles: ['admin', 'cra', 'pi', DM] },
-    // ── ICH E6(R3) Gap Closure ───────────────────────────────────────────────────
-    { id: 'screening',      label: 'Screening Log',   icon: 'clipboard-list',   roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
-    { id: 'ipdispensing',   label: 'IP Accountability',icon: 'package',         roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
-    { id: 'essentialdocs',  label: 'TMF / Ess. Docs', icon: 'folder-check',     roles: ['admin', 'cra', 'pi', DM] },
-    { id: 'monitoringplan', label: 'Monitoring Plan', icon: 'map',              roles: ['admin', 'cra', 'pi', DM] },
-    { id: 'missingdata',       label: 'Data Quality',    icon: 'bar-chart-2',    roles: ['admin', 'cra', 'pi', DM] },
-    { id: 'reconsenttracking', label: 'Re-consent',      icon: 'file-check-2',   roles: ['admin', 'pi', 'cra', DM] },
-    { id: 'accessreview',      label: 'Access Review',   icon: 'shield-check',   roles: ['admin'] },
-    // ── Admin ─────────────────────────────────────────────────────────────────
-    { id: 'sites',          label: 'Sites',           icon: 'building-2',       roles: ['admin'] },
-    { id: 'studymgmt',      label: 'Studies',         icon: 'flask-conical',    roles: ['admin'] },
-    { id: 'formbuilder',    label: 'Form Builder',    icon: 'clipboard-edit',   roles: ['admin'] },
-    { id: 'visittemplates', label: 'Visit Templates', icon: 'calendar-check',   roles: ['admin', 'pi'] },
-    { id: 'usermgmt',       label: 'Users',           icon: 'users-round',      roles: ['admin'] },
-    { id: 'sysval',         label: 'System Validation',icon: 'shield-plus',     roles: ['admin'] },
+    { id: 'dashboard',      label: 'Dashboard',       icon: 'layout-dashboard', section: 'core', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+    { id: 'subjects',       label: 'Subjects',        icon: 'users',            section: 'core', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+    { id: 'screening',      label: 'Screening Log',   icon: 'clipboard-list',   section: 'core', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+    { id: 'consents',       label: 'Consent',         icon: 'file-check',       section: 'core', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+    { id: 'reconsenttracking', label: 'Re-consent',   icon: 'file-check-2',     section: 'core', roles: ['admin', 'pi', 'cra', DM] },
+    { id: 'randomization',  label: 'Randomization',   icon: 'shuffle',          section: 'core', roles: ['admin', 'investigator', 'pi'] },
+    { id: 'medhistory',     label: 'Medical History', icon: 'file-heart',       section: 'core', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+    { id: 'conmeds',        label: 'Con. Medications',icon: 'pill',             section: 'core', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+    { id: 'vitalsigns',     label: 'Vital Signs',     icon: 'heart-pulse',      section: 'core', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+    { id: 'lab',            label: 'Laboratory',      icon: 'test-tube-2',      section: 'core', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+    { id: 'ipdispensing',   label: 'IP Accountability',icon: 'package',         section: 'core', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+
+    { id: 'ae',             label: 'Adverse Events',  icon: 'activity',         section: 'safety', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+    { id: 'saereports',     label: 'SAE Reports',     icon: 'alert-octagon',    section: 'safety', roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'deviations',     label: 'Deviations',      icon: 'alert-triangle',   section: 'safety', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+
+    { id: 'queries',        label: 'Queries',         icon: 'message-square',   section: 'quality', roles: ['admin', 'cra', 'investigator', 'pi', 'crc', DM] },
+    { id: 'monitoring',     label: 'Monitoring',      icon: 'clipboard-check',  section: 'quality', roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'monitoringplan', label: 'Monitoring Plan', icon: 'map',              section: 'quality', roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'datastatus',     label: 'Data Status',     icon: 'table-2',          section: 'quality', roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'missingdata',    label: 'Data Quality',    icon: 'bar-chart-2',      section: 'quality', roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'bdreview',       label: 'Blind Review',    icon: 'eye-off',          section: 'quality', roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'csm',            label: 'CSM / KRI',       icon: 'bar-chart-3',      section: 'quality', roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'qtl',            label: 'QTL Thresholds',  icon: 'sliders-horizontal',section: 'quality', roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'dblock',         label: 'DB Lock',         icon: 'lock',             section: 'quality', roles: ['admin', 'cra', 'pi', DM] },
+
+    { id: 'audit',          label: 'Audit Trail',     icon: 'shield-check',     section: 'compliance', roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'delegation',     label: 'Delegation',      icon: 'user-check',       section: 'compliance', roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'amendments',     label: 'Amendments',      icon: 'file-pen',         section: 'compliance', roles: ['admin', 'pi', 'cra', DM] },
+    { id: 'essentialdocs',  label: 'TMF / Ess. Docs', icon: 'folder-check',     section: 'compliance', roles: ['admin', 'cra', 'pi', DM] },
+    { id: 'accessreview',   label: 'Access Review',   icon: 'shield-check',     section: 'compliance', roles: ['admin'] },
+
+    { id: 'studymgmt',      label: 'Studies',         icon: 'flask-conical',    section: 'setup', roles: ['admin'] },
+    { id: 'sites',          label: 'Sites',           icon: 'building-2',       section: 'setup', roles: ['admin'] },
+    { id: 'visittemplates', label: 'Visit Templates', icon: 'calendar-check',   section: 'setup', roles: ['admin', 'pi'] },
+    { id: 'formbuilder',    label: 'Form Builder',    icon: 'clipboard-edit',   section: 'setup', roles: ['admin'] },
+    { id: 'usermgmt',       label: 'Users',           icon: 'users-round',      section: 'setup', roles: ['admin'] },
+    { id: 'sysval',         label: 'System Validation',icon: 'shield-plus',     section: 'setup', roles: ['admin'] },
 ];
 
 const ROLE_CONFIG = {
@@ -119,7 +126,7 @@ function renderSidebar(currentRoute) {
     const userArea = document.getElementById('sidebar-user');
     if (userArea) userArea.innerHTML = '';
 
-    nav.innerHTML = visible.map(item => {
+    const renderItem = (item) => {
         const isActive = currentRoute === item.id;
         const badge = item.id === 'queries' ? getOpenQueryBadge() : '';
         return `
@@ -133,6 +140,15 @@ function renderSidebar(currentRoute) {
             <span class="flex-1 tracking-wide">${item.label}</span>
             ${badge}
         </a>`;
+    };
+
+    // Group into labeled sections (headers only when the section has visible items).
+    nav.innerHTML = NAV_SECTIONS.map(sec => {
+        const items = visible.filter(item => item.section === sec.id);
+        if (!items.length) return '';
+        return `
+        <p class="px-3 mt-4 mb-1 first:mt-0 text-[10px] font-semibold uppercase tracking-wider text-blue-300/60 select-none">${sec.label}</p>
+        ${items.map(renderItem).join('')}`;
     }).join('');
 
     const displayName = user.displayName || user.name;
