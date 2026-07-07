@@ -56,6 +56,11 @@ await db.insert(passwordMeta)
     .values({ userId: u.id, lastChangedAt: new Date(), mustChange: false })
     .onConflictDoUpdate({ target: passwordMeta.userId, set: { lastChangedAt: new Date(), mustChange: false } });
 
+// The operator performing this reset has verified the person out-of-band, and
+// installs without SMTP can never deliver a verification link — mark verified
+// so the account isn't locked out of login.
+await db.update(user).set({ emailVerified: true }).where(eq(user.id, u.id));
+
 console.log(`\nPassword reset for ${u.email} (${u.role}).`);
 console.log(`New password: ${password}`);
 console.log('Ask the user to sign in and change it from the app afterwards.\n');
