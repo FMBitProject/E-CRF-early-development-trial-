@@ -65,7 +65,7 @@ export async function renderAuditTrail(filters = {}) {
         <div class="ph-card p-4">
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                    <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Action</label>
+                    <label for="filter-action" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Action</label>
                     <select id="filter-action" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
                         <option value="">All Actions</option>
                         <option value="INSERT">INSERT</option>
@@ -76,7 +76,7 @@ export async function renderAuditTrail(filters = {}) {
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Table</label>
+                    <label for="filter-table" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Table</label>
                     <select id="filter-table" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
                         <option value="">All Tables</option>
                         <option value="crf_data_entries">CRF Data Entries</option>
@@ -86,7 +86,7 @@ export async function renderAuditTrail(filters = {}) {
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Search</label>
+                    <label for="filter-search" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Search</label>
                     <div class="relative">
                         <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
                         <input type="text" id="filter-search" placeholder="Reason or user…"
