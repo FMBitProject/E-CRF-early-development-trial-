@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '../db/connection.js';
-import { studies, studyUsers, user as userTable } from '../db/schemas/schema.js';
+import { studies, studyUsers, userSites, user as userTable } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { licenseGuardCreate } from '../lib/licenseguard.js';
 import { isUniqueViolation } from '../lib/dberrors.js';
@@ -28,12 +28,19 @@ router.get('/', async (req, res) => {
                 .orderBy(studies.createdAt);
             return res.json(rows);
         }
-        // Non-admin: only studies they are assigned to (all within their org)
+        // Non-admin: only studies they are assigned to (all within their org).
+        // Access comes from EITHER Study Access grants (study_users) OR a
+        // site-for-study assignment (user_sites) — being assigned to a site for
+        // a study implies working on that study.
         const assignments = await db.select({ studyId: studyUsers.studyId })
             .from(studyUsers)
             .where(eq(studyUsers.userId, req.user.id));
-        if (assignments.length === 0) return res.json([]);
-        const ids = assignments.map(a => a.studyId);
+        const siteGrants = await db.select({ studyId: userSites.studyId })
+            .from(userSites)
+            .where(eq(userSites.userId, req.user.id))
+            .catch(() => []);   // user_sites may not exist on older databases
+        const ids = [...new Set([...assignments, ...siteGrants].map(a => a.studyId))];
+        if (ids.length === 0) return res.json([]);
         const rows = await db.select().from(studies)
             .where(and(inArray(studies.id, ids), orgCondition(req, studies.organizationId)))
             .orderBy(studies.createdAt);
