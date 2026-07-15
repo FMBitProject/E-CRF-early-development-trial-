@@ -509,6 +509,7 @@ export async function renderSubjectDetail(id) {
                             <th class="text-left">Window Compliance</th>
                             <th class="text-left">Status</th>
                             <th class="text-center">CRFs</th>
+                            <th class="text-center">Investigator Signed</th>
                             <th class="text-right">Actions</th>
                         </tr>
                     </thead>
@@ -723,6 +724,7 @@ function renderVisitRow(v, forms, allEntries, canManageVisit) {
 
     const orderStr = v.visit_order != null ? String(v.visit_order).padStart(2, '0') : '—';
     const isUnsch  = v.visit_type === 'Unscheduled';
+    const isAdmin  = api.getCurrentUser()?.role === 'admin';
 
     return `
     <tr class="visit-row cursor-pointer hover:bg-slate-50 transition" data-visit-id="${v.id}"
@@ -746,13 +748,21 @@ function renderVisitRow(v, forms, allEntries, canManageVisit) {
         <td class="text-center">
             <span class="text-xs ${crfColor}">${completedCount} / ${total}</span>
         </td>
+        <td class="text-center" onclick="event.stopPropagation()" title="${v.investigator_signed ? `Signed by ${esc(v.investigator_signed_by_name || '')} on ${fmt(v.investigator_signed_at)}` : ''}">
+            ${v.investigator_signed
+                ? `<span class="badge bg-emerald-50 text-emerald-700 inline-flex items-center gap-1"><i data-lucide="check-circle-2" class="w-3 h-3"></i> Signed</span>`
+                : `<span class="badge bg-slate-100 text-slate-500">Unsigned</span>`}
+            ${v.investigator_signed && isAdmin ? `
+            <button onclick="openUnsignVisitModal(${v.id}, '${esc(v.visit_name)}')"
+                class="ml-1.5 text-xs font-medium text-amber-600 hover:text-amber-700 underline">Unsign</button>` : ''}
+        </td>
         <td class="text-right" onclick="event.stopPropagation()">
             <div class="flex items-center justify-end gap-1.5">
                 <button onclick="selectVisit(${v.id}, '${esc(v.visit_name)}')"
                     class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition border border-blue-100">
                     <i data-lucide="clipboard-list" class="w-3 h-3"></i> CRFs
                 </button>
-                ${canManageVisit ? `
+                ${canManageVisit && !v.investigator_signed ? `
                 <button onclick="openEditVisitModal(${v.id})"
                     class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition">
                     <i data-lucide="edit-2" class="w-3 h-3"></i>
@@ -766,7 +776,7 @@ function renderVisitRow(v, forms, allEntries, canManageVisit) {
     </tr>
     ${v.status === 'Missed' && v.missed_reason ? `
     <tr class="bg-red-50">
-        <td colspan="9" class="px-4 py-1.5 text-xs text-red-600 italic border-t border-red-100">
+        <td colspan="10" class="px-4 py-1.5 text-xs text-red-600 italic border-t border-red-100">
             <i data-lucide="alert-circle" class="w-3 h-3 inline mr-1 align-text-bottom"></i>Missed: ${esc(v.missed_reason)}
         </td>
     </tr>` : ''}`;
@@ -875,13 +885,6 @@ window.openAddVisitModal = function () {
                 })()}
             </div>
 
-            <div>
-                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Investigator Notes</label>
-                <textarea id="av-notes" rows="2"
-                    placeholder="Optional: clinical observations, protocol deviations noted, etc."
-                    class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none resize-none"></textarea>
-            </div>
-
             <div id="av-error" class="hidden p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700"></div>
         </div>`,
         footer: `
@@ -938,7 +941,6 @@ window.submitAddVisit = async function () {
     const actual  = document.getElementById('av-actual').value;
     const status  = document.getElementById('av-status').value;
     const missedR = document.getElementById('av-missed-reason')?.value.trim();
-    const notes   = document.getElementById('av-notes').value.trim();
 
     if (!code) {
         errEl.textContent = 'Please select a visit template.';
@@ -971,7 +973,6 @@ window.submitAddVisit = async function () {
             window_days:  winVal !== '' ? Number(winVal) : null,
             status,
             missed_reason: missedR || null,
-            notes:         notes   || null,
             formIds,
         });
         closeModal();
@@ -994,9 +995,14 @@ window.openEditVisitModal = function (visitId) {
     const subject = window._currentSubject;
     const v = subject?.visits?.find(vis => vis.id === visitId);
     if (!v) return;
+    if (v.investigator_signed) {
+        showToast('Visit is signed and cannot be edited. An admin must unsign it first.', 'error');
+        return;
+    }
 
     const today    = new Date().toISOString().split('T')[0];
     const isMissed = v.status === 'Missed';
+    const canSign  = ['investigator', 'pi', 'admin'].includes(api.getCurrentUser()?.role);
 
     // Set context for inline query buttons
     window._inlineQueryCtx = { subjectId: subject.id, visitId, entryId: null, formId: null };
@@ -1082,14 +1088,16 @@ window.openEditVisitModal = function (visitId) {
                     class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none resize-none">${esc(v.missed_reason || '')}</textarea>
             </div>
 
-            <div>
-                <div class="flex items-center mb-1.5">
-                    <label class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Investigator Notes</label>
-                    ${qBtn('investigator_notes', 'Investigator Notes')}
-                </div>
-                <textarea id="ev-notes" rows="2"
-                    class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none resize-none">${esc(v.notes || '')}</textarea>
-            </div>
+            ${canSign ? `
+            <div class="p-3 rounded-md border" style="background:#F0FDF4;border-color:#BBF7D0">
+                <label class="flex items-start gap-2.5 cursor-pointer">
+                    <input type="checkbox" id="ev-signed" class="mt-0.5 rounded border-slate-300 text-emerald-600">
+                    <span>
+                        <span class="text-sm font-semibold" style="color:#065F46">Investigator Signed</span>
+                        <p class="text-xs mt-0.5" style="color:#047857">Check this only once the visit data is final — this locks the visit and prevents further changes. An admin must unsign it to make any edits after that.</p>
+                    </span>
+                </label>
+            </div>` : ''}
 
             <div class="p-3 rounded-md border" style="background:#FFF7ED;border-color:#FED7AA">
                 <label class="block text-xs font-semibold mb-1.5" style="color:#9A3412">Reason for Change <span class="text-red-500">*</span></label>
@@ -1165,8 +1173,8 @@ window.submitEditVisit = async function (visitId) {
     const actual  = document.getElementById('ev-actual').value;
     const status  = document.getElementById('ev-status').value;
     const missedR = document.getElementById('ev-missed-reason')?.value.trim();
-    const notes   = document.getElementById('ev-notes').value.trim();
     const reason  = document.getElementById('ev-reason').value.trim();
+    const wantsSign = document.getElementById('ev-signed')?.checked ?? false;
 
     if (!name) {
         errEl.textContent = 'Visit name is required.';
@@ -1193,12 +1201,18 @@ window.submitEditVisit = async function (visitId) {
             window_days:  winVal !== '' ? Number(winVal) : null,
             status,
             missed_reason: missedR || null,
-            notes:         notes   || null,
             _reason:       reason,
         });
+
+        if (wantsSign) {
+            await api.signVisit(visitId);
+        }
+
         closeModal();
         if (result?.autoDeviationFiled) {
             showToast('Visit updated — out-of-window detected. Protocol deviation auto-filed.', 'warning');
+        } else if (wantsSign) {
+            showToast('Visit updated and signed. Visit is now locked from further edits.', 'success');
         } else {
             showToast('Visit updated. Change recorded in audit trail.', 'success');
         }
@@ -1254,6 +1268,55 @@ window.confirmDeleteVisit = async function (visitId) {
         await api.deleteVisit(visitId, reason);
         closeModal();
         showToast('Visit deleted. Recorded in audit trail.', 'success');
+        await renderSubjectDetail(window._subjectId);
+    } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.remove('hidden');
+    }
+};
+
+// ============================================================
+// Unsign Visit Modal (Admin only)
+// ============================================================
+window.openUnsignVisitModal = function (visitId, visitName) {
+    showModal({
+        title: 'Unsign Visit',
+        size: 'sm',
+        body: `
+        <div class="space-y-4">
+            <div class="flex items-start gap-3 p-3 bg-amber-50 rounded-md border border-amber-200">
+                <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5"></i>
+                <p class="text-sm text-amber-800">Unsigning <em>${esc(visitName)}</em> will reopen it for editing. This is permanently recorded in the Audit Trail per FDA 21 CFR Part 11.</p>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Reason for Unsigning <span class="text-red-500">*</span></label>
+                <textarea id="unsign-visit-reason" rows="3"
+                    placeholder="Provide detailed clinical justification…"
+                    class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none resize-none"></textarea>
+                <p id="unsign-visit-err" class="text-xs text-red-500 mt-1 hidden"></p>
+            </div>
+        </div>`,
+        footer: `
+        <button onclick="closeModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition">Cancel</button>
+        <button onclick="confirmUnsignVisit(${visitId})"
+            class="px-4 py-2 text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-md transition flex items-center gap-2">
+            <i data-lucide="unlock" class="w-4 h-4"></i> Unsign Visit
+        </button>`,
+    });
+};
+
+window.confirmUnsignVisit = async function (visitId) {
+    const reason = document.getElementById('unsign-visit-reason')?.value?.trim();
+    const errEl  = document.getElementById('unsign-visit-err');
+    if (!reason) {
+        errEl.textContent = 'Please enter a reason for unsigning.';
+        errEl.classList.remove('hidden');
+        return;
+    }
+    try {
+        await api.unsignVisit(visitId, reason);
+        closeModal();
+        showToast('Visit unsigned. Recorded in audit trail.', 'warning');
         await renderSubjectDetail(window._subjectId);
     } catch (err) {
         errEl.textContent = err.message;

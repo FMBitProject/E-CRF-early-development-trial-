@@ -74,7 +74,6 @@ async function runMigrations() {
         `ALTER TABLE visits ADD COLUMN IF NOT EXISTS study_day integer`,
         `ALTER TABLE visits ADD COLUMN IF NOT EXISTS window_compliance text`,
         `ALTER TABLE visits ADD COLUMN IF NOT EXISTS missed_reason text`,
-        `ALTER TABLE visits ADD COLUMN IF NOT EXISTS notes text`,
         `ALTER TABLE visits ADD COLUMN IF NOT EXISTS created_by_name text`,
         // Feature: site-scoped user access
         `ALTER TABLE "user" ADD COLUMN IF NOT EXISTS site_id integer`,
@@ -900,6 +899,18 @@ async function runMigrations() {
         // Billing processor linkage (Stripe customer/subscription ids).
         `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS billing_customer_id TEXT`,
         `ALTER TABLE organizations ADD COLUMN IF NOT EXISTS billing_subscription_id TEXT`,
+        // Feature: Investigator Signed replaces the free-text visit notes field
+        // with a lockable sign-off checkbox — once signed, the visit cannot be
+        // edited until an admin unsigns it (mirrors crf_data_entries lock).
+        `ALTER TABLE visits ADD COLUMN IF NOT EXISTS investigator_signed BOOLEAN NOT NULL DEFAULT false`,
+        `ALTER TABLE visits ADD COLUMN IF NOT EXISTS investigator_signed_at TIMESTAMP`,
+        `ALTER TABLE visits ADD COLUMN IF NOT EXISTS investigator_signed_by TEXT REFERENCES "user"(id)`,
+        `ALTER TABLE visits ADD COLUMN IF NOT EXISTS investigator_signed_by_name TEXT`,
+        `ALTER TABLE visits ADD COLUMN IF NOT EXISTS investigator_unsigned_at TIMESTAMP`,
+        `ALTER TABLE visits ADD COLUMN IF NOT EXISTS investigator_unsigned_by TEXT REFERENCES "user"(id)`,
+        `ALTER TABLE visits ADD COLUMN IF NOT EXISTS investigator_unsigned_by_name TEXT`,
+        `ALTER TABLE visits ADD COLUMN IF NOT EXISTS investigator_unsign_reason TEXT`,
+        `ALTER TABLE visits DROP COLUMN IF EXISTS notes`,
     ];
     for (const stmt of stmts) {
         try {
