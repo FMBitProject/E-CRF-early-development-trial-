@@ -101,7 +101,7 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
         const subjectId = parseInt(req.params.subjectId);
         const {
             visitName, visitOrder, visitType, plannedDate, actualDate,
-            windowDays, status, missedReason, notes, formIds,
+            windowDays, status, missedReason, formIds,
         } = req.body;
         if (!visitName) return res.status(400).json({ error: 'visitName is required' });
 
@@ -123,7 +123,6 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
             studyDay,
             windowCompliance,
             missedReason:    missedReason ?? null,
-            notes:           notes        ?? null,
             createdByName:   req.user.name,
             formIds:         Array.isArray(formIds) ? formIds.map(Number) : [],
             status:          status ?? 'Scheduled',
@@ -151,7 +150,7 @@ router.patch('/:id', requireRole('investigator', 'pi', 'admin', 'crc'), async (r
     try {
         const {
             visitName, visitOrder, visitType, plannedDate, actualDate,
-            windowDays, status, missedReason, notes, reason, formIds,
+            windowDays, status, missedReason, reason, formIds,
         } = req.body;
 
         const subject = await resolveSubject(req);
@@ -160,6 +159,9 @@ router.patch('/:id', requireRole('investigator', 'pi', 'admin', 'crc'), async (r
         const [existing] = await db.select().from(visits)
             .where(and(eq(visits.id, parseInt(req.params.id)), eq(visits.subjectId, subject.id)));
         if (!existing) return res.status(404).json({ error: 'Visit not found' });
+        if (existing.investigatorSigned) {
+            return res.status(409).json({ error: 'Visit is signed and cannot be modified. An admin must unsign it first.' });
+        }
 
         const enrollmentDate = subject?.enrolledAt ? subject.enrolledAt.toISOString().split('T')[0] : null;
 
@@ -181,7 +183,6 @@ router.patch('/:id', requireRole('investigator', 'pi', 'admin', 'crc'), async (r
                 studyDay,
                 windowCompliance,
                 missedReason:    missedReason    ?? existing.missedReason,
-                notes:           notes           ?? existing.notes,
                 formIds:         Array.isArray(formIds) ? formIds.map(Number) : existing.formIds,
                 status:          status          ?? existing.status,
                 updatedAt:       new Date(),
@@ -233,6 +234,78 @@ router.patch('/:id/status', requireRole('investigator', 'pi', 'admin', 'crc'), a
     }
 });
 
+// PATCH /api/subjects/:subjectId/visits/:id/sign — Investigator confirms this
+// visit's data is final; locks the visit from further edits until unsigned.
+router.patch('/:id/sign', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
+    try {
+        const subject = await resolveSubject(req);
+        if (!subject) return res.status(404).json({ error: 'Subject not found in the active study' });
+
+        const [existing] = await db.select().from(visits)
+            .where(and(eq(visits.id, parseInt(req.params.id)), eq(visits.subjectId, subject.id)));
+        if (!existing) return res.status(404).json({ error: 'Visit not found' });
+        if (existing.investigatorSigned) return res.status(409).json({ error: 'Visit is already signed' });
+
+        const [signed] = await db.update(visits)
+            .set({
+                investigatorSigned:       true,
+                investigatorSignedAt:     new Date(),
+                investigatorSignedBy:     req.user.id,
+                investigatorSignedByName: req.user.name,
+                updatedAt:                new Date(),
+            })
+            .where(eq(visits.id, existing.id))
+            .returning();
+
+        await writeAudit(db, {
+            tableName: 'visits', recordId: existing.id, action: 'SIGN',
+            reason: 'Investigator signed off — visit data confirmed final',
+            user: req.user, ipAddress: req.ip,
+        });
+
+        res.json(signed);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PATCH /api/subjects/:subjectId/visits/:id/unsign — admin only
+router.patch('/:id/unsign', requireRole('admin'), async (req, res) => {
+    try {
+        const { reason } = req.body;
+        if (!reason?.trim()) return res.status(400).json({ error: 'Unsign reason is required' });
+
+        const subject = await resolveSubject(req);
+        if (!subject) return res.status(404).json({ error: 'Subject not found in the active study' });
+
+        const [existing] = await db.select().from(visits)
+            .where(and(eq(visits.id, parseInt(req.params.id)), eq(visits.subjectId, subject.id)));
+        if (!existing) return res.status(404).json({ error: 'Visit not found' });
+        if (!existing.investigatorSigned) return res.status(409).json({ error: 'Visit is not signed' });
+
+        const [unsigned] = await db.update(visits)
+            .set({
+                investigatorSigned:         false,
+                investigatorUnsignedAt:     new Date(),
+                investigatorUnsignedBy:     req.user.id,
+                investigatorUnsignedByName: req.user.name,
+                investigatorUnsignReason:   reason,
+                updatedAt:                  new Date(),
+            })
+            .where(eq(visits.id, existing.id))
+            .returning();
+
+        await writeAudit(db, {
+            tableName: 'visits', recordId: existing.id, action: 'UNLOCK',
+            reason, user: req.user, ipAddress: req.ip,
+        });
+
+        res.json(unsigned);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // DELETE /api/subjects/:subjectId/visits/:id
 router.delete('/:id', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
     try {
@@ -246,6 +319,9 @@ router.delete('/:id', requireRole('investigator', 'pi', 'admin'), async (req, re
         const [existing] = await db.select().from(visits)
             .where(and(eq(visits.id, visitId), eq(visits.subjectId, subject.id)));
         if (!existing) return res.status(404).json({ error: 'Visit not found' });
+        if (existing.investigatorSigned) {
+            return res.status(409).json({ error: 'Visit is signed and cannot be deleted. An admin must unsign it first.' });
+        }
 
         await db.delete(visits).where(eq(visits.id, visitId));
 

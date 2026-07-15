@@ -126,12 +126,17 @@ function mapVisit(v) {
         study_day:        v.studyDay    ?? null,
         window_compliance: v.windowCompliance ?? null,
         missed_reason:    v.missedReason ?? null,
-        notes:            v.notes       ?? null,
         status,
         form_ids:         Array.isArray(v.formIds) ? v.formIds : [],
         created_by_name:  v.createdByName ?? '',
         created_at:       v.createdAt,
         updated_at:       v.updatedAt,
+        investigator_signed:            v.investigatorSigned ?? false,
+        investigator_signed_at:         v.investigatorSignedAt ?? null,
+        investigator_signed_by_name:    v.investigatorSignedByName ?? null,
+        investigator_unsigned_at:       v.investigatorUnsignedAt ?? null,
+        investigator_unsigned_by_name:  v.investigatorUnsignedByName ?? null,
+        investigator_unsign_reason:     v.investigatorUnsignReason ?? null,
     };
 }
 
@@ -356,7 +361,6 @@ export const api = {
             windowDays:   payload.window_days,
             status,
             missedReason: payload.missed_reason,
-            notes:        payload.notes,
             formIds:      payload.formIds ?? [],
         };
         const created = await apiFetch(`/api/subjects/${subjectId}/visits`, {
@@ -381,7 +385,6 @@ export const api = {
             windowDays:   payload.window_days,
             status,
             missedReason: payload.missed_reason,
-            notes:        payload.notes,
             reason:       payload._reason,
         };
         const updated = await apiFetch(`/api/subjects/${subjectId}/visits/${visitId}`, {
@@ -397,6 +400,24 @@ export const api = {
             method: 'DELETE',
             body: JSON.stringify({ reason }),
         });
+    },
+
+    async signVisit(visitId) {
+        const subjectId = window._subjectId || window._currentSubject?.id;
+        const updated = await apiFetch(`/api/subjects/${subjectId}/visits/${visitId}/sign`, {
+            method: 'PATCH',
+            body: JSON.stringify({}),
+        });
+        return mapVisit(updated);
+    },
+
+    async unsignVisit(visitId, reason) {
+        const subjectId = window._subjectId || window._currentSubject?.id;
+        const updated = await apiFetch(`/api/subjects/${subjectId}/visits/${visitId}/unsign`, {
+            method: 'PATCH',
+            body: JSON.stringify({ reason }),
+        });
+        return mapVisit(updated);
     },
 
     // ── CRF Forms (templates) ──────────────────────────────
