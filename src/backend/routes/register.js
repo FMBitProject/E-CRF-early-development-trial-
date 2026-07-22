@@ -4,8 +4,15 @@ import { auth } from '../auth/better-auth.js';
 import { db } from '../db/connection.js';
 import { passwordMeta, user, organizations } from '../db/schemas/schema.js';
 import { validatePassword } from '../lib/passwordpolicy.js';
+import { getLicense } from '../lib/license.js';
+import { writeAudit } from '../lib/audit.js';
 
 const router = Router();
+
+// Version of the vendor License Agreement + Privacy Policy the first-run admin
+// accepts during setup. Bump this when docs/legal/ terms change materially so
+// the audit trail records which revision was agreed to.
+const LICENSE_AGREEMENT_VERSION = '1.0';
 
 // First-run bootstrap admin (becomes an admin of the default organization).
 // On-premise installs set ADMIN_EMAIL in their .env so the customer's own IT
@@ -45,12 +52,27 @@ router.get('/config', async (_req, res) => {
     } catch {
         bootstrapNeeded = false;
     }
-    res.json({ selfRegistration: SELF_REGISTRATION_OPEN, bootstrapNeeded });
+    // On a fresh install the first admin must accept the License Agreement.
+    // Expose only the non-sensitive license summary (name + expiry that appear
+    // on the paper contract anyway) so the setup screen can name what is being
+    // accepted. Nothing is returned once users exist.
+    let license = null;
+    if (bootstrapNeeded) {
+        const lic = getLicense();
+        license = {
+            present:   lic.present,
+            active:    lic.active,
+            customer:  lic.customer,
+            expiresAt: lic.expiresAt,
+            agreementVersion: LICENSE_AGREEMENT_VERSION,
+        };
+    }
+    res.json({ selfRegistration: SELF_REGISTRATION_OPEN, bootstrapNeeded, license });
 });
 
 // POST /api/register — validated signup (blocks privilege self-assignment)
 router.post('/', async (req, res) => {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, acceptedLicense } = req.body;
 
     if (!name || !email || !password || !role) {
         return res.status(400).json({ message: 'All fields are required.' });
@@ -63,6 +85,15 @@ router.post('/', async (req, res) => {
     if (!SELF_REGISTRATION_OPEN && !isPlatformBootstrap && !isAdminBootstrap) {
         return res.status(403).json({
             message: 'Self-registration is disabled. Accounts are created by the Administrator.',
+        });
+    }
+
+    // The first-run administrator sets up the on-premise instance, so this is
+    // the point at which the customer institution accepts the vendor License
+    // Agreement & Privacy Policy. Require explicit acceptance and record it.
+    if (isAdminBootstrap && acceptedLicense !== true) {
+        return res.status(400).json({
+            message: 'You must accept the License Agreement & Privacy Policy to set up this system.',
         });
     }
 
@@ -110,6 +141,37 @@ router.post('/', async (req, res) => {
             await db.insert(passwordMeta)
                 .values({ userId: result.user.id, lastChangedAt: new Date(), mustChange: false })
                 .onConflictDoNothing();
+
+            // Record the first-run admin's acceptance of the License Agreement &
+            // Privacy Policy in the immutable audit trail (21 CFR Part 11 evidence
+            // that the customer institution agreed to the vendor terms at setup).
+            if (isAdminBootstrap) {
+                try {
+                    const lic = getLicense();
+                    await writeAudit(db, {
+                        tableName: 'license_acceptance',
+                        recordId:  lic.customer || 'on-premise',
+                        action:    'AGREE',   // audit_action enum; same value the agreements flow uses
+                        fieldName: 'license_agreement',
+                        newValue:  JSON.stringify({
+                            agreementVersion: LICENSE_AGREEMENT_VERSION,
+                            documents:        ['Terms & Conditions', 'Privacy Policy'],
+                            licenseCustomer:  lic.customer,
+                            licenseExpiresAt: lic.expiresAt,
+                            licensePresent:   lic.present,
+                            licenseActive:    lic.active,
+                        }),
+                        reason: 'First-run administrator accepted the License Agreement & Privacy Policy during setup.',
+                        user:   { id: result.user.id, name, role: assignedRole, organizationId: assignedOrgId },
+                        ipAddress: req.ip,
+                    });
+                } catch (auditErr) {
+                    // Acceptance was given by the user; a failure to write the audit
+                    // row must not silently pass. Surface it so setup can be retried.
+                    console.error('License acceptance audit failed:', auditErr.message);
+                    return res.status(500).json({ message: 'Could not record license acceptance. Please try again.' });
+                }
+            }
         }
 
         return res.status(200).json({ ok: true });
