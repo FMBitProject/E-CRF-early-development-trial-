@@ -48,11 +48,12 @@ router.get('/stats', async (req, res) => {
             .select({ disposition: screeningLog.disposition })
             .from(screeningLog)
             .where(eq(screeningLog.studyId, req.studyId));
-        const stats = { total: rows.length, enrolled: 0, screenFailed: 0, pending: 0 };
+        const stats = { total: rows.length, enrolled: 0, screenFailed: 0, pending: 0, withdrawn: 0 };
         for (const r of rows) {
-            if (r.disposition === 'Enrolled')       stats.enrolled++;
+            if (r.disposition === 'Enrolled')           stats.enrolled++;
             else if (r.disposition === 'Screen Failed') stats.screenFailed++;
-            else                                         stats.pending++;
+            else if (r.disposition === 'Withdrawn')     stats.withdrawn++;
+            else                                        stats.pending++;   // only true 'Pending'
         }
         res.json(stats);
     } catch (err) {

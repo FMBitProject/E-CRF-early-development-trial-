@@ -31,7 +31,7 @@ export async function renderScreeningLog(container) {
         </button>` : ''}
       </div>
 
-      <div id="sl-stats" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+      <div id="sl-stats" class="grid grid-cols-2 md:grid-cols-5 gap-3"></div>
 
       <div class="ph-card p-3 flex flex-wrap gap-2 items-center">
         <input id="sl-search" type="text" placeholder="Search code or initials…"
@@ -75,10 +75,11 @@ function renderStats(stats) {
     const el = document.getElementById('sl-stats');
     if (!el) return;
     el.innerHTML = [
-        { label: 'Total Screened',  value: stats.total,        color: 'blue'    },
-        { label: 'Enrolled',        value: stats.enrolled,     color: 'emerald' },
-        { label: 'Screen Failures', value: stats.screenFailed, color: 'red'     },
-        { label: 'Pending',         value: stats.pending,      color: 'amber'   },
+        { label: 'Total Screened',  value: stats.total,            color: 'blue'    },
+        { label: 'Enrolled',        value: stats.enrolled,         color: 'emerald' },
+        { label: 'Screen Failures', value: stats.screenFailed,     color: 'red'     },
+        { label: 'Pending',         value: stats.pending,          color: 'amber'   },
+        { label: 'Withdrawn',       value: stats.withdrawn ?? 0,   color: 'slate'   },
     ].map(s => `
         <div class="ph-card p-3 text-center">
           <p class="text-2xl font-bold text-${s.color}-600">${s.value}</p>
