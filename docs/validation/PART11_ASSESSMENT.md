@@ -49,3 +49,6 @@ sponsor-provisioned accounts). Transport is HTTPS with HSTS (SEC-09).
 
 No software-level **⚠ Gap** items remain open in this build; all remaining
 work is procedural or execution of this validation package.
+
+> Consolidated, trackable go-live checklist (these items + legal + backup +
+> version freeze): [../GO_LIVE_CHECKLIST.md](../GO_LIVE_CHECKLIST.md).
