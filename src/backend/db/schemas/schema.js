@@ -88,6 +88,9 @@ export const studies = pgTable('studies', {
     phase:       text('phase'),          // Phase I | II | III | IV | N/A
     sponsor:     text('sponsor'),
     indication:  text('indication'),
+    // Per-protocol Inclusion/Exclusion criteria: { inclusion:[{key,label}], exclusion:[{key,label}] }.
+    // NULL means "use the app's default criteria set" (see frontend DEFAULT_IE_CRITERIA).
+    ieCriteria:  jsonb('ie_criteria'),
     status:      text('status').notNull().default('Active'), // Active | Completed | Suspended | Terminated
     startDate:   timestamp('start_date'),
     endDate:     timestamp('end_date'),
