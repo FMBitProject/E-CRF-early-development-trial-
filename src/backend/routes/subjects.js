@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { eq, ilike, and, count, sql } from 'drizzle-orm';
 import { db, client } from '../db/connection.js';
-import { subjects, sites, visits, ieAssessments, crfDataEntries, queries, subjectRandomization } from '../db/schemas/schema.js';
+import { subjects, sites, visits, ieAssessments, crfDataEntries, queries, subjectRandomization, screeningLog } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { licenseGuardCreate } from '../lib/licenseguard.js';
 import { isUniqueViolation } from '../lib/dberrors.js';
@@ -279,6 +279,55 @@ router.patch('/:id/status', requireRole('investigator', 'pi', 'admin'), async (r
     }
 });
 
+// Build a human-readable fail reason from an I/E criteria result set.
+function summarizeFailedCriteria(criteria) {
+    const reasons = [];
+    for (const c of Array.isArray(criteria) ? criteria : []) {
+        if (c.type === 'inclusion' && !c.met) reasons.push(`Inclusion not met: ${c.label}`);
+        if (c.type === 'exclusion' &&  c.met) reasons.push(`Exclusion applies: ${c.label}`);
+    }
+    return reasons.join('; ') || 'Did not meet eligibility criteria';
+}
+
+// Mirror an enrollment screening decision into the GCP screening log
+// (ICH E6(R3) §8.3.20). Idempotent per subject (keyed on enrolled_subject_id)
+// so re-assessing updates the same row instead of duplicating it. Best-effort:
+// a failure here must never block the enrollment/assessment itself.
+async function upsertScreeningLog(subject, passed, criteriaJson, user, ip) {
+    const disposition = passed ? 'Enrolled' : 'Screen Failed';
+    const failReason  = passed ? null : summarizeFailedCriteria(criteriaJson);
+    try {
+        const [existing] = await db.select().from(screeningLog)
+            .where(eq(screeningLog.enrolledSubjectId, subject.id));
+        if (existing) {
+            await db.update(screeningLog)
+                .set({ disposition, failReason, updatedAt: new Date() })
+                .where(eq(screeningLog.id, existing.id));
+            return;
+        }
+        const [row] = await db.insert(screeningLog).values({
+            studyId:           subject.studyId,
+            siteId:            subject.siteId,
+            screeningDate:     new Date().toISOString().slice(0, 10),
+            screeningCode:     subject.subjectCode,
+            subjectInitials:   subject.initials ?? null,
+            disposition,
+            failReason,
+            enrolledSubjectId: subject.id,
+            createdBy:         user.id,
+            createdByName:     user.name,
+        }).returning();
+        await writeAudit(db, {
+            tableName: 'screening_log', recordId: row.id, action: 'INSERT',
+            newValue: JSON.stringify({ screeningCode: subject.subjectCode, disposition }),
+            reason: 'Auto-logged from subject enrollment I/E assessment',
+            user, ipAddress: ip,
+        });
+    } catch (err) {
+        console.warn('Screening-log auto-write skipped (non-fatal):', err.message?.slice(0, 120));
+    }
+}
+
 // POST /api/subjects/:id/ie-assessment — record I/E criteria assessment
 router.post('/:id/ie-assessment', requireRole('investigator', 'pi', 'admin'), async (req, res) => {
     try {
@@ -315,6 +364,9 @@ router.post('/:id/ie-assessment', requireRole('investigator', 'pi', 'admin'), as
                 user: req.user, ipAddress: req.ip,
             });
         }
+
+        // Keep the GCP screening log in sync with this screening decision.
+        await upsertScreeningLog(subject, passed, criteriaJson, req.user, req.ip);
 
         res.status(201).json(assessment);
     } catch (err) {
