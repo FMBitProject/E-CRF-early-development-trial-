@@ -125,6 +125,7 @@ export const EXPECTED = {
     },
     '/api/studies': {
         'GET /':                     null,
+        'GET /:id':                  null,
         'POST /':                    ['admin'],
         'PATCH /:id':                ['admin'],
         'GET /:id/users':            ['admin'],

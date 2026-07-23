@@ -8,6 +8,7 @@ import { isUniqueViolation } from '../lib/dberrors.js';
 import { writeAudit } from '../lib/audit.js';
 import { orgCondition, sameOrg, effectiveOrgId } from '../lib/tenantscope.js';
 import { checkLimit } from '../lib/plans.js';
+import { sanitizeIeCriteria } from '../lib/iecriteria.js';
 
 const router = Router();
 
@@ -53,7 +54,7 @@ router.get('/', async (req, res) => {
 
 // POST /api/studies — create study (admin only)
 router.post('/', licenseGuardCreate, requireRole('admin'), async (req, res) => {
-    const { title, protocolNo, phase, sponsor, indication, startDate, endDate } = req.body;
+    const { title, protocolNo, phase, sponsor, indication, startDate, endDate, ieCriteria } = req.body;
     if (!title || !protocolNo) return res.status(400).json({ error: 'title and protocolNo are required' });
     try {
         // Plan limit: number of studies per organization.
@@ -68,6 +69,7 @@ router.post('/', licenseGuardCreate, requireRole('admin'), async (req, res) => {
             organizationId: effectiveOrgId(req),
             title, protocolNo, phase: phase || null,
             sponsor: sponsor || null, indication: indication || null,
+            ieCriteria: sanitizeIeCriteria(ieCriteria),
             startDate: startDate ? new Date(startDate) : null,
             endDate:   endDate   ? new Date(endDate)   : null,
             status: 'Active',
@@ -85,7 +87,7 @@ router.post('/', licenseGuardCreate, requireRole('admin'), async (req, res) => {
 // PATCH /api/studies/:id — update study (admin only)
 router.patch('/:id', requireRole('admin'), async (req, res) => {
     const id = parseInt(req.params.id);
-    const { title, protocolNo, phase, sponsor, indication, status, startDate, endDate } = req.body;
+    const { title, protocolNo, phase, sponsor, indication, status, startDate, endDate, ieCriteria } = req.body;
     try {
         const [before] = await db.select().from(studies).where(eq(studies.id, id));
         if (!before || !sameOrg(req, before.organizationId)) {
@@ -99,6 +101,7 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
         if (sponsor     !== undefined) updates.sponsor     = sponsor;
         if (indication  !== undefined) updates.indication  = indication;
         if (status      !== undefined) updates.status      = status;
+        if (ieCriteria  !== undefined) updates.ieCriteria  = sanitizeIeCriteria(ieCriteria);
         if (startDate   !== undefined) updates.startDate   = startDate ? new Date(startDate) : null;
         if (endDate     !== undefined) updates.endDate     = endDate   ? new Date(endDate)   : null;
         updates.updatedAt = new Date();
@@ -110,6 +113,24 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
         if (isUniqueViolation(err)) return res.status(409).json({ error: 'Protocol number already exists. Please use a different protocol number.' });
         console.error('Update study failed:', err);
         res.status(500).json({ error: 'Could not update the study due to a server error. Please try again or contact your administrator.' });
+    }
+});
+
+// GET /api/studies/:id — single study within the caller's org (used by the
+// enrollment flow to load this study's I/E criteria). Any authenticated user;
+// tenant-scoped so it never leaks another organization's study.
+router.get('/:id', async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid study id' });
+    try {
+        const [row] = await db.select().from(studies).where(eq(studies.id, id));
+        if (!row || !sameOrg(req, row.organizationId)) {
+            return res.status(404).json({ error: 'Study not found' });
+        }
+        res.json(row);
+    } catch (err) {
+        if (isMissingTable(err)) return res.status(404).json({ error: 'Study not found' });
+        res.status(500).json({ error: err.message });
     }
 });
 

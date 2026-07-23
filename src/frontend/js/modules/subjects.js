@@ -4,6 +4,7 @@
 
 import { api } from './api.js';
 import { showToast, showModal, closeModal } from './utils.js';
+import { DEFAULT_IE_CRITERIA, hasCriteria } from './iecriteria.js';
 
 const STATUS_BADGE = {
     Active:          'badge badge-active',
@@ -192,23 +193,10 @@ function renderSubjectRows(subjects) {
 // ============================================================
 // New Subject Modal
 // ============================================================
-// ── Standard I/E Criteria (ICH E6 R3 compliant) ───────────────────────────
-const IE_CRITERIA = {
-    inclusion: [
-        { key: 'inc_age',       label: 'Age 18–65 years at time of screening' },
-        { key: 'inc_consent',   label: 'Written informed consent obtained prior to any study procedure' },
-        { key: 'inc_capable',   label: 'Subject is capable of understanding and complying with protocol requirements' },
-        { key: 'inc_health',    label: 'Medically stable as determined by the Investigator' },
-    ],
-    exclusion: [
-        { key: 'exc_pregnant',  label: 'Pregnant, breastfeeding, or planning pregnancy during the study period' },
-        { key: 'exc_allergy',   label: 'Known hypersensitivity or contraindication to the study drug or excipients' },
-        { key: 'exc_renal',     label: 'Significant renal impairment (eGFR < 30 mL/min/1.73m²)' },
-        { key: 'exc_hepatic',   label: 'Significant hepatic impairment (Child-Pugh B or C)' },
-        { key: 'exc_trial',     label: 'Participation in another interventional clinical trial within 30 days' },
-        { key: 'exc_infection', label: 'Active systemic infection or serious illness at time of screening' },
-    ],
-};
+// ── I/E Criteria for the study currently being enrolled into ───────────────
+// Resolved per study when the modal opens; falls back to the app default set
+// (ICH E6 R3 compliant) when the study has none configured.
+let _activeIeCriteria = DEFAULT_IE_CRITERIA;
 
 window.openNewSubjectModal = async function () {
     const user = api.getCurrentUser();
@@ -216,17 +204,26 @@ window.openNewSubjectModal = async function () {
         showToast('You do not have permission to enroll subjects.', 'error');
         return;
     }
+    // Load this study's configured criteria; fall back to the default set.
+    _activeIeCriteria = DEFAULT_IE_CRITERIA;
+    const cur = api.getCurrentStudy();
+    if (cur?.id) {
+        try {
+            const study = await api.getStudy(cur.id);
+            if (hasCriteria(study?.ieCriteria)) _activeIeCriteria = study.ieCriteria;
+        } catch { /* offline / not found → default set is already in place */ }
+    }
     openIECriteriaModal();
 };
 
 window.openIECriteriaModal = function openIECriteriaModal() {
-    const inclusionHtml = IE_CRITERIA.inclusion.map(c => `
+    const inclusionHtml = _activeIeCriteria.inclusion.map(c => `
     <label class="flex items-start gap-3 p-3 rounded-md border border-slate-200 cursor-pointer hover:bg-green-50 hover:border-green-300 transition">
         <input type="checkbox" id="${c.key}" class="mt-0.5 w-4 h-4 accent-green-600 flex-shrink-0">
         <span class="text-sm text-slate-700">${esc(c.label)}</span>
     </label>`).join('');
 
-    const exclusionHtml = IE_CRITERIA.exclusion.map(c => `
+    const exclusionHtml = _activeIeCriteria.exclusion.map(c => `
     <label class="flex items-start gap-3 p-3 rounded-md border border-slate-200 cursor-pointer hover:bg-red-50 hover:border-red-300 transition">
         <input type="checkbox" id="${c.key}" class="mt-0.5 w-4 h-4 accent-red-600 flex-shrink-0">
         <span class="text-sm text-slate-700">${esc(c.label)}</span>
@@ -271,12 +268,12 @@ window.proceedFromIE = async function () {
     let allInclusionMet = true;
     let anyExclusionMet = false;
 
-    IE_CRITERIA.inclusion.forEach(c => {
+    _activeIeCriteria.inclusion.forEach(c => {
         const checked = document.getElementById(c.key)?.checked;
         results[c.key] = { label: c.label, type: 'inclusion', met: !!checked };
         if (!checked) allInclusionMet = false;
     });
-    IE_CRITERIA.exclusion.forEach(c => {
+    _activeIeCriteria.exclusion.forEach(c => {
         const checked = document.getElementById(c.key)?.checked;
         results[c.key] = { label: c.label, type: 'exclusion', met: !!checked };
         if (checked) anyExclusionMet = true;

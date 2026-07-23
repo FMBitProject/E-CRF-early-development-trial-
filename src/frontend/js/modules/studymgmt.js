@@ -4,6 +4,10 @@
 import { api } from './api.js';
 import { showToast } from './utils.js';
 import { setSiteContext } from './study-select.js';
+import {
+    DEFAULT_IE_CRITERIA, criteriaEditorHtml, fillCriteriaEditor,
+    readCriteriaEditor, wireCriteriaEditor,
+} from './iecriteria.js';
 
 export async function renderStudyMgmt(container) {
     container.innerHTML = `<div class="flex items-center justify-center p-10 text-slate-400 text-sm">Loading studies…</div>`;
@@ -114,7 +118,7 @@ function renderAddModal() {
     const phaseOptions = PHASES.map(p => `<option value="${p}">${p}</option>`).join('');
     return `
         <div id="add-study-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-            <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md mx-4">
+            <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
                 <h2 class="text-lg font-semibold mb-4">Create New Study</h2>
                 <div class="space-y-3">
                     <div>
@@ -158,6 +162,7 @@ function renderAddModal() {
                                 class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
                     </div>
+                    ${criteriaEditorHtml('add')}
                 </div>
                 <p id="add-study-error" class="text-red-600 text-xs mt-3 hidden"></p>
                 <div class="flex gap-2 mt-5">
@@ -173,7 +178,7 @@ function renderEditModal() {
     const statusOptions = STATUSES.map(s => `<option value="${s}">${s}</option>`).join('');
     return `
         <div id="edit-study-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-            <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md mx-4">
+            <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
                 <h2 class="text-lg font-semibold mb-4">Edit Study</h2>
                 <div class="space-y-3">
                     <div>
@@ -219,6 +224,7 @@ function renderEditModal() {
                                 class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
                     </div>
+                    ${criteriaEditorHtml('edit')}
                 </div>
                 <p id="edit-study-error" class="text-red-600 text-xs mt-3 hidden"></p>
                 <div class="flex gap-2 mt-5">
@@ -257,6 +263,10 @@ function attachEvents(container, studies, allUsers) {
     let editingStudyId = null;
     let usersStudyId   = null;
 
+    // Criteria editors (add/remove row behavior) — wired once per render.
+    wireCriteriaEditor('add');
+    wireCriteriaEditor('edit');
+
     // ─── Add Study ───────────────────────────────────────────
     document.getElementById('btn-add-study')?.addEventListener('click', () => {
         ['add-study-title','add-study-protocol','add-study-sponsor','add-study-indication'].forEach(id => {
@@ -265,6 +275,7 @@ function attachEvents(container, studies, allUsers) {
         document.getElementById('add-study-phase').value = 'N/A';
         document.getElementById('add-study-start').value = '';
         document.getElementById('add-study-end').value = '';
+        fillCriteriaEditor('add', DEFAULT_IE_CRITERIA);   // new studies start from the default set
         document.getElementById('add-study-error').classList.add('hidden');
         document.getElementById('add-study-modal').classList.remove('hidden');
     });
@@ -294,6 +305,7 @@ function attachEvents(container, studies, allUsers) {
             const study = await api.createStudy({
                 title, protocolNo, phase: phase || null,
                 sponsor: sponsor || null, indication: indication || null,
+                ieCriteria: readCriteriaEditor('add'),
                 startDate: startDate || null, endDate: endDate || null,
             });
             // Auto-select newly created study if none selected
@@ -323,6 +335,7 @@ function attachEvents(container, studies, allUsers) {
             document.getElementById('edit-study-indication').value = s.indication ?? '';
             document.getElementById('edit-study-start').value     = s.startDate ?? '';
             document.getElementById('edit-study-end').value       = s.endDate ?? '';
+            fillCriteriaEditor('edit', s.ieCriteria);   // existing criteria, or default set if none
             document.getElementById('edit-study-error').classList.add('hidden');
             document.getElementById('edit-study-modal').classList.remove('hidden');
         });
@@ -354,6 +367,7 @@ function attachEvents(container, studies, allUsers) {
             await api.updateStudy(editingStudyId, {
                 title, phase, status,
                 sponsor: sponsor || null, indication: indication || null,
+                ieCriteria: readCriteriaEditor('edit'),
                 startDate: startDate || null, endDate: endDate || null,
             });
             // Update cached study meta if it's the current study

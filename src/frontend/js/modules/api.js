@@ -248,6 +248,10 @@ export const api = {
         return studies.map(mapStudy);
     },
 
+    async getStudy(id) {
+        return mapStudy(await apiFetch(`/api/studies/${id}`));
+    },
+
     async createStudy(payload) {
         const result = await apiFetch('/api/studies', { method: 'POST', body: JSON.stringify(payload) });
         return mapStudy(result);
