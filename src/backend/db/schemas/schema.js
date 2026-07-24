@@ -91,6 +91,10 @@ export const studies = pgTable('studies', {
     // Per-protocol Inclusion/Exclusion criteria: { inclusion:[{key,label}], exclusion:[{key,label}] }.
     // NULL means "use the app's default criteria set" (see frontend DEFAULT_IE_CRITERIA).
     ieCriteria:  jsonb('ie_criteria'),
+    // Per-protocol visit schedule template: [{ name, studyDay, windowDays, order }].
+    // Subjects who pass screening get these visits generated automatically.
+    // NULL means no template — visits are added manually, nothing is invented.
+    visitSchedule: jsonb('visit_schedule'),
     status:      text('status').notNull().default('Active'), // Active | Completed | Suspended | Terminated
     startDate:   timestamp('start_date'),
     endDate:     timestamp('end_date'),

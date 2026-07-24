@@ -854,6 +854,8 @@ async function runMigrations() {
         `ALTER TABLE sites   ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id)`,
         // Per-protocol I/E criteria (NULL = use the app default set).
         `ALTER TABLE studies ADD COLUMN IF NOT EXISTS ie_criteria JSONB`,
+        // Per-protocol visit schedule template (NULL = no template, manual visits only).
+        `ALTER TABLE studies ADD COLUMN IF NOT EXISTS visit_schedule JSONB`,
         // Backfill existing rows into the default org (only untenanted rows).
         `UPDATE "user"  SET organization_id = (SELECT id FROM organizations WHERE slug='default') WHERE organization_id IS NULL AND role <> 'platform_owner'`,
         `UPDATE studies SET organization_id = (SELECT id FROM organizations WHERE slug='default') WHERE organization_id IS NULL`,

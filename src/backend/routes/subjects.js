@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { eq, ilike, and, count, sql } from 'drizzle-orm';
 import { db, client } from '../db/connection.js';
-import { subjects, sites, visits, ieAssessments, crfDataEntries, queries, subjectRandomization, screeningLog } from '../db/schemas/schema.js';
+import { subjects, sites, visits, ieAssessments, crfDataEntries, queries, subjectRandomization, screeningLog, studies } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { licenseGuardCreate } from '../lib/licenseguard.js';
 import { isUniqueViolation } from '../lib/dberrors.js';
@@ -9,6 +9,7 @@ import { writeAudit } from '../lib/audit.js';
 import { siteCondition, subjectInSiteScope } from '../lib/sitescope.js';
 import { effectiveOrgId } from '../lib/tenantscope.js';
 import { checkLimit } from '../lib/plans.js';
+import { plannedDateFor } from '../lib/visitschedule.js';
 
 const router = Router();
 
@@ -279,6 +280,48 @@ router.patch('/:id/status', requireRole('investigator', 'pi', 'admin'), async (r
     }
 });
 
+// Generate the protocol visit schedule for a subject who passed screening,
+// from the study's visit_schedule template. Planned dates are derived from the
+// subject's enrollment date (Day 1 = enrollment; there is no Day 0).
+// Skipped entirely when the study has no template, or when the subject already
+// has visits (idempotent). Best-effort: never blocks the assessment.
+async function generateProtocolVisits(subject, user, ip) {
+    try {
+        const [study] = await db.select({ visitSchedule: studies.visitSchedule })
+            .from(studies).where(eq(studies.id, subject.studyId));
+        const template = study?.visitSchedule;
+        if (!Array.isArray(template) || template.length === 0) return;
+
+        const [already] = await db.select({ id: visits.id })
+            .from(visits).where(eq(visits.subjectId, subject.id)).limit(1);
+        if (already) return;
+
+        const enrolledOn = subject.enrolledAt ?? new Date();
+        const rows = template.map(v => ({
+            subjectId:   subject.id,
+            visitName:   v.name,
+            visitOrder:  v.order ?? null,
+            visitType:   'Scheduled',
+            plannedDate: plannedDateFor(enrolledOn, v.studyDay),
+            windowDays:  v.windowDays ?? 0,
+            studyDay:    v.studyDay,
+            status:      'Scheduled',
+            createdByName: user.name,
+        }));
+        if (rows.length === 0) return;
+
+        await db.insert(visits).values(rows);
+        await writeAudit(db, {
+            tableName: 'visits', recordId: subject.id, action: 'INSERT',
+            newValue: JSON.stringify({ generated: rows.length, subjectCode: subject.subjectCode }),
+            reason: 'Auto-generated protocol visit schedule on enrollment',
+            user, ipAddress: ip,
+        });
+    } catch (err) {
+        console.warn('Protocol visit generation skipped (non-fatal):', err.message?.slice(0, 120));
+    }
+}
+
 // Build a human-readable fail reason from an I/E criteria result set.
 function summarizeFailedCriteria(criteria) {
     const reasons = [];
@@ -367,6 +410,9 @@ router.post('/:id/ie-assessment', requireRole('investigator', 'pi', 'admin'), as
 
         // Keep the GCP screening log in sync with this screening decision.
         await upsertScreeningLog(subject, passed, criteriaJson, req.user, req.ip);
+
+        // Subjects who pass screening get the protocol's visit schedule.
+        if (passed) await generateProtocolVisits(subject, req.user, req.ip);
 
         res.status(201).json(assessment);
     } catch (err) {

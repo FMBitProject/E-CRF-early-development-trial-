@@ -8,6 +8,10 @@ import {
     DEFAULT_IE_CRITERIA, criteriaEditorHtml, fillCriteriaEditor,
     readCriteriaEditor, wireCriteriaEditor,
 } from './iecriteria.js';
+import {
+    visitScheduleEditorHtml, fillVisitScheduleEditor,
+    readVisitScheduleEditor, wireVisitScheduleEditor,
+} from './visitschedule.js';
 
 export async function renderStudyMgmt(container) {
     container.innerHTML = `<div class="flex items-center justify-center p-10 text-slate-400 text-sm">Loading studies…</div>`;
@@ -163,6 +167,7 @@ function renderAddModal() {
                         </div>
                     </div>
                     ${criteriaEditorHtml('add')}
+                    ${visitScheduleEditorHtml('add')}
                 </div>
                 <p id="add-study-error" class="text-red-600 text-xs mt-3 hidden"></p>
                 <div class="flex gap-2 mt-5">
@@ -225,6 +230,7 @@ function renderEditModal() {
                         </div>
                     </div>
                     ${criteriaEditorHtml('edit')}
+                    ${visitScheduleEditorHtml('edit')}
                 </div>
                 <p id="edit-study-error" class="text-red-600 text-xs mt-3 hidden"></p>
                 <div class="flex gap-2 mt-5">
@@ -266,6 +272,8 @@ function attachEvents(container, studies, allUsers) {
     // Criteria editors (add/remove row behavior) — wired once per render.
     wireCriteriaEditor('add');
     wireCriteriaEditor('edit');
+    wireVisitScheduleEditor('add');
+    wireVisitScheduleEditor('edit');
 
     // ─── Add Study ───────────────────────────────────────────
     document.getElementById('btn-add-study')?.addEventListener('click', () => {
@@ -276,6 +284,7 @@ function attachEvents(container, studies, allUsers) {
         document.getElementById('add-study-start').value = '';
         document.getElementById('add-study-end').value = '';
         fillCriteriaEditor('add', DEFAULT_IE_CRITERIA);   // new studies start from the default set
+        fillVisitScheduleEditor('add', []);               // empty — never invent a visit schedule
         document.getElementById('add-study-error').classList.add('hidden');
         document.getElementById('add-study-modal').classList.remove('hidden');
     });
@@ -305,7 +314,8 @@ function attachEvents(container, studies, allUsers) {
             const study = await api.createStudy({
                 title, protocolNo, phase: phase || null,
                 sponsor: sponsor || null, indication: indication || null,
-                ieCriteria: readCriteriaEditor('add'),
+                ieCriteria:    readCriteriaEditor('add'),
+                visitSchedule: readVisitScheduleEditor('add'),
                 startDate: startDate || null, endDate: endDate || null,
             });
             // Auto-select newly created study if none selected
@@ -336,6 +346,7 @@ function attachEvents(container, studies, allUsers) {
             document.getElementById('edit-study-start').value     = s.startDate ?? '';
             document.getElementById('edit-study-end').value       = s.endDate ?? '';
             fillCriteriaEditor('edit', s.ieCriteria);   // existing criteria, or default set if none
+            fillVisitScheduleEditor('edit', s.visitSchedule);
             document.getElementById('edit-study-error').classList.add('hidden');
             document.getElementById('edit-study-modal').classList.remove('hidden');
         });
@@ -367,7 +378,8 @@ function attachEvents(container, studies, allUsers) {
             await api.updateStudy(editingStudyId, {
                 title, phase, status,
                 sponsor: sponsor || null, indication: indication || null,
-                ieCriteria: readCriteriaEditor('edit'),
+                ieCriteria:    readCriteriaEditor('edit'),
+                visitSchedule: readVisitScheduleEditor('edit'),
                 startDate: startDate || null, endDate: endDate || null,
             });
             // Update cached study meta if it's the current study

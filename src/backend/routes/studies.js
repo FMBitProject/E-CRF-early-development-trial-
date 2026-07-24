@@ -9,6 +9,7 @@ import { writeAudit } from '../lib/audit.js';
 import { orgCondition, sameOrg, effectiveOrgId } from '../lib/tenantscope.js';
 import { checkLimit } from '../lib/plans.js';
 import { sanitizeIeCriteria } from '../lib/iecriteria.js';
+import { sanitizeVisitSchedule } from '../lib/visitschedule.js';
 
 const router = Router();
 
@@ -54,7 +55,7 @@ router.get('/', async (req, res) => {
 
 // POST /api/studies — create study (admin only)
 router.post('/', licenseGuardCreate, requireRole('admin'), async (req, res) => {
-    const { title, protocolNo, phase, sponsor, indication, startDate, endDate, ieCriteria } = req.body;
+    const { title, protocolNo, phase, sponsor, indication, startDate, endDate, ieCriteria, visitSchedule } = req.body;
     if (!title || !protocolNo) return res.status(400).json({ error: 'title and protocolNo are required' });
     try {
         // Plan limit: number of studies per organization.
@@ -69,7 +70,8 @@ router.post('/', licenseGuardCreate, requireRole('admin'), async (req, res) => {
             organizationId: effectiveOrgId(req),
             title, protocolNo, phase: phase || null,
             sponsor: sponsor || null, indication: indication || null,
-            ieCriteria: sanitizeIeCriteria(ieCriteria),
+            ieCriteria:    sanitizeIeCriteria(ieCriteria),
+            visitSchedule: sanitizeVisitSchedule(visitSchedule),
             startDate: startDate ? new Date(startDate) : null,
             endDate:   endDate   ? new Date(endDate)   : null,
             status: 'Active',
@@ -87,7 +89,7 @@ router.post('/', licenseGuardCreate, requireRole('admin'), async (req, res) => {
 // PATCH /api/studies/:id — update study (admin only)
 router.patch('/:id', requireRole('admin'), async (req, res) => {
     const id = parseInt(req.params.id);
-    const { title, protocolNo, phase, sponsor, indication, status, startDate, endDate, ieCriteria } = req.body;
+    const { title, protocolNo, phase, sponsor, indication, status, startDate, endDate, ieCriteria, visitSchedule } = req.body;
     try {
         const [before] = await db.select().from(studies).where(eq(studies.id, id));
         if (!before || !sameOrg(req, before.organizationId)) {
@@ -102,6 +104,7 @@ router.patch('/:id', requireRole('admin'), async (req, res) => {
         if (indication  !== undefined) updates.indication  = indication;
         if (status      !== undefined) updates.status      = status;
         if (ieCriteria  !== undefined) updates.ieCriteria  = sanitizeIeCriteria(ieCriteria);
+        if (visitSchedule !== undefined) updates.visitSchedule = sanitizeVisitSchedule(visitSchedule);
         if (startDate   !== undefined) updates.startDate   = startDate ? new Date(startDate) : null;
         if (endDate     !== undefined) updates.endDate     = endDate   ? new Date(endDate)   : null;
         updates.updatedAt = new Date();
