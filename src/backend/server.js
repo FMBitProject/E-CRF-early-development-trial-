@@ -996,6 +996,12 @@ app.all('/api/auth/*', toNodeHandler(auth));
 // it before express.json() so the payload isn't parsed/re-serialized.
 app.post('/api/billing/webhook', express.raw({ type: '*/*' }), handleBillingWebhook);
 
+// Bulk data import posts a whole site's spreadsheet as JSON (hundreds of wide
+// rows), so it needs a larger body limit. Mounted before the global parser; the
+// global express.json() below is a no-op once the body is already parsed, so
+// every other route keeps the default (small) limit.
+app.use('/api/import', express.json({ limit: '25mb' }));
+
 app.use(express.json());
 
 // Auth-required API routes
