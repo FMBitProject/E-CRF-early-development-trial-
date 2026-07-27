@@ -42,6 +42,31 @@ export function isNihil(value) {
 function looksNumeric(v) { const s = String(v).trim(); return s !== '' && !isNaN(Number(s)); }
 function looksDate(v)    { return DATE_RE.test(String(v).trim()); }
 
+// Numeric-only cell (skips junk like "#DIV/0!", "n/a"); returns the trimmed
+// string when numeric, else null. Vital/lab modules store numbers.
+export function numOrNull(v) {
+    const s = String(v ?? '').trim();
+    return s !== '' && !isNaN(Number(s)) ? s : null;
+}
+export function intOrNull(v) {
+    const n = numOrNull(v);
+    return n == null ? null : Math.round(Number(n));
+}
+
+// Split a combined blood-pressure cell ("120/80") into [systolic, diastolic].
+export function splitBP(v) {
+    const m = String(v ?? '').match(/(\d{2,3})\s*[/\\]\s*(\d{2,3})/);
+    return m ? [parseInt(m[1], 10), parseInt(m[2], 10)] : [null, null];
+}
+
+// Derive a lab test name + unit from a column header, e.g.
+// "LDL (mg/dL)" → { testName: "LDL", unit: "mg/dL" }.
+export function parseLabHeader(header) {
+    const raw = String(header ?? '').trim();
+    const m = raw.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+    return m ? { testName: m[1].trim(), unit: m[2].trim() } : { testName: raw, unit: null };
+}
+
 // Infer a CRF form schema from CSV headers + sample rows. `skip` headers (IMT,
 // SDV, subject/visit/AE columns) are excluded. The user reviews the result.
 export function deriveFormSchema(headers, rows, skip = []) {
@@ -92,6 +117,9 @@ export function deriveForm({ headers, rows, skip = [] }) {
 export function planRow(row, columnMap, formFields = []) {
     const subject = {};
     const crf = {};
+    const vital = {};       // vital_signs fields
+    const labs = [];        // [{ testName, unit, value }]
+    let labName = null, labDate = null;
     let subjectCode = null;
     let visitDate = null;
     let ae = null;          // { term, serious, onsetDate, narrative }
@@ -129,9 +157,38 @@ export function planRow(row, columnMap, formFields = []) {
             case 'aeOnsetDate':
                 if (val && ae) ae.onsetDate = val;
                 break;
+
+            // ── Vital Signs (dedicated module) ─────────────────────────────
+            case 'vitalBP': {
+                const [s, d] = splitBP(val);
+                if (s != null) vital.systolicBp = s;
+                if (d != null) vital.diastolicBp = d;
+                break;
+            }
+            case 'vitalWeight': if (numOrNull(val)) vital.weight = numOrNull(val); break;
+            case 'vitalHeight': if (numOrNull(val)) vital.height = numOrNull(val); break;
+            case 'vitalBmi':    if (numOrNull(val)) vital.bmi = numOrNull(val); break;
+            case 'vitalHR':     if (intOrNull(val) != null) vital.heartRate = intOrNull(val); break;
+            case 'vitalTemp':   if (numOrNull(val)) vital.temperature = numOrNull(val); break;
+            case 'vitalRR':     if (intOrNull(val) != null) vital.respiratoryRate = intOrNull(val); break;
+            case 'vitalSpO2':   if (numOrNull(val)) vital.oxygenSaturation = numOrNull(val); break;
+
+            // ── Laboratory (dedicated module) — one row per test ──────────
+            case 'lab':
+                if (val !== '') {
+                    const { testName, unit } = parseLabHeader(spec.field || header);
+                    labs.push({ testName, unit, value: val });
+                }
+                break;
+            case 'labName': if (val) labName = val; break;
+            case 'labDate': if (val) labDate = val; break;
+
             default: break;
         }
     }
+
+    // attach shared lab name/date to each lab row
+    for (const l of labs) { l.labName = labName; l.date = labDate || visitDate; }
 
     if (!subjectCode) structuralErrors.push('Missing subject code');
 
@@ -142,6 +199,8 @@ export function planRow(row, columnMap, formFields = []) {
         subject,
         visitDate,
         crf,
+        vital: Object.keys(vital).length ? vital : null,
+        labs,
         ae,
         structuralErrors,
         validation,        // { valid, errors, warnings, softViolations }

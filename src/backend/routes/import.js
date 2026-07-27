@@ -8,7 +8,7 @@
 import { Router } from 'express';
 import { eq, and } from 'drizzle-orm';
 import { db } from '../db/connection.js';
-import { subjects, visits, crfForms, crfDataEntries, adverseEvents, sites } from '../db/schemas/schema.js';
+import { subjects, visits, crfForms, crfDataEntries, adverseEvents, sites, vitalSigns, labResults } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { licenseGuardCreate } from '../lib/licenseguard.js';
 import { writeAudit, writeFieldDiffAudit } from '../lib/audit.js';
@@ -96,7 +96,7 @@ router.post('/visit', licenseGuardCreate, requireRole(...IMPORT_ROLES), async (r
             });
         }
 
-        const summary = { subjectsCreated: 0, visitsCreated: 0, visitsUpdated: 0, entriesCreated: 0, entriesUpdated: 0, aeCreated: 0, skipped: 0, errors: 0 };
+        const summary = { subjectsCreated: 0, visitsCreated: 0, visitsUpdated: 0, entriesCreated: 0, entriesUpdated: 0, aeCreated: 0, vitalsCreated: 0, labsCreated: 0, skipped: 0, errors: 0 };
         const results = [];
         const reasonText = reason || `Bulk import — ${visitName}`;
 
@@ -115,6 +115,8 @@ router.post('/visit', licenseGuardCreate, requireRole(...IMPORT_ROLES), async (r
                 rr.visitDate = plan.visitDate;
                 rr.crfFields = Object.keys(plan.crf).length;
                 rr.ae = plan.ae ? (plan.ae.serious ? 'SAE' : 'AE') : null;
+                rr.vitals = plan.vital ? 1 : 0;
+                rr.labs = plan.labs.length;
                 results.push(rr);
                 continue;
             }
@@ -196,6 +198,38 @@ router.post('/visit', licenseGuardCreate, requireRole(...IMPORT_ROLES), async (r
                     summary.aeCreated++;
                     await writeAudit(db, { tableName: 'adverse_events', recordId: ae.id, action: 'INSERT', newValue: `${plan.ae.term} (import, needs coding/severity)`, reason: 'AE recorded via import', user: req.user, ipAddress: req.ip });
                   }
+                }
+
+                // 5. Vital signs (dedicated module) — one record per subject+visit
+                if (plan.vital) {
+                    const [dupV] = await db.select({ id: vitalSigns.id }).from(vitalSigns)
+                        .where(and(eq(vitalSigns.subjectId, subj.id), eq(vitalSigns.visitId, visit.id)));
+                    if (!dupV) {
+                        const [vs] = await db.insert(vitalSigns).values({
+                            studyId: req.studyId, subjectId: subj.id, visitId: visit.id,
+                            assessmentDate: plan.visitDate || new Date().toISOString().slice(0, 10),
+                            ...plan.vital, createdBy: req.user.id, createdByName: req.user.name,
+                        }).returning();
+                        summary.vitalsCreated++;
+                        await writeAudit(db, { tableName: 'vital_signs', recordId: vs.id, action: 'INSERT', newValue: 'Vitals via import', reason: 'Vital signs recorded via import', user: req.user, ipAddress: req.ip });
+                    }
+                }
+
+                // 6. Laboratory (dedicated module) — one row per test, deduped
+                for (const l of plan.labs) {
+                    const [dupL] = await db.select({ id: labResults.id }).from(labResults)
+                        .where(and(eq(labResults.subjectId, subj.id), eq(labResults.visitId, visit.id), eq(labResults.testName, l.testName)));
+                    if (dupL) continue;
+                    const [lr] = await db.insert(labResults).values({
+                        studyId: req.studyId, subjectId: subj.id, visitId: visit.id,
+                        testName: l.testName, unit: l.unit ?? null,
+                        valueNumeric: /^-?\d*\.?\d+$/.test(l.value) ? l.value : null,
+                        valueText: /^-?\d*\.?\d+$/.test(l.value) ? null : l.value,
+                        labName: l.labName ?? null, specimenCollectedAt: l.date ?? null, assessmentDate: l.date ?? null,
+                        createdBy: req.user.id, createdByName: req.user.name,
+                    }).returning();
+                    summary.labsCreated++;
+                    await writeAudit(db, { tableName: 'lab_results', recordId: lr.id, action: 'INSERT', newValue: `${l.testName}=${l.value}${l.unit ? ' ' + l.unit : ''} (import)`, reason: 'Lab result recorded via import', user: req.user, ipAddress: req.ip });
                 }
 
                 rr.status = 'ok';

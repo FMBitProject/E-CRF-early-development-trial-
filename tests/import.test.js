@@ -2,7 +2,50 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deriveFormSchema, normalizeSex, isNihil, slugify, planRow } from '../src/backend/lib/importengine.js';
+import { deriveFormSchema, normalizeSex, isNihil, slugify, planRow, splitBP, parseLabHeader, numOrNull } from '../src/backend/lib/importengine.js';
+
+test('splitBP splits a combined blood-pressure cell', () => {
+    assert.deepEqual(splitBP('120/80'), [120, 80]);
+    assert.deepEqual(splitBP(' 138 / 90 '), [138, 90]);
+    assert.deepEqual(splitBP(''), [null, null]);
+    assert.deepEqual(splitBP('n/a'), [null, null]);
+});
+
+test('parseLabHeader extracts test name + unit', () => {
+    assert.deepEqual(parseLabHeader('LDL (mg/dL)'), { testName: 'LDL', unit: 'mg/dL' });
+    assert.deepEqual(parseLabHeader('HDL'), { testName: 'HDL', unit: null });
+});
+
+test('numOrNull rejects junk like #DIV/0!', () => {
+    assert.equal(numOrNull('25.0'), '25.0');
+    assert.equal(numOrNull('#DIV/0!'), null);
+    assert.equal(numOrNull(''), null);
+});
+
+test('planRow extracts vitals (BP split) and lab rows', () => {
+    const cmap = {
+        'ID': { target: 'subjectCode' },
+        'Tekanan Darah': { target: 'vitalBP' },
+        'Berat Badan': { target: 'vitalWeight' },
+        'IMT': { target: 'vitalBmi' },
+        'LDL (mg/dL)': { target: 'lab' },
+        'Nama Laboratorium': { target: 'labName' },
+        'Tanggal Kedatangan': { target: 'visitDate' },
+    };
+    const p = planRow(
+        { 'ID': '01LKT', 'Tekanan Darah': '120/80', 'Berat Badan': '64', 'IMT': '#DIV/0!', 'LDL (mg/dL)': '230', 'Nama Laboratorium': 'Prodia', 'Tanggal Kedatangan': '2026-07-23' },
+        cmap, [],
+    );
+    assert.equal(p.vital.systolicBp, 120);
+    assert.equal(p.vital.diastolicBp, 80);
+    assert.equal(p.vital.weight, '64');
+    assert.ok(!('bmi' in p.vital));                 // #DIV/0! skipped
+    assert.equal(p.labs.length, 1);
+    assert.deepEqual(
+        { t: p.labs[0].testName, u: p.labs[0].unit, v: p.labs[0].value, n: p.labs[0].labName, d: p.labs[0].date },
+        { t: 'LDL', u: 'mg/dL', v: '230', n: 'Prodia', d: '2026-07-23' },
+    );
+});
 import { parseCSV, parseCSVRecords } from '../src/frontend/vendor/csvparse.js';
 
 test('parseCSVRecords returns raw rows (for grouped-header sheets)', () => {

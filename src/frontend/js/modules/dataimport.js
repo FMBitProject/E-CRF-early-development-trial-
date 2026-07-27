@@ -14,6 +14,17 @@ const TARGETS = [
     { v: 'genderIdentity', t: 'Gender Identity' },
     { v: 'visitDate',      t: 'Visit Date (actual)' },
     { v: 'crf',            t: 'CRF field (auto-named)' },
+    { v: 'vitalBP',        t: 'Vital: Blood Pressure (120/80)' },
+    { v: 'vitalWeight',    t: 'Vital: Weight' },
+    { v: 'vitalHeight',    t: 'Vital: Height' },
+    { v: 'vitalBmi',       t: 'Vital: BMI' },
+    { v: 'vitalHR',        t: 'Vital: Heart Rate' },
+    { v: 'vitalTemp',      t: 'Vital: Temperature' },
+    { v: 'vitalRR',        t: 'Vital: Resp. Rate' },
+    { v: 'vitalSpO2',      t: 'Vital: O₂ Saturation' },
+    { v: 'lab',            t: 'Lab: test value' },
+    { v: 'labName',        t: 'Lab: laboratory name' },
+    { v: 'labDate',        t: 'Lab: test date' },
     { v: 'ae',             t: 'Adverse Event' },
     { v: 'aeSerious',      t: 'Serious Adverse Event' },
 ];
@@ -30,7 +41,21 @@ function autoTarget(h) {
     if (/jenis kelamin|kelamin|^sex$/.test(s))                    return 'sex';
     if (/inisial|initial/.test(s))                                return 'initials';
     if (/tanggal kedatangan|visit date|kedatangan/.test(s))       return 'visitDate';
-    if (/\bimt\b|\bbmi\b|\bsdv\b/.test(s))                        return 'skip';
+    if (/\bsdv\b/.test(s))                                        return 'skip';
+    // ── Vital signs ──
+    if (/tekanan darah|blood pressure|\btd\b|\bbp\b|sistol|diastol/.test(s)) return 'vitalBP';
+    if (/tinggi badan|height|\btb\b/.test(s))                    return 'vitalHeight';
+    if (/berat badan|weight|\bbb\b/.test(s))                     return 'vitalWeight';
+    if (/\bimt\b|\bbmi\b/.test(s))                               return 'vitalBmi';
+    if (/nadi|heart rate|denyut|pulse|\bhr\b/.test(s))           return 'vitalHR';
+    if (/suhu|temperature|\btemp\b/.test(s))                     return 'vitalTemp';
+    if (/pernapasan|laju napas|respiratory|resp\.?\s*rate|\brr\b/.test(s)) return 'vitalRR';
+    if (/saturasi|spo2|oksigen|o2\s*sat/.test(s))                return 'vitalSpO2';
+    // ── Lab metadata ──
+    if (/nama lab|laboratorium|lab name/.test(s))                return 'labName';
+    if (/tanggal pemeriksaan|tanggal periksa|test date|tgl periksa/.test(s)) return 'labDate';
+    // ── Lab tests (each becomes one lab_results row) ──
+    if (/\bldl\b|\bhdl\b|kolesterol|cholesterol|trigliserida|\btg\b|\btc\b|non-?hdl|sgot|sgpt|\bast\b|\balt\b|kreatinin|creatinine|\bck\b|\bcpk\b|glukosa|glucose|gula darah|hba1c|ureum|urea|asam urat|uric|bilirubin|albumin|hemoglobin|\bhb\b|leukosit|trombosit|eritrosit|hematokrit|nilai lab|lab lain/.test(s)) return 'lab';
     if (/^\s*sae|serious adverse/.test(s))                         return 'aeSerious';
     if (/^\s*ae\b|adverse event/.test(s))                         return 'ae';
     return 'crf';
@@ -274,7 +299,7 @@ function payload(dryRun) {
 }
 
 function summaryLine(s) {
-    return `${s.subjectsCreated} subjects · ${s.entriesCreated} entries created / ${s.entriesUpdated} updated · ${s.aeCreated} AEs · <span class="text-red-600 font-semibold">${s.errors} errors</span>`;
+    return `${s.subjectsCreated} subjects · ${s.entriesCreated + s.entriesUpdated} CRF entries · ${s.vitalsCreated} vitals · ${s.labsCreated} labs · ${s.aeCreated} AEs · <span class="text-red-600 font-semibold">${s.errors} errors</span>`;
 }
 
 function rowsTable(rows) {
@@ -286,7 +311,7 @@ function rowsTable(rows) {
         <td class="px-3 py-1">${r.line}</td><td class="px-3 py-1 font-mono">${esc(r.subjectCode || '—')}</td>
         <td class="px-3 py-1">${r.status === 'error'
             ? '<span class="text-red-600 font-semibold">error</span>'
-            : `<span class="text-emerald-600">${r.subjectAction === 'exists' ? 'update' : 'new'}</span>${r.ae ? ` · ${r.ae}` : ''}`}</td>
+            : `<span class="text-emerald-600">${r.subjectAction === 'exists' ? 'update' : 'new'}</span>${r.vitals ? ' · vitals' : ''}${r.labs ? ` · ${r.labs} labs` : ''}${r.ae ? ` · ${r.ae}` : ''}`}</td>
         <td class="px-3 py-1 text-slate-500">${esc([...(r.messages || []), ...(r.warnings || [])].join('; ')).slice(0, 80)}</td>
     </tr>`).join('')}</tbody></table></div>`;
 }
