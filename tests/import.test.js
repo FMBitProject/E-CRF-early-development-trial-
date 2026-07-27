@@ -63,7 +63,8 @@ test('deriveFormSchema infers types (number/date/select/text) and skips columns'
     assert.equal(byLabel['Tanggal'].type, 'date');
     assert.equal(byLabel['Dosis'].type, 'select');
     assert.deepEqual(byLabel['Dosis'].options.sort(), ['10/10 mg', '10/5 mg']);
-    assert.equal(byLabel['Dosis'].closedCodelist, true);
+    // derived selects are open (options are a suggestion, not a hard whitelist)
+    assert.ok(!byLabel['Dosis'].closedCodelist);
     assert.equal(byLabel['Risiko CV'].type, 'select');
     assert.equal(byLabel['IMT'], undefined);   // skipped
     assert.ok(fields.every(f => /^[a-z0-9_]+$/.test(f.key)));

@@ -67,11 +67,11 @@ export function deriveFormSchema(headers, rows, skip = []) {
         } else if (values.every(looksDate)) {
             field.type = 'date';
         } else if (distinct.length <= 8 && maxLen <= 40) {
-            // short, small distinct set of labels → a dropdown/codelist (user can
-            // switch it to plain text in the review step if it isn't categorical)
+            // short, small distinct set of labels → a dropdown. Options are only a
+            // SUGGESTION (not closedCodelist): we infer them from a sample, so a
+            // value that appears only in later rows must NOT be rejected on import.
             field.type = 'select';
             field.options = distinct;
-            field.closedCodelist = true;
         } else if (maxLen > 60) {
             field.type = 'textarea';
         }

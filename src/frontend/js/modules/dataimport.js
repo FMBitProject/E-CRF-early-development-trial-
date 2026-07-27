@@ -240,7 +240,7 @@ async function deriveAndPreview(container) {
             // (all 25 sites share one layout, so one form serves them all).
             if (!st.formId || !st.schema) {
                 const res = await api.deriveImportForm({
-                    name: `Form ${st.visitName}`, headers: crfHeaders, rows: st.rows.slice(0, 100),
+                    name: `Form ${st.visitName}`, headers: crfHeaders, rows: st.rows,
                 });
                 st.formId = res.formId; st.schema = res.schema;
             }
