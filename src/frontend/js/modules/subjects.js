@@ -1106,6 +1106,10 @@ window.openEditVisitModal = function (visitId) {
     const today    = new Date().toISOString().split('T')[0];
     const isMissed = v.status === 'Missed';
     const canSign  = ['investigator', 'pi', 'admin'].includes(api.getCurrentUser()?.role);
+    // First-time data entry (this scheduled visit has no actual date yet) is an
+    // initial entry, not a change — 21 CFR Part 11 reason-for-change applies only
+    // when modifying already-recorded data. The audit trail still logs it.
+    const isFirstEntry = !v.actual_date;
 
     // Set context for inline query buttons
     window._inlineQueryCtx = { subjectId: subject.id, visitId, entryId: null, formId: null };
@@ -1118,7 +1122,7 @@ window.openEditVisitModal = function (visitId) {
     </button>`;
 
     showModal({
-        title: `Edit Visit — ${v.visit_name}`,
+        title: `${isFirstEntry ? 'Record Visit' : 'Edit Visit'} — ${v.visit_name}`,
         size: 'lg',
         body: `
         <div class="space-y-4">
@@ -1202,13 +1206,18 @@ window.openEditVisitModal = function (visitId) {
                 </label>
             </div>` : ''}
 
+            ${isFirstEntry ? `
+            <div class="p-3 rounded-md border text-xs" style="background:#F0FDF4;border-color:#BBF7D0;color:#065F46">
+                <i data-lucide="info" class="w-3.5 h-3.5 inline mr-1 align-text-bottom"></i>
+                First-time entry — no change reason needed. This entry is still recorded in the audit trail.
+            </div>` : `
             <div class="p-3 rounded-md border" style="background:#FFF7ED;border-color:#FED7AA">
                 <label class="block text-xs font-semibold mb-1.5" style="color:#9A3412">Reason for Change <span class="text-red-500">*</span></label>
                 <input type="text" id="ev-reason"
                     placeholder="Required per FDA 21 CFR Part 11 — document why this record is being updated"
                     class="w-full px-3 py-2.5 border border-orange-200 rounded-md text-sm outline-none" style="background:#fff">
                 <p class="text-xs mt-1" style="color:#C2410C">This justification will be permanently stored in the audit trail.</p>
-            </div>
+            </div>`}
 
             <div id="ev-window-preview" class="hidden p-2.5 rounded-md border text-xs font-medium"></div>
             <div id="ev-error" class="hidden p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700"></div>
@@ -1276,7 +1285,10 @@ window.submitEditVisit = async function (visitId) {
     const actual  = document.getElementById('ev-actual').value;
     const status  = document.getElementById('ev-status').value;
     const missedR = document.getElementById('ev-missed-reason')?.value.trim();
-    const reason  = document.getElementById('ev-reason').value.trim();
+    // The reason field only exists when modifying already-recorded data; a
+    // first-time entry has no reason field and needs none (audit still logs it).
+    const reasonEl  = document.getElementById('ev-reason');
+    const reason    = reasonEl ? reasonEl.value.trim() : '';
     const wantsSign = document.getElementById('ev-signed')?.checked ?? false;
 
     if (!name) {
@@ -1284,7 +1296,7 @@ window.submitEditVisit = async function (visitId) {
         errEl.classList.remove('hidden');
         return;
     }
-    if (!reason) {
+    if (reasonEl && !reason) {
         errEl.textContent = 'Reason for change is required (FDA 21 CFR Part 11).';
         errEl.classList.remove('hidden');
         return;

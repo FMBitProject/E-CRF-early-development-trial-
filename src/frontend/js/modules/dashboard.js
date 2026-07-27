@@ -140,7 +140,7 @@ export async function renderDashboard() {
             ${kpiCard('Active Subjects',  stats.activeSubjects,  `${stats.totalSubjects} total enrolled`,  'users',          '#1554A0', '#EBF2FD')}
             ${kpiCard('Pending Forms',    stats.pendingForms,    'awaiting submission',                    'file-edit',      '#B45309', '#FEF3C7')}
             ${kpiCard('Open Queries',     stats.openQueries,     'requiring resolution',                   'message-square', '#991B1B', '#FEE2E2')}
-            ${kpiCard('Total Visits',     stats.totalVisits,     'study visits recorded',                  'calendar-check', '#065F46', '#D1FAE5')}
+            ${kpiCard('Total Visits',     stats.totalVisits,     'visits conducted',                       'calendar-check', '#065F46', '#D1FAE5')}
         </div>
         <!-- KPI Cards — Row 2: safety & compliance -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">

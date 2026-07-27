@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, and, desc, count } from 'drizzle-orm';
+import { eq, and, desc, count, isNotNull } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { subjects, visits, crfDataEntries, queries, auditTrails } from '../db/schemas/schema.js';
 
@@ -28,9 +28,11 @@ router.get('/stats', async (req, res) => {
               .innerJoin(subjects, eq(crfDataEntries.subjectId, subjects.id))
               .where(and(eq(subjects.studyId, sid), eq(crfDataEntries.status, 'Draft'))),
             db.select({ open: count() }).from(queries).where(and(eq(queries.studyId, sid), eq(queries.status, 'Open'))),
+            // Only visits that actually happened (an actual date was recorded) —
+            // auto-generated but not-yet-conducted scheduled visits do not count.
             db.select({ total: count() }).from(visits)
               .innerJoin(subjects, eq(visits.subjectId, subjects.id))
-              .where(eq(subjects.studyId, sid)),
+              .where(and(eq(subjects.studyId, sid), isNotNull(visits.actualDate))),
             canSeeAudit
                 ? db.select({
                       id:        auditTrails.id,

@@ -163,6 +163,15 @@ router.patch('/:id', requireRole('investigator', 'pi', 'admin', 'crc'), async (r
             return res.status(409).json({ error: 'Visit is signed and cannot be modified. An admin must unsign it first.' });
         }
 
+        // 21 CFR Part 11 §11.10(e): a reason is required when MODIFYING already-
+        // recorded data, not for the initial entry. A visit with no actual date
+        // yet is still just scheduled, so recording it the first time needs no
+        // reason (the audit trail records it either way).
+        const wasRecorded = !!existing.actualDate;
+        if (wasRecorded && !(reason && reason.trim())) {
+            return res.status(400).json({ error: 'Reason for change is required when modifying a recorded visit (21 CFR Part 11).' });
+        }
+
         const enrollmentDate = subject?.enrolledAt ? subject.enrolledAt.toISOString().split('T')[0] : null;
 
         const newActualDate  = actualDate  !== undefined ? actualDate  : existing.actualDate;
@@ -193,7 +202,7 @@ router.patch('/:id', requireRole('investigator', 'pi', 'admin', 'crc'), async (r
         await writeAudit(db, {
             tableName: 'visits', recordId: updated.id, action: 'UPDATE',
             fieldName: 'status', oldValue: existing.status, newValue: updated.status,
-            reason: reason ?? 'Visit updated',
+            reason: reason ?? (wasRecorded ? 'Visit updated' : 'Initial visit record'),
             user: req.user, ipAddress: req.ip,
         });
 
