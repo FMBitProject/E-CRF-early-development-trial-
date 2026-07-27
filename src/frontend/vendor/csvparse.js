@@ -3,7 +3,9 @@
 // and CRLF or LF line endings. Returns { headers, rows } where each row is an
 // object keyed by header. Pure — safe to unit-test in Node.
 
-export function parseCSV(text) {
+// Parse CSV into raw records (array of string arrays). Callers that need to pick
+// a header row (grouped/merged spreadsheet headers) use this directly.
+export function parseCSVRecords(text) {
     const src = String(text ?? '').replace(/^﻿/, '');   // strip BOM
     const records = [];
     let field = '';
@@ -40,8 +42,13 @@ export function parseCSV(text) {
 
     // drop fully-empty trailing records
     while (records.length && records[records.length - 1].every(v => v === '')) records.pop();
-    if (records.length === 0) return { headers: [], rows: [] };
+    return records;
+}
 
+// Convenience: first record = headers, rest = objects (simple flat CSVs).
+export function parseCSV(text) {
+    const records = parseCSVRecords(text);
+    if (records.length === 0) return { headers: [], rows: [] };
     const headers = records[0].map(h => h.trim());
     const rows = records.slice(1).map(rec => {
         const obj = {};

@@ -3,7 +3,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deriveFormSchema, normalizeSex, isNihil, slugify, planRow } from '../src/backend/lib/importengine.js';
-import { parseCSV } from '../src/frontend/vendor/csvparse.js';
+import { parseCSV, parseCSVRecords } from '../src/frontend/vendor/csvparse.js';
+
+test('parseCSVRecords returns raw rows (for grouped-header sheets)', () => {
+    // row 1 = sparse group titles, row 2 = real headers
+    const recs = parseCSVRecords('No.,IDENTITAS,,\n"No.","ID Subjek","Usia","SDV"\n1,01LKT,50,\n');
+    assert.equal(recs.length, 3);
+    assert.deepEqual(recs[1], ['No.', 'ID Subjek', 'Usia', 'SDV']);
+    assert.equal(recs[2][1], '01LKT');
+});
 
 test('parseCSV handles BOM, quoted commas/newlines, CRLF, and escaped quotes', () => {
     const csv = '﻿"ID Subjek","Notes"\r\n01LKT,"a, b\nc"\r\n02LKT,"say ""hi"""\r\n';

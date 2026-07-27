@@ -4,7 +4,7 @@
 
 import { api } from './api.js';
 import { showToast } from './utils.js';
-import { parseCSV } from '../../vendor/csvparse.js';
+import { parseCSVRecords } from '../../vendor/csvparse.js';
 
 const TARGETS = [
     { v: 'skip',           t: '— skip —' },
@@ -38,9 +38,62 @@ function autoTarget(h) {
 
 const st = {
     step: 1, visitName: '', siteId: '', sites: [],
+    records: [], headerRow: 0,
     headers: [], rows: [], columnMap: {}, formId: null, schema: null,
     reason: '', preview: null, report: null,
 };
+
+// Guess the header row. Data rows are FULLER than header rows, so "most cells"
+// is wrong. These sheets usually have a running "No." column, so data starts at
+// the first row whose first cell is a plain integer — the header is the row above
+// (merged sub-headers; blanks are filled from rows above in buildFromRecords).
+// Fallback: the most-filled of the first three rows.
+function detectHeaderRow(records) {
+    for (let i = 1; i < Math.min(records.length, 10); i++) {
+        if (/^\d+$/.test(String(records[i][0] ?? '').trim())) return Math.max(0, i - 1);
+    }
+    let best = 0, bestCount = -1;
+    for (let i = 0; i < Math.min(records.length, 3); i++) {
+        const n = records[i].filter(v => String(v).trim() !== '').length;
+        if (n > bestCount) { bestCount = n; best = i; }
+    }
+    return best;
+}
+
+// Build unique, non-empty headers + data-row objects from raw records, using the
+// chosen header-row index. Blank header cells get "Column N"; duplicates get a suffix.
+function buildFromRecords(records, hi) {
+    const raw = records[hi] || [];
+    const width = Math.max(...records.slice(0, hi + 1).map(r => r.length), raw.length);
+    const seen = {};
+    const headers = Array.from({ length: width }, (_, idx) => {
+        let name = String(raw[idx] ?? '').trim();
+        // merged headers: a standalone column's name may live in a row ABOVE the
+        // chosen header row (group titles span, sub-names sit below) — fill blanks
+        // from the nearest non-empty cell above in the same column.
+        if (!name) {
+            for (let r = hi - 1; r >= 0; r--) {
+                const up = String(records[r]?.[idx] ?? '').trim();
+                if (up) { name = up; break; }
+            }
+        }
+        if (!name) name = `Column ${idx + 1}`;
+        if (seen[name] != null) { seen[name]++; name = `${name} (${seen[name]})`; } else seen[name] = 0;
+        return name;
+    });
+    const rows = records.slice(hi + 1)
+        .filter(rec => rec.some(v => String(v).trim() !== ''))
+        .map(rec => Object.fromEntries(headers.map((h, idx) => [h, (rec[idx] ?? '').trim()])));
+    return { headers, rows };
+}
+
+function applyHeaderRow(hi) {
+    st.headerRow = hi;
+    const { headers, rows } = buildFromRecords(st.records, hi);
+    st.headers = headers; st.rows = rows;
+    st.columnMap = Object.fromEntries(headers.map(h => [h, { target: autoTarget(h) }]));
+    st.formId = null; st.schema = null;   // structure changed → re-derive form
+}
 
 export async function renderDataImport(container) {
     st.sites = await api.getSites().catch(() => []);
@@ -119,12 +172,13 @@ function stepUpload(container) {
         const reader = new FileReader();
         reader.onload = () => {
             try {
-                const { headers, rows } = parseCSV(reader.result);
-                if (!headers.length || !rows.length) return err('The CSV appears empty.');
-                st.headers = headers; st.rows = rows;
-                st.columnMap = Object.fromEntries(headers.map(h => [h, { target: autoTarget(h) }]));
+                const records = parseCSVRecords(reader.result);
+                if (records.length < 2) return err('The CSV appears empty.');
+                st.records = records;
+                applyHeaderRow(detectHeaderRow(records));
+                if (!st.rows.length) return err('No data rows found below the header.');
                 document.getElementById('di-file-info').innerHTML =
-                    `<i data-lucide="check-circle" class="w-4 h-4 inline text-emerald-600"></i> ${rows.length} rows, ${headers.length} columns detected.`;
+                    `<i data-lucide="check-circle" class="w-4 h-4 inline text-emerald-600"></i> ${st.rows.length} data rows, ${st.headers.length} columns (header row auto-detected as row ${st.headerRow + 1}). You can adjust the header row on the next step.`;
                 document.getElementById('di-next2').disabled = false;
                 if (window.lucide) window.lucide.createIcons();
                 clearErr();
@@ -138,9 +192,16 @@ function stepUpload(container) {
 // ── Step 3 — Map columns + derive form ──────────────────────────────────────
 function stepMap(container) {
     const sample = (h) => st.rows.slice(0, 2).map(r => r[h]).filter(v => v !== '').join(', ');
+    const headerOpts = st.records.slice(0, 6).map((rec, i) =>
+        `<option value="${i}" ${i === st.headerRow ? 'selected' : ''}>Row ${i + 1}: ${esc(rec.filter(v => String(v).trim()).slice(0, 4).join(' | ')).slice(0, 50)}</option>`).join('');
     document.getElementById('di-body').innerHTML = `
         <h2 class="text-lg font-semibold mb-1">Map columns</h2>
-        <p class="text-sm text-slate-500 mb-4">Confirm where each column goes. CRF columns become fields of an auto-derived form (you can review it after).</p>
+        <p class="text-sm text-slate-500 mb-3">Confirm where each column goes. CRF columns become fields of an auto-derived form (you can review it after).</p>
+        <div class="flex items-center gap-2 mb-4 p-2.5 bg-slate-50 border border-slate-200 rounded-md">
+            <label class="text-xs font-semibold text-slate-600">Header row:</label>
+            <select id="di-headerrow" class="border border-slate-300 rounded px-2 py-1 text-xs bg-white">${headerOpts}</select>
+            <span class="text-xs text-slate-400">Pick the row that has the real column names (not a group title).</span>
+        </div>
         <div class="overflow-x-auto border border-slate-100 rounded-md">
         <table class="w-full text-xs">
             <thead class="bg-slate-50 border-b"><tr>
@@ -159,6 +220,7 @@ function stepMap(container) {
             <button id="di-back3" class="border border-slate-200 rounded-md px-4 py-2 text-sm hover:bg-slate-50">Back</button>
             <button id="di-next3" class="btn-primary rounded-md px-5 py-2 text-sm font-semibold">Derive form &amp; preview</button>
         </div>`;
+    document.getElementById('di-headerrow').onchange = (e) => { applyHeaderRow(Number(e.target.value)); render(container); };
     container.querySelectorAll('.di-map').forEach(sel => {
         sel.onchange = () => { st.columnMap[sel.dataset.h] = { target: sel.value }; };
     });
