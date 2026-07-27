@@ -4,7 +4,7 @@ import { db } from '../db/connection.js';
 import {
     subjects, sites, visits, crfDataEntries, crfForms,
     adverseEvents, protocolDeviations, informedConsents,
-    esignatures,
+    esignatures, labResults, vitalSigns,
 } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
@@ -377,8 +377,77 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
                     c.createdAt ? new Date(c.createdAt).toISOString() : '',
                 ];
             });
+        } else if (domain === 'LB') {
+            // Laboratory — SDTM-style long format (one row per test result), the
+            // natural shape for SPSS / stats.
+            headers = ['SUBJID','VISIT','LBTEST','LBORRES','LBORRESU','LBORNRLO','LBORNRHI','LBORNR','LBDTC','LBNAM'];
+            const data = await db.select().from(labResults)
+                .leftJoin(subjects, eq(labResults.subjectId, subjects.id))
+                .leftJoin(visits, eq(labResults.visitId, visits.id))
+                .where(eq(labResults.studyId, sid))
+                .orderBy(labResults.subjectId, labResults.id);
+            rows = data.map(r => {
+                const l = r.lab_results ?? r;
+                return [
+                    r.subjects?.subjectCode || '', r.visits?.visitName || '',
+                    l.testName, l.valueNumeric ?? l.valueText ?? '', l.unit || '',
+                    l.refRangeLow ?? '', l.refRangeHigh ?? '', l.refRangeText || '',
+                    l.assessmentDate || '', l.labName || '',
+                ];
+            });
+        } else if (domain === 'VS') {
+            // Vital Signs — SDTM-style long format (one row per measurement).
+            headers = ['SUBJID','VISIT','VSTESTCD','VSTEST','VSORRES','VSORRESU','VSDTC'];
+            const VITALS = [
+                ['SYSBP','Systolic Blood Pressure','systolicBp','mmHg'],
+                ['DIABP','Diastolic Blood Pressure','diastolicBp','mmHg'],
+                ['HR','Heart Rate','heartRate','beats/min'],
+                ['RESP','Respiratory Rate','respiratoryRate','breaths/min'],
+                ['TEMP','Temperature','temperature', null],
+                ['WEIGHT','Weight','weight', null],
+                ['HEIGHT','Height','height', null],
+                ['BMI','Body Mass Index','bmi','kg/m2'],
+                ['SPO2','Oxygen Saturation','oxygenSaturation','%'],
+            ];
+            const data = await db.select().from(vitalSigns)
+                .leftJoin(subjects, eq(vitalSigns.subjectId, subjects.id))
+                .leftJoin(visits, eq(vitalSigns.visitId, visits.id))
+                .where(eq(vitalSigns.studyId, sid))
+                .orderBy(vitalSigns.subjectId, vitalSigns.id);
+            rows = data.flatMap(r => {
+                const v = r.vital_signs ?? r;
+                const subj = r.subjects?.subjectCode || '';
+                const vis = r.visits?.visitName || '';
+                return VITALS
+                    .filter(([, , key]) => v[key] != null && String(v[key]) !== '')
+                    .map(([code, name, key, unit]) => [
+                        subj, vis, code, name, v[key],
+                        unit ?? (key === 'temperature' ? (v.temperatureUnit || '') : key === 'weight' ? (v.weightUnit || '') : key === 'height' ? (v.heightUnit || '') : ''),
+                        v.assessmentDate || '',
+                    ]);
+            });
+        } else if (domain === 'CRF') {
+            // CRF form data — long format (one row per captured field), safe across
+            // forms with different field sets.
+            headers = ['SUBJID','VISIT','FORM','FIELD','VALUE'];
+            const data = await db.select().from(crfDataEntries)
+                .leftJoin(subjects, eq(crfDataEntries.subjectId, subjects.id))
+                .leftJoin(visits, eq(crfDataEntries.visitId, visits.id))
+                .leftJoin(crfForms, eq(crfDataEntries.formId, crfForms.id))
+                .where(eq(subjects.studyId, sid))
+                .orderBy(crfDataEntries.subjectId, crfDataEntries.id);
+            rows = data.flatMap(r => {
+                const e = r.crf_data_entries ?? r;
+                const subj = r.subjects?.subjectCode || '';
+                const vis = r.visits?.visitName || '';
+                const form = r.crf_forms?.name || '';
+                const dj = e.dataJson && typeof e.dataJson === 'object' ? e.dataJson : {};
+                return Object.entries(dj).map(([field, value]) => [
+                    subj, vis, form, field, Array.isArray(value) ? value.join('; ') : (value ?? ''),
+                ]);
+            });
         } else {
-            return res.status(400).json({ error: 'domain must be DM, AE, DEV, or IC' });
+            return res.status(400).json({ error: 'domain must be DM, AE, DEV, IC, LB, VS, or CRF' });
         }
 
         function csvRow(cells) {

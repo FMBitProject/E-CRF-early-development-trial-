@@ -250,6 +250,13 @@ export async function renderDashboard() {
                                     <i data-lucide="file-spreadsheet" class="w-3 h-3"></i> DM CSV
                                 </button>
                             </div>
+                            <p class="text-xs text-slate-400 font-medium px-1 pt-2 pb-1 uppercase tracking-wide">Analysis (SPSS) — long format</p>
+                            <div class="flex gap-1.5 flex-wrap">
+                                ${['LB','VS','CRF'].map(d => `
+                                <button onclick="api.downloadCSV('${d}')" class="flex-1 min-w-[70px] flex items-center justify-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded transition">
+                                    <i data-lucide="file-spreadsheet" class="w-3 h-3"></i> ${d} CSV
+                                </button>`).join('')}
+                            </div>
                         </div>` : ''}
                     </div>
                 </div>
