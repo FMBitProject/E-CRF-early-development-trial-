@@ -205,6 +205,7 @@ window.openNewSubjectModal = async function () {
         return;
     }
     // Load this study's configured criteria; fall back to the default set.
+    window._consentData = null;   // fresh enrollment — no carried-over consent
     _activeIeCriteria = DEFAULT_IE_CRITERIA;
     const cur = api.getCurrentStudy();
     if (cur?.id) {
@@ -230,7 +231,7 @@ window.openIECriteriaModal = function openIECriteriaModal() {
     </label>`).join('');
 
     showModal({
-        title: 'Step 1 of 2 — Inclusion / Exclusion Criteria',
+        title: 'Step 1 of 3 — Inclusion / Exclusion Criteria',
         size: 'lg',
         body: `
         <div class="space-y-5">
@@ -291,7 +292,99 @@ window.proceedFromIE = async function () {
 
     window._ieCriteriaResults = Object.values(results);
     window._iePasses = passes;
-    openSubjectDemographicsModal(passes);
+    openConsentModal(passes);
+};
+
+// ── Step 2 of 3 — Informed Consent ─────────────────────────────────────────
+// Consent is a real, documented event that must be obtained BEFORE any study
+// procedure (ICH GCP E6(R3) §4.8). It is captured here by the coordinator — it
+// is NEVER auto-generated. Required to enroll; optional for a screen failure.
+window.openConsentModal = function openConsentModal() {
+    const iePasses = window._iePasses !== false;
+    const today = new Date().toISOString().split('T')[0];
+    const prev  = window._consentData || {};
+
+    const note = iePasses ? `
+    <div class="flex items-start gap-2.5 p-3 rounded-md border text-xs" style="background:#EBF2FD;border-color:#BFD7F5;color:#1554A0">
+        <i data-lucide="info" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
+        Enter the details of the <strong>signed</strong> informed consent. Consent must be obtained before any study procedure (ICH GCP E6(R3) §4.8).
+    </div>` : `
+    <div class="flex items-start gap-2.5 p-3 rounded-md border text-xs" style="background:#FFFBEB;border-color:#FDE68A;color:#92400E">
+        <i data-lucide="alert-triangle" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
+        Optional for a screen failure — fill only if consent was obtained before screening.
+    </div>`;
+
+    showModal({
+        title: 'Step 2 of 3 — Informed Consent',
+        size: 'md',
+        body: `
+        <form id="consent-form" class="space-y-4" novalidate>
+            ${note}
+            <div class="grid grid-cols-2 gap-4">
+                <div class="col-span-2">
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">ICF Version ${iePasses ? '<span class="text-red-500">*</span>' : ''}</label>
+                    <input type="text" id="cs-version" maxlength="60" value="${esc(prev.consentVersion ?? '')}" placeholder="e.g. ICF v2.0 (2026-01-15)"
+                        class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Consent Date ${iePasses ? '<span class="text-red-500">*</span>' : ''}</label>
+                    <input type="date" id="cs-date" max="${today}" value="${esc(prev.consentDate ?? '')}"
+                        class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Language</label>
+                    <select id="cs-language" class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
+                        ${['Indonesian','English','Other'].map(l => `<option ${(prev.language ?? 'Indonesian') === l ? 'selected' : ''}>${l}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Witness Name <span class="font-normal normal-case text-slate-400">(if applicable)</span></label>
+                    <input type="text" id="cs-witness" maxlength="120" value="${esc(prev.witnessName ?? '')}" placeholder="e.g. impartial witness / legal representative"
+                        class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Notes <span class="font-normal normal-case text-slate-400">(optional)</span></label>
+                    <textarea id="cs-notes" rows="2" class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none">${esc(prev.notes ?? '')}</textarea>
+                </div>
+            </div>
+            <div id="cs-error" class="hidden p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700"></div>
+        </form>`,
+        footer: `
+        <button onclick="openIECriteriaModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition flex items-center gap-1.5">
+            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Back
+        </button>
+        <button onclick="proceedFromConsent()" class="flex items-center gap-2 px-4 py-2 text-sm btn-primary rounded-md">
+            Next: Demographics <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </button>`,
+    });
+};
+
+window.proceedFromConsent = function () {
+    const iePasses = window._iePasses !== false;
+    const errEl = document.getElementById('cs-error');
+    errEl.classList.add('hidden');
+
+    const consentVersion = document.getElementById('cs-version').value.trim();
+    const consentDate    = document.getElementById('cs-date').value;
+    const language       = document.getElementById('cs-language').value;
+    const witnessName    = document.getElementById('cs-witness').value.trim();
+    const notes          = document.getElementById('cs-notes').value.trim();
+    const anyFilled      = consentVersion || consentDate || witnessName || notes;
+
+    // Enrolled subjects MUST have consent; screen failures only need it complete
+    // if the coordinator started filling it in.
+    if ((iePasses || anyFilled) && (!consentVersion || !consentDate)) {
+        errEl.textContent = iePasses
+            ? 'ICF version and consent date are required to enroll a subject.'
+            : 'Provide both ICF version and consent date, or leave the consent fields empty.';
+        errEl.classList.remove('hidden');
+        return;
+    }
+
+    window._consentData = (consentVersion && consentDate)
+        ? { consentVersion, consentDate, language, witnessName, notes }
+        : null;
+    openSubjectDemographicsModal(iePasses);
 };
 
 async function openSubjectDemographicsModal(iePasses) {
@@ -310,7 +403,7 @@ async function openSubjectDemographicsModal(iePasses) {
     </div>`;
 
     showModal({
-        title: 'Step 2 of 2 — Subject Demographics',
+        title: 'Step 3 of 3 — Subject Demographics',
         size: 'md',
         body: `
         <form id="new-subject-form" class="space-y-4" novalidate>
@@ -378,7 +471,7 @@ async function openSubjectDemographicsModal(iePasses) {
             <div id="ns-error" class="hidden p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700"></div>
         </form>`,
         footer: `
-        <button onclick="openIECriteriaModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition flex items-center gap-1.5">
+        <button onclick="openConsentModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition flex items-center gap-1.5">
             <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Back
         </button>
         <button onclick="submitNewSubject()" class="px-4 py-2 text-sm btn-primary rounded-md">${iePasses ? 'Enroll Subject' : 'Record Screen Failure'}</button>`,
@@ -413,13 +506,26 @@ window.submitNewSubject = async function () {
                 .catch(e => console.warn('IE assessment save failed:', e.message));
         }
 
+        // Record the informed consent captured in Step 2 (Initial consent).
+        let consentWarn = false;
+        if (window._consentData) {
+            try {
+                await api.createConsent({ subjectId: created.id, consentType: 'Initial', ...window._consentData });
+            } catch (e) {
+                console.warn('Consent save failed:', e.message);
+                consentWarn = true;   // subject exists; prompt to add consent via the Consent tab
+            }
+        }
+
         closeModal();
         window._ieCriteriaResults = null;
         window._iePasses = null;
+        window._consentData = null;
         const msg = iePasses
             ? `Subject ${subject_code} enrolled successfully.`
             : `Subject ${subject_code} recorded as Screen Failed.`;
         showToast(msg, iePasses ? 'success' : 'warning');
+        if (consentWarn) showToast('Subject saved, but the consent record failed — add it from the Consent tab.', 'warning');
         await renderSubjects();
     } catch (err) {
         errEl.textContent = err.message;
