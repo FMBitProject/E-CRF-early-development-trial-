@@ -118,8 +118,10 @@ export function planRow(row, columnMap, formFields = []) {
     const subject = {};
     const crf = {};
     const vital = {};       // vital_signs fields
-    const labs = [];        // [{ testName, unit, value }]
-    let labName = null, labDate = null;
+    const labs = [];        // [{ testName, unit, value, date?, refRangeText? }]
+    let currentLab = null;  // the lab test most recently seen (columns are ordered:
+                            // value → date → reference range, per test)
+    let labName = null, sharedLabDate = null;
     let subjectCode = null;
     let visitDate = null;
     let ae = null;          // { term, serious, onsetDate, narrative }
@@ -174,21 +176,31 @@ export function planRow(row, columnMap, formFields = []) {
             case 'vitalSpO2':   if (numOrNull(val)) vital.oxygenSaturation = numOrNull(val); break;
 
             // ── Laboratory (dedicated module) — one row per test ──────────
+            // Columns are positional: a lab value starts a test; the date and
+            // reference-range columns that follow attach to that same test.
             case 'lab':
                 if (val !== '') {
                     const { testName, unit } = parseLabHeader(spec.field || header);
-                    labs.push({ testName, unit, value: val });
+                    currentLab = { testName, unit, value: val };
+                    labs.push(currentLab);
+                } else {
+                    currentLab = null;   // test not done → its date/ref have nothing to attach
                 }
                 break;
+            case 'labDate':
+                if (val) { if (currentLab && !currentLab.date) currentLab.date = val; else sharedLabDate = val; }
+                break;
+            case 'labRef':
+                if (val && currentLab) currentLab.refRangeText = val;
+                break;
             case 'labName': if (val) labName = val; break;
-            case 'labDate': if (val) labDate = val; break;
 
             default: break;
         }
     }
 
-    // attach shared lab name/date to each lab row
-    for (const l of labs) { l.labName = labName; l.date = labDate || visitDate; }
+    // fill each lab row's shared name and fall back to a shared/visit date
+    for (const l of labs) { l.labName = labName; if (!l.date) l.date = sharedLabDate || visitDate; }
 
     if (!subjectCode) structuralErrors.push('Missing subject code');
 

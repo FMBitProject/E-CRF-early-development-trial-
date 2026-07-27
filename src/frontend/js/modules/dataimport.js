@@ -23,6 +23,7 @@ const TARGETS = [
     { v: 'vitalRR',        t: 'Vital: Resp. Rate' },
     { v: 'vitalSpO2',      t: 'Vital: O₂ Saturation' },
     { v: 'lab',            t: 'Lab: test value' },
+    { v: 'labRef',         t: 'Lab: reference range' },
     { v: 'labName',        t: 'Lab: laboratory name' },
     { v: 'labDate',        t: 'Lab: test date' },
     { v: 'ae',             t: 'Adverse Event' },
@@ -53,6 +54,7 @@ function autoTarget(h) {
     if (/saturasi|spo2|oksigen|o2\s*sat/.test(s))                return 'vitalSpO2';
     // ── Lab metadata ──
     if (/nama lab|laboratorium|lab name/.test(s))                return 'labName';
+    if (/nilai rujukan|reference range|ref\.?\s*range|rujukan/.test(s)) return 'labRef';
     if (/tanggal pemeriksaan|tanggal periksa|test date|tgl periksa/.test(s)) return 'labDate';
     // ── Lab tests (each becomes one lab_results row) ──
     if (/\bldl\b|\bhdl\b|kolesterol|cholesterol|trigliserida|\btg\b|\btc\b|non-?hdl|sgot|sgpt|\bast\b|\balt\b|kreatinin|creatinine|\bck\b|\bcpk\b|glukosa|glucose|gula darah|hba1c|ureum|urea|asam urat|uric|bilirubin|albumin|hemoglobin|\bhb\b|leukosit|trombosit|eritrosit|hematokrit|nilai lab|lab lain/.test(s)) return 'lab';

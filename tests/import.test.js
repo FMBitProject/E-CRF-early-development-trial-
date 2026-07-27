@@ -22,6 +22,26 @@ test('numOrNull rejects junk like #DIV/0!', () => {
     assert.equal(numOrNull(''), null);
 });
 
+test('planRow groups per-test date and reference range positionally', () => {
+    // column order: LDL value, LDL date, LDL ref, HDL value, HDL date, HDL ref, lab name
+    const cmap = {
+        'ID': { target: 'subjectCode' },
+        'LDL (mg/dL)': { target: 'lab' }, 'Tgl LDL': { target: 'labDate' }, 'Ruj LDL': { target: 'labRef' },
+        'HDL (mg/dL)': { target: 'lab' }, 'Tgl HDL': { target: 'labDate' }, 'Ruj HDL': { target: 'labRef' },
+        'Nama Lab': { target: 'labName' },
+    };
+    const p = planRow(
+        { 'ID': 'S1', 'LDL (mg/dL)': '40', 'Tgl LDL': '2026-07-08', 'Ruj LDL': '<100',
+          'HDL (mg/dL)': '54', 'Tgl HDL': '2026-07-09', 'Ruj HDL': '>50', 'Nama Lab': 'Prodia' },
+        cmap, [],
+    );
+    assert.equal(p.labs.length, 2);
+    const ldl = p.labs.find(l => l.testName === 'LDL');
+    const hdl = p.labs.find(l => l.testName === 'HDL');
+    assert.deepEqual({ v: ldl.value, d: ldl.date, r: ldl.refRangeText, n: ldl.labName }, { v: '40', d: '2026-07-08', r: '<100', n: 'Prodia' });
+    assert.deepEqual({ v: hdl.value, d: hdl.date, r: hdl.refRangeText, n: hdl.labName }, { v: '54', d: '2026-07-09', r: '>50', n: 'Prodia' });
+});
+
 test('planRow extracts vitals (BP split) and lab rows', () => {
     const cmap = {
         'ID': { target: 'subjectCode' },

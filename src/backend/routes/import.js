@@ -225,6 +225,7 @@ router.post('/visit', licenseGuardCreate, requireRole(...IMPORT_ROLES), async (r
                         testName: l.testName, unit: l.unit ?? null,
                         valueNumeric: /^-?\d*\.?\d+$/.test(l.value) ? l.value : null,
                         valueText: /^-?\d*\.?\d+$/.test(l.value) ? null : l.value,
+                        refRangeText: l.refRangeText ?? null,
                         labName: l.labName ?? null, specimenCollectedAt: l.date ?? null, assessmentDate: l.date ?? null,
                         createdBy: req.user.id, createdByName: req.user.name,
                     }).returning();
