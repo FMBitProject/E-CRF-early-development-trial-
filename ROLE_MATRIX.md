@@ -35,6 +35,11 @@ Reference: ICH GCP E6(R3) · 21 CFR Part 11 · Bioclinica EDC Standard
 | Monitoring | ✓ | ✓ | — | ✓ | — |
 | Sites | ✓ | — | — | — | — |
 | Studies | ✓ | — | — | — | — |
+| Data Import (spreadsheet) | ✓ | ✓ | ✓ | — | ✓ |
+
+Notes: Data Import — `POST /api/import/visit` and `GET /api/import/template` are open
+to admin/pi/investigator/crc (+ data_manager); `POST /api/import/derive-form` (creating
+a CRF form from the sheet) is **admin only**, matching Form Builder.
 
 ---
 

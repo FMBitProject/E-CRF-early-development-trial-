@@ -9,7 +9,7 @@ import { siteCondition, subjectInSiteScope } from '../lib/sitescope.js';
 
 const router = Router();
 
-async function createAutoQueries(db, req, softViolations, entryId, subjectId, visitId, formId) {
+export async function createAutoQueries(db, req, softViolations, entryId, subjectId, visitId, formId) {
     if (!softViolations?.length) return;
     for (const v of softViolations) {
         const [dup] = await db.select({ id: queries.id })

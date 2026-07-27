@@ -73,6 +73,7 @@ const NAV_ITEMS = [
     { id: 'sites',          label: 'Sites',           icon: 'building-2',       section: 'setup', roles: ['admin'] },
     { id: 'visittemplates', label: 'Visit Templates', icon: 'calendar-check',   section: 'setup', roles: ['admin', 'pi'] },
     { id: 'formbuilder',    label: 'Form Builder',    icon: 'clipboard-edit',   section: 'setup', roles: ['admin'] },
+    { id: 'dataimport',     label: 'Data Import',     icon: 'upload',           section: 'setup', roles: ['admin', DM] },
     { id: 'usermgmt',       label: 'Users',           icon: 'users-round',      section: 'setup', roles: ['admin'] },
     { id: 'sysval',         label: 'System Validation',icon: 'shield-plus',     section: 'setup', roles: ['admin'] },
 ];
@@ -456,6 +457,12 @@ const routes = {
         renderBreadcrumb([{ label: 'Form Builder', route: 'formbuilder' }]);
         const el = document.getElementById('main-content');
         if (el) { const { renderFormBuilder } = await import('./modules/formbuilder.js'); await renderFormBuilder(el); }
+    },
+    'dataimport': async () => {
+        if (!['admin', 'data_manager'].includes(user.role)) { window.location.hash = '#dashboard'; return; }
+        renderBreadcrumb([{ label: 'Data Import', route: 'dataimport' }]);
+        const el = document.getElementById('main-content');
+        if (el) { const { renderDataImport } = await import('./modules/dataimport.js'); await renderDataImport(el); }
     },
     'visittemplates': async () => {
         if (!['admin', 'pi'].includes(user.role)) { window.location.hash = '#dashboard'; return; }

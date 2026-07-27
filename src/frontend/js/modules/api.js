@@ -554,6 +554,17 @@ export const api = {
         return rows.map(mapSite);
     },
 
+    // ── Data Import ────────────────────────────────────────
+    async deriveImportForm(payload) {
+        return apiFetch('/api/import/derive-form', { method: 'POST', body: JSON.stringify(payload) });
+    },
+    async importVisit(payload) {
+        return apiFetch('/api/import/visit', { method: 'POST', body: JSON.stringify(payload) });
+    },
+    downloadImportTemplate(formId) {
+        return apiDownload(`/api/import/template?formId=${formId}`, `import_template_${formId}.csv`, 'text/csv');
+    },
+
     async createSite(payload) {
         return apiFetch('/api/sites', { method: 'POST', body: JSON.stringify(payload) });
     },

@@ -132,6 +132,11 @@ export const EXPECTED = {
         'POST /:id/users':           ['admin'],
         'DELETE /:id/users/:userId': ['admin'],
     },
+    '/api/import': {
+        'POST /derive-form': ['admin'],
+        'POST /visit':       ['admin', 'crc', 'data_manager', 'investigator', 'pi'],
+        'GET /template':     ['admin', 'crc', 'data_manager', 'investigator', 'pi'],
+    },
 };
 
 // Maps each mount point to its router file under src/backend/routes/.
@@ -151,4 +156,5 @@ export const ROUTER_FILES = {
     '/api/export':        'export.js',
     '/api/sites':         'sites.js',
     '/api/studies':       'studies.js',
+    '/api/import':        'import.js',
 };
