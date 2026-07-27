@@ -410,6 +410,12 @@ window.openLabForm = async function(recordId = null) {
                 </div>
             </div>
 
+            <div>
+                <label class="ph-label">Ref Range (text) <span class="font-normal normal-case text-slate-400">— e.g. "&lt;100", "&gt;50", "3.5–5.0"; site-specific</span></label>
+                <input type="text" id="lab-ref-text" value="${(rec.refRangeText ?? '').replace(/"/g, '&quot;')}"
+                    class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+            </div>
+
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="ph-label">Abnormality Flag</label>
@@ -587,6 +593,7 @@ window.submitLabForm = async function(recordId) {
         unit:                 document.getElementById('lab-unit').value.trim()        || null,
         refRangeLow:          document.getElementById('lab-ref-low').value  !== '' ? parseFloat(document.getElementById('lab-ref-low').value)  : null,
         refRangeHigh:         document.getElementById('lab-ref-high').value !== '' ? parseFloat(document.getElementById('lab-ref-high').value) : null,
+        refRangeText:         document.getElementById('lab-ref-text').value.trim()    || null,
         abnormalityFlag:      document.getElementById('lab-flag').value               || null,
         isAbnormal:           document.getElementById('lab-abnormal').checked,
         clinicalSignificance: cs,
