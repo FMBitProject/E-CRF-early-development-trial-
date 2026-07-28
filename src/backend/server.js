@@ -612,6 +612,21 @@ async function runMigrations() {
         // ICH GCP E6(R3) 4.8 — link re-consent records to their triggering amendment
         `ALTER TABLE informed_consents ADD COLUMN IF NOT EXISTS amendment_id INTEGER REFERENCES protocol_amendments(id)`,
 
+        // ICH GCP E6(R3) §4.8 — consent record fields the initial schema omitted.
+        // consent_time (§4.8.8): the date alone cannot evidence that consent
+        // preceded a same-day screening procedure.
+        // obtained_by (§4.1.5): who ran the consent discussion, as opposed to
+        // created_by, which is only whoever keyed the record into the EDC.
+        // witness_type (§4.8.9/§4.8.12): impartial witness vs. LAR vs. guardian.
+        // assent_* (§4.8.12) and copy_provided (§4.8.11).
+        `ALTER TABLE informed_consents ADD COLUMN IF NOT EXISTS consent_time     TEXT`,
+        `ALTER TABLE informed_consents ADD COLUMN IF NOT EXISTS obtained_by      TEXT REFERENCES "user"(id)`,
+        `ALTER TABLE informed_consents ADD COLUMN IF NOT EXISTS obtained_by_name TEXT`,
+        `ALTER TABLE informed_consents ADD COLUMN IF NOT EXISTS witness_type     TEXT`,
+        `ALTER TABLE informed_consents ADD COLUMN IF NOT EXISTS assent_obtained  BOOLEAN NOT NULL DEFAULT FALSE`,
+        `ALTER TABLE informed_consents ADD COLUMN IF NOT EXISTS assent_date      TEXT`,
+        `ALTER TABLE informed_consents ADD COLUMN IF NOT EXISTS copy_provided    BOOLEAN NOT NULL DEFAULT FALSE`,
+
         // Phase 2 — MedDRA structured coding fields on adverse_events
         `ALTER TABLE adverse_events ADD COLUMN IF NOT EXISTS meddra_pt_code    TEXT`,
         `ALTER TABLE adverse_events ADD COLUMN IF NOT EXISTS meddra_soc_code   TEXT`,
