@@ -332,15 +332,56 @@ window.openConsentModal = function openConsentModal() {
                         class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none">
                 </div>
                 <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Consent Time</label>
+                    <input type="time" id="cs-time" value="${esc(prev.consentTime ?? '')}"
+                        class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                    <p class="text-xs text-slate-400 mt-1">Needed when screening happens the same day.</p>
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Obtained By ${iePasses ? '<span class="text-red-500">*</span>' : ''}</label>
+                    <div id="cs-obtained-slot">
+                        <input type="text" id="cs-obtained-name" maxlength="120" value="${esc(prev.obtainedByName ?? '')}"
+                            placeholder="Investigator/delegate who conducted the consent discussion"
+                            class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                    </div>
+                </div>
+                <div>
                     <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Language</label>
                     <select id="cs-language" class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
                         ${['Indonesian','English','Other'].map(l => `<option ${(prev.language ?? 'Indonesian') === l ? 'selected' : ''}>${l}</option>`).join('')}
                     </select>
                 </div>
-                <div class="col-span-2">
+                <div>
                     <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Witness Name <span class="font-normal normal-case text-slate-400">(if applicable)</span></label>
-                    <input type="text" id="cs-witness" maxlength="120" value="${esc(prev.witnessName ?? '')}" placeholder="e.g. impartial witness / legal representative"
-                        class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                    <input type="text" id="cs-witness" maxlength="120" value="${esc(prev.witnessName ?? '')}" placeholder="Name of witness"
+                        class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none"
+                        oninput="document.getElementById('cs-witness-type-wrap').classList.toggle('hidden', !this.value.trim())">
+                </div>
+                <div class="col-span-2 ${prev.witnessName ? '' : 'hidden'}" id="cs-witness-type-wrap">
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Witness Capacity <span class="text-red-500">*</span></label>
+                    <select id="cs-witness-type" class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
+                        <option value="">— Select capacity —</option>
+                        ${['Impartial Witness (Illiterate Subject)','Legally Authorized Representative','Parent / Guardian']
+                            .map(w => `<option ${prev.witnessType === w ? 'selected' : ''}>${w}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="col-span-2 space-y-2.5 p-3 rounded-md border border-slate-200 bg-slate-50">
+                    <label class="flex items-start gap-2.5 cursor-pointer">
+                        <input type="checkbox" id="cs-copy" ${prev.copyProvided ? 'checked' : ''} class="mt-0.5 w-4 h-4 rounded border-slate-300">
+                        <span class="text-xs text-slate-700"><span class="font-semibold">Signed ICF copy given to the subject</span>
+                        <span class="block text-slate-400">ICH GCP §4.8.11 — required.</span></span>
+                    </label>
+                    <label class="flex items-start gap-2.5 cursor-pointer">
+                        <input type="checkbox" id="cs-assent" ${prev.assentObtained ? 'checked' : ''} class="mt-0.5 w-4 h-4 rounded border-slate-300"
+                            onchange="document.getElementById('cs-assent-date-wrap').classList.toggle('hidden', !this.checked)">
+                        <span class="text-xs text-slate-700"><span class="font-semibold">Assent obtained (minor / unable to fully consent)</span>
+                        <span class="block text-slate-400">ICH GCP §4.8.12 — does not replace the guardian's consent.</span></span>
+                    </label>
+                    <div id="cs-assent-date-wrap" class="${prev.assentObtained ? '' : 'hidden'} pl-6">
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Assent Date</label>
+                        <input type="date" id="cs-assent-date" max="${today}" value="${esc(prev.assentDate ?? '')}"
+                            class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                    </div>
                 </div>
                 <div class="col-span-2">
                     <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Notes <span class="font-normal normal-case text-slate-400">(optional)</span></label>
@@ -357,6 +398,25 @@ window.openConsentModal = function openConsentModal() {
             Next: Demographics <i data-lucide="arrow-right" class="w-4 h-4"></i>
         </button>`,
     });
+
+    // Swap the free-text consent taker for a delegated-staff picker once the
+    // Delegation Log loads (ICH GCP E6(R3) §4.1.5). The text input stays as the
+    // fallback so an empty Delegation Log does not block enrolment.
+    api.getConsentDelegates().then(info => {
+        const slot = document.getElementById('cs-obtained-slot');
+        const delegates = info?.delegates ?? [];
+        if (!slot || !delegates.length) return;
+        const me = api.getCurrentUser();
+        const preselect = prev.obtainedBy ?? me?.id;
+        slot.innerHTML = `
+            <select id="cs-obtained-by" class="w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
+                <option value="">— Select staff —</option>
+                ${delegates.map(d =>
+                    `<option value="${esc(d.userId)}" data-name="${esc(d.userName)}" ${d.userId === preselect ? 'selected' : ''}>${esc(d.userName)} — ${esc(d.userRole)}</option>`
+                ).join('')}
+            </select>
+            <p class="text-xs text-slate-400 mt-1">Only staff delegated for "Informed Consent Process".</p>`;
+    }).catch(() => { /* keep the free-text fallback */ });
 };
 
 window.proceedFromConsent = function () {
@@ -366,23 +426,53 @@ window.proceedFromConsent = function () {
 
     const consentVersion = document.getElementById('cs-version').value.trim();
     const consentDate    = document.getElementById('cs-date').value;
+    const consentTime    = document.getElementById('cs-time').value;
     const language       = document.getElementById('cs-language').value;
     const witnessName    = document.getElementById('cs-witness').value.trim();
+    const witnessType    = document.getElementById('cs-witness-type').value;
     const notes          = document.getElementById('cs-notes').value.trim();
-    const anyFilled      = consentVersion || consentDate || witnessName || notes;
+
+    const obtainedSel    = document.getElementById('cs-obtained-by');
+    const obtainedBy     = obtainedSel?.value || null;
+    const obtainedByName = obtainedSel
+        ? (obtainedSel.options[obtainedSel.selectedIndex]?.dataset.name ?? '')
+        : document.getElementById('cs-obtained-name').value.trim();
+
+    const assentObtained = !!document.getElementById('cs-assent').checked;
+    const assentDate     = assentObtained ? document.getElementById('cs-assent-date').value : null;
+    const copyProvided   = !!document.getElementById('cs-copy').checked;
+
+    const anyFilled = consentVersion || consentDate || witnessName || notes || obtainedByName;
+
+    const fail = (msg) => { errEl.textContent = msg; errEl.classList.remove('hidden'); };
 
     // Enrolled subjects MUST have consent; screen failures only need it complete
     // if the coordinator started filling it in.
     if ((iePasses || anyFilled) && (!consentVersion || !consentDate)) {
-        errEl.textContent = iePasses
+        return fail(iePasses
             ? 'ICF version and consent date are required to enroll a subject.'
-            : 'Provide both ICF version and consent date, or leave the consent fields empty.';
-        errEl.classList.remove('hidden');
-        return;
+            : 'Provide both ICF version and consent date, or leave the consent fields empty.');
+    }
+    // The consent taker is part of the consent record, not an optional extra
+    if ((iePasses || anyFilled) && !obtainedByName) {
+        return fail('Record who conducted the consent discussion (ICH GCP E6(R3) §4.8).');
+    }
+    if (witnessName && !witnessType) {
+        return fail('Select the witness capacity — impartial witness, legal representative, or parent/guardian.');
     }
 
     window._consentData = (consentVersion && consentDate)
-        ? { consentVersion, consentDate, language, witnessName, notes }
+        ? {
+            consentVersion, consentDate,
+            consentTime: consentTime || null,
+            language,
+            obtainedBy, obtainedByName,
+            witnessName: witnessName || null,
+            witnessType: witnessType || null,
+            assentObtained, assentDate,
+            copyProvided,
+            notes,
+          }
         : null;
     openSubjectDemographicsModal(iePasses);
 };

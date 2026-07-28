@@ -4,6 +4,7 @@ import { db } from '../db/connection.js';
 import { visits, subjects, protocolDeviations } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
+import { autoCheckConsentOnProcedure } from '../lib/consentcheck.js';
 
 const router = Router({ mergeParams: true });
 
@@ -138,7 +139,16 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
             req.studyId, subjectId, created.id, visitName, actualDate, windowCompliance, req.user,
         ).catch(() => null);
 
-        res.status(201).json({ ...created, autoDeviationFiled: !!autoDeviation });
+        // A visit date earlier than the subject's consent is a GCP §4.8.8 breach
+        const autoConsentDeviation = actualDate
+            ? await autoCheckConsentOnProcedure(req.studyId, subjectId, req.user).catch(() => null)
+            : null;
+
+        res.status(201).json({
+            ...created,
+            autoDeviationFiled: !!autoDeviation,
+            autoConsentDeviationFiled: !!autoConsentDeviation,
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -211,7 +221,16 @@ router.patch('/:id', requireRole('investigator', 'pi', 'admin', 'crc'), async (r
             newActualDate, windowCompliance, req.user,
         ).catch(() => null);
 
-        res.json({ ...updated, autoDeviationFiled: !!autoDeviation });
+        // A visit date earlier than the subject's consent is a GCP §4.8.8 breach
+        const autoConsentDeviation = newActualDate
+            ? await autoCheckConsentOnProcedure(req.studyId, existing.subjectId, req.user).catch(() => null)
+            : null;
+
+        res.json({
+            ...updated,
+            autoDeviationFiled: !!autoDeviation,
+            autoConsentDeviationFiled: !!autoConsentDeviation,
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

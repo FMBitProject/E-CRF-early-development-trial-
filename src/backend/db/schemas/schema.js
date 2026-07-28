@@ -509,9 +509,24 @@ export const informedConsents = pgTable('informed_consents', {
     subjectId:       integer('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
     consentVersion:  text('consent_version').notNull(),
     consentDate:     text('consent_date').notNull(),
+    // Time of signature (HH:MM). GCP requires consent BEFORE any study procedure;
+    // on same-day screening the date alone cannot evidence the sequence.
+    consentTime:     text('consent_time'),
     consentType:     text('consent_type').notNull().default('Initial'),
     language:        text('language').notNull().default('Indonesian'),
+    // Investigator/delegate who conducted the consent discussion — distinct from
+    // createdBy (whoever keyed the record into the EDC). Validated against the
+    // delegation log task "Informed Consent Process" (ICH GCP E6(R3) §4.1.5).
+    obtainedBy:      text('obtained_by').references(() => user.id),
+    obtainedByName:  text('obtained_by_name'),
     witnessName:     text('witness_name'),
+    // Why a witness was present — the regulatory consequence differs per type
+    witnessType:     text('witness_type'),  // Impartial Witness | Legally Authorized Representative | Parent/Guardian
+    // Assent for minors / subjects unable to give full consent (ICH GCP §4.8.12)
+    assentObtained:  boolean('assent_obtained').notNull().default(false),
+    assentDate:      text('assent_date'),
+    // Subject received a signed copy of the ICF (ICH GCP §4.8.11)
+    copyProvided:    boolean('copy_provided').notNull().default(false),
     notes:           text('notes'),
     amendmentId:     integer('amendment_id').references(() => protocolAmendments.id),
     isWithdrawn:     boolean('is_withdrawn').notNull().default(false),

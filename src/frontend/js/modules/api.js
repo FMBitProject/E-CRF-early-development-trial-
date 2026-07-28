@@ -660,6 +660,11 @@ export const api = {
         return apiFetch('/api/consents/stats');
     },
 
+    // Staff delegated for "Informed Consent Process" — drives the Obtained By list
+    async getConsentDelegates() {
+        return apiFetch('/api/consents/delegates');
+    },
+
     async createConsent(payload) {
         return apiFetch('/api/consents', {
             method: 'POST',

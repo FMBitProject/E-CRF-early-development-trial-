@@ -64,6 +64,7 @@ export const EXPECTED = {
     '/api/consents': {
         'GET /':               null,
         'GET /stats':          null,
+        'GET /delegates':      null,
         'POST /':              ['admin', 'crc', 'investigator', 'pi'],
         'PATCH /:id/withdraw': ['admin', 'investigator', 'pi'],
     },

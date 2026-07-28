@@ -360,7 +360,7 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
                 ];
             });
         } else if (domain === 'IC') {
-            headers = ['ICID','SUBJID','VERSION','DATE','TYPE','LANGUAGE','WITNESS','WITHDRAWN','WITHDRAWN_DTC','WITHDRAWN_REASON','CREATED_BY','CREATED_AT'];
+            headers = ['ICID','SUBJID','VERSION','DATE','TIME','TYPE','LANGUAGE','OBTAINED_BY','WITNESS','WITNESS_TYPE','ASSENT','ASSENT_DTC','COPY_PROVIDED','WITHDRAWN','WITHDRAWN_DTC','WITHDRAWN_REASON','CREATED_BY','CREATED_AT'];
             const data = await db.select().from(informedConsents)
                 .leftJoin(subjects, eq(informedConsents.subjectId, subjects.id))
                 .where(eq(informedConsents.studyId, sid))
@@ -370,7 +370,11 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
                 const subj = r.subjects ?? null;
                 return [
                     c.id, subj?.subjectCode || '', c.consentVersion, c.consentDate,
-                    c.consentType, c.language, c.witnessName || '',
+                    c.consentTime || '',
+                    c.consentType, c.language, c.obtainedByName || '',
+                    c.witnessName || '', c.witnessType || '',
+                    c.assentObtained ? 'Y' : 'N', c.assentDate || '',
+                    c.copyProvided ? 'Y' : 'N',
                     c.isWithdrawn ? 'Y' : 'N',
                     c.withdrawnAt ? new Date(c.withdrawnAt).toISOString().split('T')[0] : '',
                     c.withdrawnReason || '', c.createdByName || '',

@@ -127,8 +127,10 @@ export async function renderConsents(filters = {}) {
                             <th class="text-left">Subject</th>
                             <th class="text-left">Type</th>
                             <th class="text-left">Version</th>
-                            <th class="text-left">Date Signed</th>
+                            <th class="text-left">Date / Time Signed</th>
+                            <th class="text-left">Obtained By</th>
                             <th class="text-left">Language / Witness</th>
+                            <th class="text-left">GCP Checks</th>
                             <th class="text-left">Withdrawn</th>
                             <th class="text-left">Recorded By</th>
                             <th class="text-right">Actions</th>
@@ -169,6 +171,18 @@ export async function renderConsents(filters = {}) {
     document.getElementById('ic-search').addEventListener('input', filterIC);
 }
 
+// Compact status of the documentation items an auditor checks first.
+function gcpChecks(c) {
+    const parts = [];
+    parts.push(c.copyProvided
+        ? `<span class="text-emerald-600" title="Signed ICF copy provided to subject (§4.8.11)">✓ Copy given</span>`
+        : `<span class="text-amber-600" title="ICH GCP §4.8.11 — subject must receive a signed copy">⚠ No copy</span>`);
+    if (c.assentObtained) {
+        parts.push(`<span class="text-slate-500" title="Assent obtained (§4.8.12)">✓ Assent${c.assentDate ? ' ' + fmtDate(c.assentDate) : ''}</span>`);
+    }
+    return parts.map(p => `<p>${p}</p>`).join('');
+}
+
 function renderConsentRows(consents, user) {
     if (!consents.length) return '';
     return consents.map(c => {
@@ -183,11 +197,23 @@ function renderConsentRows(consents, user) {
             <td>
                 <code class="text-xs bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">${esc(c.consentVersion)}</code>
             </td>
-            <td class="text-xs text-slate-700 whitespace-nowrap">${fmtDate(c.consentDate)}</td>
+            <td class="text-xs text-slate-700 whitespace-nowrap">
+                ${fmtDate(c.consentDate)}
+                ${c.consentTime
+                    ? `<span class="text-slate-500">· ${esc(c.consentTime)}</span>`
+                    : `<span class="text-amber-500" title="No time recorded — cannot evidence consent preceded a same-day procedure">· --:--</span>`}
+            </td>
+            <td>
+                ${c.obtainedByName
+                    ? `<p class="text-xs text-slate-700">${esc(c.obtainedByName)}</p>`
+                    : `<p class="text-xs text-amber-600 flex items-center gap-1"><i data-lucide="alert-triangle" class="w-3 h-3"></i> Not recorded</p>`}
+            </td>
             <td>
                 <p class="text-xs text-slate-600">${esc(c.language)}</p>
                 ${c.witnessName ? `<p class="text-xs text-slate-400">Witness: ${esc(c.witnessName)}</p>` : ''}
+                ${c.witnessType ? `<p class="text-xs text-slate-400">${esc(c.witnessType)}</p>` : ''}
             </td>
+            <td class="text-xs whitespace-nowrap">${gcpChecks(c)}</td>
             <td class="text-xs whitespace-nowrap">
                 ${c.isWithdrawn
                     ? `<span class="badge" style="background:#FEE2E2;color:#991B1B;border:1px solid #FECACA">Withdrawn</span>
@@ -223,11 +249,12 @@ window.openConsentForm = async function(prefillSubjectId = null) {
     });
 
     const siteCtx = getSiteContext();
-    let allSubjects = [], amendments = [];
+    let allSubjects = [], amendments = [], delegateInfo = { delegates: [], delegationLogEmpty: true };
     try {
-        [allSubjects, amendments] = await Promise.all([
+        [allSubjects, amendments, delegateInfo] = await Promise.all([
             api.getSubjects({ status: 'Active' }),
             api.request('/api/amendments').catch(() => []),
+            api.getConsentDelegates().catch(() => ({ delegates: [], delegationLogEmpty: true })),
         ]);
     } catch { /* proceed with empty list */ }
 
@@ -251,6 +278,33 @@ window.openConsentForm = async function(prefillSubjectId = null) {
             `<option value="${s.id}" ${prefillSubjectId === s.id ? 'selected' : ''}>${esc(s.subject_code)}</option>`
           ).join('')
         : `<option value="" disabled>— Tidak ada subjek aktif —</option>`;
+
+    // ICH GCP E6(R3) §4.1.5 — only delegated staff may take consent. When the
+    // Delegation Log has no entries yet the field falls back to free text so a
+    // study starting up is not dead-ended.
+    const me = api.getCurrentUser();
+    const delegates = delegateInfo.delegates ?? [];
+    const scopedDelegates = (siteCtx && siteCtx.id)
+        ? delegates.filter(d => !d.siteId || d.siteId === siteCtx.id)
+        : delegates;
+    const usableDelegates = scopedDelegates.length ? scopedDelegates : delegates;
+
+    const obtainedByField = usableDelegates.length
+        ? `<select id="ic-obtained-by" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
+               <option value="">— Pilih petugas —</option>
+               ${usableDelegates.map(d =>
+                   `<option value="${esc(d.userId)}" data-name="${esc(d.userName)}" ${d.userId === me?.id ? 'selected' : ''}>${esc(d.userName)} — ${esc(d.userRole)}</option>`
+               ).join('')}
+           </select>
+           <p class="text-xs text-slate-400 mt-1">Hanya staf dengan tugas "Informed Consent Process" di Delegation Log.</p>`
+        : `<input type="text" id="ic-obtained-by-name" value="${esc(me?.name ?? '')}" placeholder="Nama investigator/petugas"
+                class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+           <p class="text-xs text-amber-600 mt-1 flex items-start gap-1">
+               <i data-lucide="alert-triangle" class="w-3 h-3 flex-shrink-0 mt-0.5"></i>
+               ${delegateInfo.delegationLogEmpty
+                   ? 'Delegation Log masih kosong — isi manual, tapi lengkapi Delegation Log agar tervalidasi (ICH GCP §4.1.5).'
+                   : 'Belum ada staf ter-delegasi untuk "Informed Consent Process" — perbarui Delegation Log.'}
+           </p>`;
 
     const slot = document.getElementById('ic-form-body');
     if (!slot) return;
@@ -311,9 +365,23 @@ window.openConsentForm = async function(prefillSubjectId = null) {
                     : ''}
             </div>
 
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Date Signed <span class="text-red-500">*</span></label>
+                    <input type="date" id="ic-date" max="${new Date().toISOString().split('T')[0]}"
+                        class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Time Signed</label>
+                    <input type="time" id="ic-time"
+                        class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                    <p class="text-xs text-slate-400 mt-1">Wajib bila screening dilakukan di hari yang sama — tanggal saja tidak membuktikan urutannya.</p>
+                </div>
+            </div>
+
             <div>
-                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Date Signed <span class="text-red-500">*</span></label>
-                <input type="date" id="ic-date" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Obtained By <span class="text-red-500">*</span></label>
+                ${obtainedByField}
             </div>
 
             <div class="grid grid-cols-2 gap-3">
@@ -332,6 +400,39 @@ window.openConsentForm = async function(prefillSubjectId = null) {
                 </div>
             </div>
 
+            <div id="ic-witness-type-wrap" class="hidden">
+                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Witness Capacity <span class="text-red-500">*</span></label>
+                <select id="ic-witness-type" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none bg-white">
+                    <option value="">— Pilih kapasitas saksi —</option>
+                    <option>Impartial Witness (Illiterate Subject)</option>
+                    <option>Legally Authorized Representative</option>
+                    <option>Parent / Guardian</option>
+                </select>
+                <p class="text-xs text-slate-400 mt-1">Konsekuensi regulatori tiap kapasitas berbeda (ICH GCP §4.8.9 / §4.8.12).</p>
+            </div>
+
+            <div class="space-y-2.5 p-3 rounded-md border border-slate-200 bg-slate-50">
+                <label class="flex items-start gap-2.5 cursor-pointer">
+                    <input type="checkbox" id="ic-copy-provided" class="mt-0.5 w-4 h-4 rounded border-slate-300">
+                    <span class="text-xs text-slate-700">
+                        <span class="font-semibold">Salinan ICF bertanda tangan diberikan ke subjek</span>
+                        <span class="block text-slate-400">ICH GCP §4.8.11 — wajib, dan rutin diperiksa saat audit.</span>
+                    </span>
+                </label>
+                <label class="flex items-start gap-2.5 cursor-pointer">
+                    <input type="checkbox" id="ic-assent" onchange="icAssentChanged()" class="mt-0.5 w-4 h-4 rounded border-slate-300">
+                    <span class="text-xs text-slate-700">
+                        <span class="font-semibold">Assent diperoleh (subjek anak / tidak dapat memberi consent penuh)</span>
+                        <span class="block text-slate-400">ICH GCP §4.8.12 — assent tidak menggantikan consent wali.</span>
+                    </span>
+                </label>
+                <div id="ic-assent-date-wrap" class="hidden pl-6">
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Assent Date</label>
+                    <input type="date" id="ic-assent-date" max="${new Date().toISOString().split('T')[0]}"
+                        class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm ph-input outline-none">
+                </div>
+            </div>
+
             <div>
                 <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">Notes</label>
                 <textarea id="ic-notes" rows="2" placeholder="Any relevant notes about consent process…"
@@ -339,7 +440,18 @@ window.openConsentForm = async function(prefillSubjectId = null) {
             </div>
         </div>`;
 
+    // Witness capacity only matters once a witness is named
+    document.getElementById('ic-witness')?.addEventListener('input', (e) => {
+        document.getElementById('ic-witness-type-wrap')
+            ?.classList.toggle('hidden', !e.target.value.trim());
+    });
+
     if (window.lucide) lucide.createIcons();
+};
+
+window.icAssentChanged = function() {
+    const on = document.getElementById('ic-assent')?.checked;
+    document.getElementById('ic-assent-date-wrap')?.classList.toggle('hidden', !on);
 };
 
 window.icfVersionChanged = function() {
@@ -369,19 +481,51 @@ window.submitConsentForm = async function() {
         showToast('Subject, ICF version, and date are required.', 'error'); return;
     }
 
+    // Obtained By comes from the delegate dropdown, or free text when the
+    // Delegation Log has no eligible staff yet.
+    const obtainedSel = document.getElementById('ic-obtained-by');
+    const obtainedBy  = obtainedSel?.value || null;
+    const obtainedByName = obtainedSel
+        ? (obtainedSel.options[obtainedSel.selectedIndex]?.dataset.name ?? null)
+        : (document.getElementById('ic-obtained-by-name')?.value.trim() || null);
+
+    const consentType = document.getElementById('ic-type').value;
+    if (consentType !== 'Withdrawal' && !obtainedByName) {
+        showToast('Record who conducted the consent discussion (ICH GCP §4.8).', 'error'); return;
+    }
+
+    const witnessName = document.getElementById('ic-witness').value.trim() || null;
+    const witnessType = document.getElementById('ic-witness-type')?.value || null;
+    if (witnessName && !witnessType) {
+        showToast('Select the witness capacity — impartial witness, LAR, or parent/guardian.', 'error'); return;
+    }
+
+    const assentObtained = !!document.getElementById('ic-assent')?.checked;
+
     try {
-        await api.createConsent({
+        const res = await api.createConsent({
             subjectId,
             consentVersion: version,
             consentDate:    date,
-            consentType:    document.getElementById('ic-type').value,
+            consentTime:    document.getElementById('ic-time')?.value || null,
+            consentType,
             language:       document.getElementById('ic-language').value,
-            witnessName:    document.getElementById('ic-witness').value.trim() || null,
+            obtainedBy,
+            obtainedByName,
+            witnessName,
+            witnessType,
+            assentObtained,
+            assentDate:     assentObtained ? (document.getElementById('ic-assent-date')?.value || null) : null,
+            copyProvided:   !!document.getElementById('ic-copy-provided')?.checked,
             notes:          document.getElementById('ic-notes').value.trim()   || null,
             amendmentId,
         });
         closeModal();
         showToast('Informed consent recorded.', 'success');
+        (res?.warnings ?? []).forEach(w => showToast(w, 'warning'));
+        if (res?.autoDeviation) {
+            showToast('Protocol deviation auto-filed: consent dated after the first study procedure (GCP §4.8.8).', 'warning');
+        }
         await renderConsents();
     } catch (err) {
         showToast(err.message, 'error');
@@ -453,8 +597,12 @@ export async function renderSubjectConsentSection(subjectId, container) {
                             ${typeBadge(c.consentType)}
                             <code class="text-xs text-slate-500">${esc(c.consentVersion)}</code>
                         </div>
-                        <p class="text-xs text-slate-600">${esc(c.language)} · Signed ${esc(c.consentDate)}</p>
-                        ${c.witnessName ? `<p class="text-xs text-slate-400">Witness: ${esc(c.witnessName)}</p>` : ''}
+                        <p class="text-xs text-slate-600">${esc(c.language)} · Signed ${esc(c.consentDate)}${c.consentTime ? ' ' + esc(c.consentTime) : ''}</p>
+                        ${c.obtainedByName
+                            ? `<p class="text-xs text-slate-400">Obtained by: ${esc(c.obtainedByName)}</p>`
+                            : `<p class="text-xs text-amber-600">Consent taker not recorded (GCP §4.8)</p>`}
+                        ${c.witnessName ? `<p class="text-xs text-slate-400">Witness: ${esc(c.witnessName)}${c.witnessType ? ' — ' + esc(c.witnessType) : ''}</p>` : ''}
+                        ${!c.copyProvided ? `<p class="text-xs text-amber-600">Signed ICF copy not given to subject (GCP §4.8.11)</p>` : ''}
                         ${c.isWithdrawn ? `<p class="text-xs text-red-600 font-medium">Withdrawn ${fmtDate(c.withdrawnAt)}: ${esc(c.withdrawnReason)}</p>` : ''}
                     </div>
                     ${!c.isWithdrawn && canCreate
