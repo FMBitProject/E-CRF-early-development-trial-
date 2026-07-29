@@ -10,6 +10,8 @@
  * bytes shipped to a regulator can be asserted in a unit test.
  */
 
+import { isoDay, isoDateTime } from './isodate.js';
+
 /** Escape all five XML predefined entities. Never emit an unescaped value. */
 export function xmlEsc(s) {
     if (s == null) return '';
@@ -37,8 +39,19 @@ export function odmDataType(fieldType) {
     }
 }
 
-function isoDay(value) {
-    return value ? new Date(value).toISOString().split('T')[0] : '';
+/**
+ * ODM DataType="boolean" only accepts 0/1/true/false, but the CRF stores the
+ * answer the way the site sees it ("Yes"/"No"). Translate at export time so the
+ * document validates without changing what is stored. An unrecognised value is
+ * passed through rather than silently blanked — that is data to investigate,
+ * not something the exporter should hide.
+ */
+function odmBoolean(value) {
+    const v = String(value ?? '').trim().toLowerCase();
+    if (v === '') return '';
+    if (['yes', 'y', 'true', '1'].includes(v))  return 'true';
+    if (['no',  'n', 'false', '0'].includes(v)) return 'false';
+    return String(value);
 }
 
 function groupBy(rows, key) {
@@ -75,6 +88,11 @@ export function buildOdmXml(data, { now = new Date() } = {}) {
 
     const stamp        = odmDateTime(now);
     const visitMap     = new Map(visits.map(v => [v.id, v]));
+    // formId → (fieldKey → type), so a captured value can be rendered in the
+    // representation its declared DataType requires.
+    const typesByForm  = new Map(forms.map(f => [
+        f.id, new Map((f.schemaJson?.fields ?? []).map(fd => [fd.key, fd.type])),
+    ]));
     const aeBySubj     = groupBy(adverseEvents, 'subjectId');
     const consentBySubj = groupBy(consents, 'subjectId');
     const entriesBySubj = groupBy(entries, 'subjectId');
@@ -171,17 +189,29 @@ export function buildOdmXml(data, { now = new Date() } = {}) {
         // CRF entries grouped by visit
         for (const [visitId, visitEntries] of groupBy(subjEntries, 'visitId')) {
             const visit = visitMap.get(visitId);
+            // An entry with no visit produced "SE.Vnull" and an empty repeat key.
+            // Give unscheduled data its own study event instead.
+            const order = visit?.visitOrder ?? visitId;
+            const eventOid = (order === null || order === undefined || order === '')
+                ? 'SE.UNSCHEDULED'
+                : `SE.V${String(order).padStart(2, '0')}`;
             xml += `
-      <StudyEventData StudyEventOID="SE.V${String(visit?.visitOrder || visitId).padStart(2, '0')}" StudyEventRepeatKey="${visitId}">`;
+      <StudyEventData StudyEventOID="${eventOid}" StudyEventRepeatKey="${xmlEsc(visitId ?? '1')}">`;
             for (const entry of visitEntries) {
                 const values = entry.dataJson || {};
                 const sigs   = sigsByEntry.get(entry.id) || [];
                 xml += `
         <FormData FormOID="F.${entry.formId}" TransactionType="Snapshot">`;
+                const fieldTypes = typesByForm.get(entry.formId);
                 for (const [key, value] of Object.entries(values)) {
+                    const out = fieldTypes?.get(key) === 'boolean'
+                        ? odmBoolean(value)
+                        // A multi-select holds an array; ODM ItemData carries a
+                        // single value, so join the way the CSV export does.
+                        : Array.isArray(value) ? value.join('; ') : String(value ?? '');
                     xml += `
           <ItemGroupData ItemGroupOID="IG.${entry.formId}.${xmlEsc(key)}" TransactionType="Snapshot">
-            <ItemData ItemOID="IT.${entry.formId}.${xmlEsc(key)}" Value="${xmlEsc(String(value ?? ''))}"/>
+            <ItemData ItemOID="IT.${entry.formId}.${xmlEsc(key)}" Value="${xmlEsc(out)}"/>
           </ItemGroupData>`;
                 }
                 for (const sig of sigs) {
@@ -190,7 +220,7 @@ export function buildOdmXml(data, { now = new Date() } = {}) {
             <UserRef UserOID="${xmlEsc(sig.userId)}"/>
             <LocationRef LocationOID="${xmlEsc(site?.code || 'UNKNOWN')}"/>
             <SignatureRef MethodOID="ESIG"/>
-            <DateTimeStamp>${new Date(sig.signedAt).toISOString()}</DateTimeStamp>
+            <DateTimeStamp>${isoDateTime(sig.signedAt)}</DateTimeStamp>
           </Signature>`;
                 }
                 xml += `

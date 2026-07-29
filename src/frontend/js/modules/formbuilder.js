@@ -86,9 +86,9 @@ function renderFormList(container) {
               <i data-lucide="clipboard-list" class="w-4 h-4"></i>
             </div>
             <div class="min-w-0">
-              <p class="font-semibold text-slate-800 text-sm truncate">${f.name}</p>
-              <p class="text-xs text-slate-500">v${f.version} · ${f.isActive ? '<span class="text-emerald-600 font-medium">Active</span>' : '<span class="text-slate-400">Inactive</span>'}</p>
-              ${f.description ? `<p class="text-xs text-slate-400 truncate">${f.description}</p>` : ''}
+              <p class="font-semibold text-slate-800 text-sm truncate">${esc(f.name)}</p>
+              <p class="text-xs text-slate-500">v${esc(f.version)} · ${f.isActive ? '<span class="text-emerald-600 font-medium">Active</span>' : '<span class="text-slate-400">Inactive</span>'}</p>
+              ${f.description ? `<p class="text-xs text-slate-400 truncate">${esc(f.description)}</p>` : ''}
             </div>
           </div>
           <div class="flex items-center gap-1.5 flex-shrink-0">
@@ -127,16 +127,16 @@ function openBuilderModal(form = null, restore = null) {
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="ph-label">Form Name *</label>
-            <input id="fb-name" class="ph-input" value="${meta?.name ?? form?.name ?? ''}" placeholder="e.g. Vital Signs">
+            <input id="fb-name" class="ph-input" value="${esc(meta?.name ?? form?.name ?? '')}" placeholder="e.g. Vital Signs">
           </div>
           <div>
             <label class="ph-label">Version</label>
-            <input id="fb-version" class="ph-input" value="${meta?.version ?? form?.version ?? '1.0'}" placeholder="1.0">
+            <input id="fb-version" class="ph-input" value="${esc(meta?.version ?? form?.version ?? '1.0')}" placeholder="1.0">
           </div>
         </div>
         <div>
           <label class="ph-label">Description</label>
-          <input id="fb-description" class="ph-input" value="${meta?.description ?? form?.description ?? ''}" placeholder="Brief description (optional)">
+          <input id="fb-description" class="ph-input" value="${esc(meta?.description ?? form?.description ?? '')}" placeholder="Brief description (optional)">
         </div>
         <div class="border-t border-slate-100 pt-4">
           <div class="flex items-center justify-between mb-1">
@@ -156,7 +156,7 @@ function openBuilderModal(form = null, restore = null) {
         ${form ? `
         <div>
           <label class="ph-label">Reason for Change *</label>
-          <input id="fb-reason" class="ph-input" value="${meta?.reason ?? ''}" placeholder="Describe what changed and why">
+          <input id="fb-reason" class="ph-input" value="${esc(meta?.reason ?? '')}" placeholder="Describe what changed and why">
         </div>` : ''}
       </div>`,
         footer: `
@@ -195,7 +195,7 @@ function renderFieldList() {
         <div class="flex-1 grid grid-cols-2 gap-2">
           <div>
             <label class="ph-label text-xs">Question / Label *</label>
-            <input class="fb-label-input ph-input text-xs" value="${f.label}" onchange="window.fbUpdateField(${i},'label',this.value)" placeholder="e.g. Serum Creatinine">
+            <input class="fb-label-input ph-input text-xs" value="${esc(f.label)}" onchange="window.fbUpdateField(${i},'label',this.value)" placeholder="e.g. Serum Creatinine">
           </div>
           <div>
             <label class="ph-label text-xs">Answer Type *</label>
@@ -219,7 +219,7 @@ function renderFieldList() {
           <span class="text-slate-400 font-normal">(monitor checks this first)</span>
         </label>
         <div class="flex-1 min-w-40">
-          <input class="ph-input text-xs" value="${f.placeholder ?? ''}" onchange="window.fbUpdateField(${i},'placeholder',this.value)" placeholder="Hint shown inside the empty box (optional)">
+          <input class="ph-input text-xs" value="${esc(f.placeholder ?? '')}" onchange="window.fbUpdateField(${i},'placeholder',this.value)" placeholder="Hint shown inside the empty box (optional)">
         </div>
       </div>
       ${(f.type === 'number') ? `
@@ -227,22 +227,22 @@ function renderFieldList() {
         <div class="flex items-end gap-2 flex-wrap">
           <div class="w-20">
             <label class="ph-label text-xs">Unit</label>
-            <input class="ph-input text-xs" value="${f.unit ?? ''}" onchange="window.fbUpdateField(${i},'unit',this.value)" placeholder="mmHg">
+            <input class="ph-input text-xs" value="${esc(f.unit ?? '')}" onchange="window.fbUpdateField(${i},'unit',this.value)" placeholder="mmHg">
           </div>
           <div class="flex-1 min-w-48 rounded-md border border-red-200 bg-red-50/60 px-2 py-1.5">
             <p class="text-xs font-medium text-red-700">Impossible values — refuse to save</p>
             <div class="flex items-center gap-2 mt-1">
-              <input type="number" class="ph-input text-xs" value="${f.min ?? ''}" onchange="window.fbUpdateField(${i},'min',this.value ? +this.value : null)" placeholder="lowest">
+              <input type="number" class="ph-input text-xs" value="${esc(f.min ?? '')}" onchange="window.fbUpdateField(${i},'min',this.value ? +this.value : null)" placeholder="lowest">
               <span class="text-xs text-slate-400">to</span>
-              <input type="number" class="ph-input text-xs" value="${f.max ?? ''}" onchange="window.fbUpdateField(${i},'max',this.value ? +this.value : null)" placeholder="highest">
+              <input type="number" class="ph-input text-xs" value="${esc(f.max ?? '')}" onchange="window.fbUpdateField(${i},'max',this.value ? +this.value : null)" placeholder="highest">
             </div>
           </div>
           <div class="flex-1 min-w-48 rounded-md border border-amber-200 bg-amber-50/60 px-2 py-1.5">
             <p class="text-xs font-medium text-amber-700">Unusual values — allow, but ask</p>
             <div class="flex items-center gap-2 mt-1">
-              <input type="number" class="ph-input text-xs" value="${f.softMin ?? ''}" onchange="window.fbUpdateField(${i},'softMin',this.value ? +this.value : null)" placeholder="lowest">
+              <input type="number" class="ph-input text-xs" value="${esc(f.softMin ?? '')}" onchange="window.fbUpdateField(${i},'softMin',this.value ? +this.value : null)" placeholder="lowest">
               <span class="text-xs text-slate-400">to</span>
-              <input type="number" class="ph-input text-xs" value="${f.softMax ?? ''}" onchange="window.fbUpdateField(${i},'softMax',this.value ? +this.value : null)" placeholder="highest">
+              <input type="number" class="ph-input text-xs" value="${esc(f.softMax ?? '')}" onchange="window.fbUpdateField(${i},'softMax',this.value ? +this.value : null)" placeholder="highest">
             </div>
           </div>
         </div>
@@ -256,7 +256,7 @@ function renderFieldList() {
       <div class="pl-6 space-y-2">
         <div>
           <label class="ph-label text-xs">Answer choices — one per line *</label>
-          <textarea class="ph-input text-xs" rows="3" onchange="window.fbUpdateOptions(${i},this.value)" placeholder="Option A&#10;Option B&#10;Option C">${(f.options ?? []).join('\n')}</textarea>
+          <textarea class="ph-input text-xs" rows="3" onchange="window.fbUpdateOptions(${i},this.value)" placeholder="Option A&#10;Option B&#10;Option C">${esc((f.options ?? []).join('\n'))}</textarea>
         </div>
         <label class="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
           <input type="checkbox" ${f.closedCodelist ? 'checked' : ''} onchange="window.fbUpdateField(${i},'closedCodelist',this.checked)" class="rounded accent-blue-500">
@@ -276,22 +276,22 @@ function renderFieldList() {
             <div class="flex items-center gap-2 flex-wrap">
               <div class="flex items-center gap-1" title="Internal field ID used in exports & queries. Auto-generated from the label.">
                 <span class="text-xs text-slate-400 whitespace-nowrap">Field ID:</span>
-                <input class="ph-input text-xs w-40 font-mono" value="${f.key}"
+                <input class="ph-input text-xs w-40 font-mono" value="${esc(f.key)}"
                        onchange="window.fbUpdateField(${i},'key',this.value)" placeholder="auto-generated">
               </div>
               <div class="flex items-center gap-1">
                 <span class="text-xs text-slate-400 whitespace-nowrap" title="CDISC CDASH variable mapping (for standards-compliant export)">CDASH:</span>
-                <input class="ph-input text-xs w-24" value="${f.cdashVar ?? ''}"
+                <input class="ph-input text-xs w-24" value="${esc(f.cdashVar ?? '')}"
                        onchange="window.fbUpdateField(${i},'cdashVar',this.value)"
                        placeholder="e.g. AESTDTC" title="CDASH variable name">
               </div>
               <div class="flex items-center gap-1">
                 <span class="text-xs text-slate-400 whitespace-nowrap" title="CDISC SDTM domain.variable mapping (for standards-compliant export)">SDTM:</span>
-                <input class="ph-input text-xs w-20" value="${f.sdtmDomain ?? ''}"
+                <input class="ph-input text-xs w-20" value="${esc(f.sdtmDomain ?? '')}"
                        onchange="window.fbUpdateField(${i},'sdtmDomain',this.value)"
                        placeholder="AE" title="SDTM domain (e.g. AE, CM, VS)">
                 <span class="text-xs text-slate-300">.</span>
-                <input class="ph-input text-xs w-24" value="${f.sdtmVar ?? ''}"
+                <input class="ph-input text-xs w-24" value="${esc(f.sdtmVar ?? '')}"
                        onchange="window.fbUpdateField(${i},'sdtmVar',this.value)"
                        placeholder="AETERM" title="SDTM variable name">
               </div>
@@ -300,11 +300,11 @@ function renderFieldList() {
             <div class="flex gap-2">
               <div class="flex-1">
                 <label class="ph-label text-xs">Input format rule (regex)</label>
-                <input class="ph-input text-xs font-mono" value="${f.pattern ?? ''}" onchange="window.fbUpdateField(${i},'pattern',this.value||null)" placeholder="e.g. ^[A-Z]{2}\\d{4}$">
+                <input class="ph-input text-xs font-mono" value="${esc(f.pattern ?? '')}" onchange="window.fbUpdateField(${i},'pattern',this.value||null)" placeholder="e.g. ^[A-Z]{2}\\d{4}$">
               </div>
               <div class="flex-1">
                 <label class="ph-label text-xs">Message shown when format is wrong</label>
-                <input class="ph-input text-xs" value="${f.patternMessage ?? ''}" onchange="window.fbUpdateField(${i},'patternMessage',this.value||null)" placeholder="e.g. Must be 2 letters + 4 digits">
+                <input class="ph-input text-xs" value="${esc(f.patternMessage ?? '')}" onchange="window.fbUpdateField(${i},'patternMessage',this.value||null)" placeholder="e.g. Must be 2 letters + 4 digits">
               </div>
             </div>` : ''}
             <div>
@@ -313,14 +313,14 @@ function renderFieldList() {
               <div class="flex gap-2 items-end">
                 <div class="flex-1">
                   <label class="ph-label text-xs">Required if field (Field ID)</label>
-                  <input class="ph-input text-xs font-mono" value="${f.conditionalRequired?.ifField ?? ''}"
+                  <input class="ph-input text-xs font-mono" value="${esc(f.conditionalRequired?.ifField ?? '')}"
                          onchange="window.fbUpdateConditional(${i},'ifField',this.value)"
                          placeholder="other_field_id">
                 </div>
                 <div class="flex items-center text-xs text-slate-400 pb-2">=</div>
                 <div class="flex-1">
                   <label class="ph-label text-xs">equals value</label>
-                  <input class="ph-input text-xs" value="${f.conditionalRequired?.ifValue ?? ''}"
+                  <input class="ph-input text-xs" value="${esc(f.conditionalRequired?.ifValue ?? '')}"
                          onchange="window.fbUpdateConditional(${i},'ifValue',this.value)"
                          placeholder="Yes">
                 </div>
@@ -361,18 +361,33 @@ window.fbMoveField = (i, dir) => {
 };
 
 // Derive a machine key from a human label ("Serum Creatinine" → "serum_creatinine")
-// so form designers never have to know what snake_case is.
-function slugifyKey(label) {
-    const s = (label || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-    return /^[a-z_]/.test(s) ? s : (s ? `f_${s}` : '');
+// so form designers never have to know what snake_case is. Must produce a key
+// matching FIELD_KEY_RE in backend/lib/formschema.js, which is the authority
+// that rejects anything else.
+// `excludeIndex` is the question being renamed — its own key must not count as
+// taken, or every keystroke would bump the suffix.
+function slugifyKey(label, excludeIndex = -1) {
+    const base = String(label ?? '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    if (!base) return '';
+    const seed  = /^[a-z_]/.test(base) ? base : `f_${base}`;
+    const taken = new Set(_fields.filter((_, n) => n !== excludeIndex).map(f => f.key).filter(Boolean));
+    if (!taken.has(seed)) return seed;
+    for (let n = 2; ; n++) {
+        if (!taken.has(`${seed}_${n}`)) return `${seed}_${n}`;
+    }
 }
 
 window.fbUpdateField = (i, key, value) => {
     const prev = _fields[i];
     _fields[i] = { ...prev, [key]: value };
     // Auto-generate the field key from the label unless the user customized it.
-    if (key === 'label' && (!prev.key || prev.key === slugifyKey(prev.label))) {
-        _fields[i].key = slugifyKey(value);
+    // Two questions labelled the same would otherwise claim one storage slot;
+    // deriveFieldKey suffixes the second (serum_creatinine_2).
+    if (key === 'label' && (!prev.key || prev.key === slugifyKey(prev.label, i))) {
+        _fields[i].key = slugifyKey(value, i);
         renderFieldList();
     }
     if (key === 'type') renderFieldList(); // re-render for type-specific inputs
@@ -405,19 +420,38 @@ window.fbSave = async () => {
 
     if (!name) return showToast('Form name is required', 'error');
 
-    // Validate fields
+    // Validate fields. The server re-checks all of this; catching it here just
+    // saves a round-trip and lets the message name the question, not an index.
+    const seenKeys = new Map();   // key → label of the question that claimed it
     for (let i = 0; i < _fields.length; i++) {
-        const f = _fields[i];
-        if (!f.label) return showToast(`Field ${i + 1}: please fill in the question/label`, 'error');
-        if (!f.key) f.key = slugifyKey(f.label);   // auto-derive — designers never type keys
-        if (!f.type)  return showToast(`Field ${i + 1}: please choose an answer type`, 'error');
+        const f  = _fields[i];
+        const at = f.label ? `"${f.label}"` : `Question ${i + 1}`;
+        if (!f.label) return showToast(`Question ${i + 1}: please fill in the question/label`, 'error');
+        if (!f.key) f.key = slugifyKey(f.label, i);   // auto-derive — designers never type keys
+        if (!f.type)  return showToast(`${at}: please choose an answer type`, 'error');
         if (!f.key.match(/^[a-z_][a-z0-9_]*$/))
-            return showToast(`Field ${i + 1}: the Field ID (under Advanced) may only contain lowercase letters, digits and underscores`, 'error');
+            return showToast(`${at}: the Field ID (under Advanced) may only contain lowercase letters, digits and underscores`, 'error');
+        if (seenKeys.has(f.key)) {
+            return showToast(
+                `${at} and "${seenKeys.get(f.key)}" share the Field ID "${f.key}" — their answers would overwrite each other. Change one under Advanced.`,
+                'error',
+            );
+        }
+        seenKeys.set(f.key, f.label);
+        if (CHOICE_TYPES.includes(f.type) && !(f.options?.length))
+            return showToast(`${at}: add at least one answer choice`, 'error');
     }
 
     if (_editForm && !reason) return showToast('Reason for change is required', 'error');
 
     const schemaJson = { fields: _fields };
+
+    // The schema endpoints answer 422 with { error: 'Invalid schema', details: [...] },
+    // where `details` is the part that says which question is wrong. Showing
+    // only `error` left the designer with "Invalid schema" and nothing to act on.
+    const explain = (err) => (err.details?.length
+        ? `${err.message}: ${err.details.join(' · ')}`
+        : err.message);
 
     try {
         if (_editForm) {
@@ -437,7 +471,7 @@ window.fbSave = async () => {
         _forms = await api.request('/api/forms?all=1');
         renderFormList(document.getElementById('main-content'));
     } catch (err) {
-        showToast(err.message, 'error');
+        showToast(explain(err), 'error');
     }
 };
 

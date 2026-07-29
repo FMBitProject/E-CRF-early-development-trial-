@@ -21,7 +21,7 @@ prepared per **GAMP 5 (2nd Ed.)**, **FDA 21 CFR Part 11**, and
 
 | Protocol | State |
 |----------|-------|
-| OQ-A (automated, 18 scripts) | ✅ **Executed** — 338/338 checks pass, 0 fail |
+| OQ-A (automated, 20 scripts) | ✅ **Executed** — 370/370 checks pass, 0 fail |
 | IQ (7 steps) | ⬜ Not executed |
 | OQ-B…OQ-H (58 steps) | ⬜ Not executed |
 | PQ (5 business processes) | ⬜ Not executed |

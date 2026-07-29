@@ -54,6 +54,7 @@ declare -A SCRIPT_ID=(
     [visitschedule.test.js]="OQ-A14" [import.test.js]="OQ-A15"
     [license.test.js]="OQ-A16"     [billing.test.js]="OQ-A16"
     [dberrors.test.js]="OQ-A17" [validate.test.js]="OQ-A18"
+    [formschema.test.js]="OQ-A19" [isodate.test.js]="OQ-A20"
 )
 
 TOTAL=0; TOTAL_PASS=0; TOTAL_FAIL=0; OVERALL=0

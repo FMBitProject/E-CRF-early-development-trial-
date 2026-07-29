@@ -9,7 +9,7 @@ Status legend: **✅ Met** (implemented + covered by URS/test) · **◐ Procedur
 
 | Clause | Requirement | Status | Evidence / Notes |
 |--------|-------------|--------|------------------|
-| 11.10(a) | Validation of systems | ⚠ | **Open.** The CSV package is written and the automated OQ-A is executed (338/338 — [evidence/OQ-A_RUN.md](evidence/OQ-A_RUN.md)), but IQ, OQ-B…OQ-H and PQ are not executed. 5 of 18 High-risk URS items are fully verified. |
+| 11.10(a) | Validation of systems | ⚠ | **Open.** The CSV package is written and the automated OQ-A is executed (370/370 — [evidence/OQ-A_RUN.md](evidence/OQ-A_RUN.md)), but IQ, OQ-B…OQ-H and PQ are not executed. 5 of 18 High-risk URS items are fully verified. |
 | 11.10(b) | Records in human-readable & electronic form | ✅ | UI views + CSV/ODM export (EXP-01/02). |
 | 11.10(c) | Protection of records over retention period | ◐ | DB backup/retention is an infrastructure SOP — see [../DEPLOYMENT_OPERATIONS.md]. |
 | 11.10(d) | Limiting access to authorized individuals | ✅ | SEC-01/02/07/08; auth + RBAC + study/site scoping; `tests/rbac-matrix.test.js`. |
@@ -47,12 +47,13 @@ sponsor-provisioned accounts). Transport is HTTPS with HSTS (SEC-09).
 | 11.70 | **OBS-001** — mark superseded e-signatures invalid (`invalidatedAt` on `esignatures`) and exclude them from the ODM export | Developer |
 | 11.100(b) | Identity-verification SOP + FDA §11.100(c) letter | Sponsor QA |
 | SEC-07 | **DEV-002** — verify the cross-study query/lock scoping fix via OQ-D5, OQ-D6 | QA / Testers |
+| DC-01 | **DEV-003** — verify the CRF-label escaping fix at OQ-F1/OQ-F2 with a label containing `" > <` | QA / Testers |
 | — | Independent penetration test of the deployed instance | Security vendor |
 
 One software-level item (**OBS-001**, §11.70) is open and accepted with a CAPA;
-see [DEVIATION_LOG.md](DEVIATION_LOG.md). Two Major deviations found during
-this validation exercise (DEV-001, DEV-002) have been corrected in code;
-DEV-002 still needs human verification. Everything else outstanding is either
+see [DEVIATION_LOG.md](DEVIATION_LOG.md). Three Major deviations found during
+this validation exercise (DEV-001, DEV-002, DEV-003) have been corrected in
+code; DEV-002 and DEV-003 still need human verification. Everything else outstanding is either
 procedural or execution of this validation package.
 
 > Consolidated, trackable go-live checklist (these items + legal + backup +

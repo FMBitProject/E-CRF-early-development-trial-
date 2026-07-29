@@ -75,6 +75,93 @@ and OQ-D6 is required to close this deviation.**
 
 ---
 
+### DEV-003 — Stored XSS via CRF field label and unit
+
+| | |
+|---|---|
+| Raised | 2026-07-29, self-review of the form-builder change |
+| URS | SEC-02 (indirect), DC-01 |
+| Severity | **Major** |
+| Status | **Closed — corrected and verified** |
+
+**Description.** `renderField` in `src/frontend/js/modules/forms.js` wrote
+`field.label` and `field.unit` into the page without escaping, and spliced the
+label into an `onclick` attribute escaping only single quotes:
+
+```js
+onclick="openInlineQueryModal('${field.key}', '${field.label.replace(/'/g, "\\'")}')"
+```
+
+The attribute is delimited with double quotes, so a label containing `"`
+terminated it and could attach an event handler.
+
+**Impact.** A form designer (admin/data manager) could execute script in the
+browser of **every investigator and CRC** who opened that form for data entry.
+On a multi-tenant deployment the attacker and victim can belong to different
+organizations. Nothing in the audit trail would show it.
+
+**Correction.** Label, unit and key are escaped via `escAttr`; the query button
+now carries its values in `data-*` attributes and reads them through
+`this.dataset`, so no operator text is spliced into a script context. The Form
+Builder's own inputs are escaped the same way.
+
+**Verification.** Escaping is exercised indirectly by `tests/odm.test.js` and
+`tests/formschema.test.js`; the DOM-level behaviour needs a browser and is
+**pending human execution at OQ-F1/OQ-F2** with a label containing `" > <`.
+
+---
+
+### DEV-004 — Field keys were not format-checked server-side
+
+| | |
+|---|---|
+| Raised | 2026-07-29, self-review |
+| URS | DC-01, DC-02 |
+| Severity | **Minor** |
+| Status | **Closed — corrected and verified** |
+
+**Description.** `validateSchema` in `routes/forms.js` required a key to be
+present and unique, but never checked its shape. The builder UI enforced
+`^[a-z_][a-z0-9_]*$`; the API did not, and the API is reachable without the UI.
+A key becomes a DOM id, a form-control name, a CDISC ODM ItemOID suffix and a
+CSV column header.
+
+**Correction.** Rules moved to `src/backend/lib/formschema.js` with an explicit
+`FIELD_KEY_RE`, plus a tightening: `checkbox` now also requires at least one
+choice (previously only `select` and `radio` did). Error messages name the
+question by its label instead of by array index, and the builder now surfaces
+the server's `details` array, which it had been discarding.
+
+**Verification.** `tests/formschema.test.js` (OQ-A19), 18 checks.
+
+---
+
+### DEV-005 — One malformed date aborted an entire export
+
+| | |
+|---|---|
+| Raised | 2026-07-29, self-review |
+| URS | EXP-01, EXP-02 |
+| Severity | **Minor** |
+| Status | **Closed — corrected and verified** |
+
+**Description.** Both exporters called `new Date(value).toISOString()` without
+a guard (once in the ODM serialiser, six times in the CSV exporter).
+`toISOString()` throws `RangeError` on an unparseable value, so a single
+malformed stored date made `GET /api/export/odm` or `/csv` return 500 for the
+**whole study** until the offending row was found by hand.
+
+**Correction.** `src/backend/lib/isodate.js` returns `''` for anything it
+cannot represent, degrading one cell instead of the request. Also corrected in
+the same pass: an entry with no visit produced the OID `SE.Vnull` (now
+`SE.UNSCHEDULED`), and a multi-select array rendered via `String()` (now joined
+like the CSV export).
+
+**Verification.** `tests/isodate.test.js` (OQ-A20) and the resilience cases
+added to `tests/odm.test.js` (OQ-A7).
+
+---
+
 ## Observations
 
 ### OBS-001 — An invalidated signature is not marked invalid in the record
@@ -95,6 +182,30 @@ signature that no longer attests to the current data.
 the audit trail records the edit with its reason, so the sequence is
 reconstructible. **CAPA:** add `invalidatedAt` to `esignatures`, set it on
 edit, and filter it out of the export. Target: next release.
+
+---
+
+### OBS-004 — A closed adverse event can be pushed back to Reported
+
+| | |
+|---|---|
+| URS | DC-05 |
+| Severity | **Minor** |
+| Status | **Open — accepted for this release** |
+
+`PATCH /api/ae/:id/report` has no guard against `reportStatus === 'Closed'`.
+An AE that was closed with both the sponsor and IRB timestamps already set
+returns to `Reported` if the endpoint is called again. `canEditAe` freezes a
+closed AE on the general edit route, but `/report` does not use it.
+
+Found during the self-review, and noted here because the automated test
+`tests/aerules.test.js` currently *documents this as expected behaviour* rather
+than flagging it — a reader could mistake it for an intentional rule.
+
+**Risk accepted because** the transition is forward-only in practice (a closed
+AE has already been reported) and every call is audited. **CAPA:** apply the
+same closed-record guard to `/report` and change the test to assert the
+rejection. Target: next release.
 
 ---
 
@@ -139,9 +250,19 @@ this satisfies the protocol's data-management plan.
 |----|----------|--------|
 | DEV-001 | Major | Closed — corrected, automated regression in place |
 | DEV-002 | Major | Corrected; **awaiting human verification (OQ-D5, OQ-D6)** |
+| DEV-003 | Major | Corrected; **awaiting human verification (OQ-F1/OQ-F2)** |
+| DEV-004 | Minor | Closed — corrected, automated regression in place |
+| DEV-005 | Minor | Closed — corrected, automated regression in place |
 | OBS-001 | Minor | Open, accepted with CAPA |
 | OBS-002 | Minor | Open, accepted with CAPA |
 | OBS-003 | Minor | Open, accepted |
+| OBS-004 | Minor | Open, accepted with CAPA |
 
-**The Validation Summary Report cannot be signed while DEV-002 is awaiting
-verification.** No Critical deviations are open.
+**The Validation Summary Report cannot be signed while DEV-002 and DEV-003 are
+awaiting verification.** No Critical deviations are open.
+
+DEV-003, DEV-004, DEV-005 and OBS-004 were raised by a review of the changes
+made during this validation exercise, not by protocol execution. That is worth
+noting in the summary report: it shows the review step is finding defects, and
+it also shows that four of them were introduced or left standing in code that
+had already passed its automated checks.

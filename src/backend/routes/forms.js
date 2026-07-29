@@ -5,31 +5,10 @@ import { crfForms, crfDataEntries } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 import { orgCondition, sameOrg, effectiveOrgId } from '../lib/tenantscope.js';
+import { validateFormSchema } from '../lib/formschema.js';
 
 const router = Router();
 
-const VALID_FIELD_TYPES = ['text', 'number', 'date', 'datetime', 'textarea', 'select', 'radio', 'checkbox', 'boolean'];
-
-function validateSchema(schemaJson) {
-    const errors = [];
-    if (!schemaJson || typeof schemaJson !== 'object') return ['schemaJson must be an object'];
-    const fields = schemaJson.fields;
-    if (!Array.isArray(fields)) return ['schemaJson.fields must be an array'];
-    if (fields.length === 0) errors.push('At least one field is required');
-
-    const keys = new Set();
-    fields.forEach((f, i) => {
-        if (!f.key)   errors.push(`fields[${i}]: key is required`);
-        if (!f.label) errors.push(`fields[${i}]: label is required`);
-        if (!f.type || !VALID_FIELD_TYPES.includes(f.type))
-            errors.push(`fields[${i}]: type must be one of ${VALID_FIELD_TYPES.join(', ')}`);
-        if (f.key && keys.has(f.key)) errors.push(`fields[${i}]: duplicate key "${f.key}"`);
-        if (f.key) keys.add(f.key);
-        if ((f.type === 'select' || f.type === 'radio') && (!Array.isArray(f.options) || f.options.length === 0))
-            errors.push(`fields[${i}]: select/radio requires options array`);
-    });
-    return errors;
-}
 
 // GET /api/forms — list all active CRF form templates
 router.get('/', async (req, res) => {
@@ -72,7 +51,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
         if (!name) return res.status(400).json({ error: 'name is required' });
         if (!schemaJson) return res.status(400).json({ error: 'schemaJson is required' });
 
-        const schemaErrors = validateSchema(schemaJson);
+        const schemaErrors = validateFormSchema(schemaJson);
         if (schemaErrors.length) return res.status(422).json({ error: 'Invalid schema', details: schemaErrors });
 
         const [created] = await db.insert(crfForms).values({
@@ -105,7 +84,7 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
         if (!schemaJson) return res.status(400).json({ error: 'schemaJson is required' });
         if (!reason) return res.status(400).json({ error: 'reason is required for form updates' });
 
-        const schemaErrors = validateSchema(schemaJson);
+        const schemaErrors = validateFormSchema(schemaJson);
         if (schemaErrors.length) return res.status(422).json({ error: 'Invalid schema', details: schemaErrors });
 
         const [existing] = await db.select().from(crfForms).where(eq(crfForms.id, id));

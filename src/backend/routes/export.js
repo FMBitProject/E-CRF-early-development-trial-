@@ -9,6 +9,7 @@ import {
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 import { buildOdmXml } from '../lib/odm.js';
+import { isoDay, isoDateTime } from '../lib/isodate.js';
 import { buildCsv, withBom, INVALID_DOMAIN_ERROR, vitalsToRows } from '../lib/csv.js';
 
 const router = Router();
@@ -101,9 +102,9 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
                 return [
                     s.subjectCode, site?.code || '', site?.name || '',
                     s.sex || 'U', s.genderIdentity || '', s.dateOfBirth || '',
-                    s.enrolledAt ? new Date(s.enrolledAt).toISOString().split('T')[0] : '',
+                    isoDay(s.enrolledAt),
                     s.status || '',
-                    s.withdrawnAt ? new Date(s.withdrawnAt).toISOString().split('T')[0] : '',
+                    isoDay(s.withdrawnAt),
                     s.withdrawReason || '',
                 ];
             });
@@ -123,7 +124,7 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
                     ae.severity, ae.isSerious ? 'Y' : 'N',
                     ae.causality || '', ae.outcome || '', ae.actionTaken || '',
                     ae.reportStatus, ae.createdByName || '',
-                    ae.createdAt ? new Date(ae.createdAt).toISOString() : '',
+                    isoDateTime(ae.createdAt),
                 ];
             });
         } else if (domain === 'DEV') {
@@ -141,7 +142,7 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
                     d.rootCause || '', d.impactOnSubject || '', d.capa || '',
                     d.reportedToIrb ? 'Y' : 'N', d.status,
                     d.createdByName || '',
-                    d.createdAt ? new Date(d.createdAt).toISOString() : '',
+                    isoDateTime(d.createdAt),
                 ];
             });
         } else if (domain === 'IC') {
@@ -161,9 +162,9 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
                     c.assentObtained ? 'Y' : 'N', c.assentDate || '',
                     c.copyProvided ? 'Y' : 'N',
                     c.isWithdrawn ? 'Y' : 'N',
-                    c.withdrawnAt ? new Date(c.withdrawnAt).toISOString().split('T')[0] : '',
+                    isoDay(c.withdrawnAt),
                     c.withdrawnReason || '', c.createdByName || '',
-                    c.createdAt ? new Date(c.createdAt).toISOString() : '',
+                    isoDateTime(c.createdAt),
                 ];
             });
         } else if (domain === 'LB') {

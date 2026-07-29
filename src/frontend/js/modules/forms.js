@@ -435,6 +435,9 @@ export function renderField(field, existingData = {}, isLocked = false, fieldQue
     // interpolating into value=""/textarea (stored XSS otherwise).
     const rawValue = existingData?.[field.key] ?? '';
     const value    = escAttr(rawValue);
+    // The key is server-validated to [a-z0-9_], but it reaches the DOM as an id
+    // and a name — escape it too rather than trusting that one check.
+    const fkey     = escAttr(field.key);
     const gridCls  = field.grid || 'col-span-1';
     const disabled = isLocked ? 'disabled' : '';
     const baseCls  = `w-full px-3 py-2.5 border border-slate-300 rounded-md text-sm outline-none transition placeholder-slate-300 ph-input
@@ -449,18 +452,22 @@ export function renderField(field, existingData = {}, isLocked = false, fieldQue
     // Raising queries is CRA/admin/DM only (backend queries POST guard) —
     // other roles still see the open-query count badge.
     const canRaiseQuery = !preview && ['cra', 'admin', 'data_manager'].includes(api.getCurrentUser()?.role);
+    // The key and label go through data-* attributes rather than being spliced
+    // into a JS string literal: a label containing a double quote used to close
+    // the onclick attribute and inject markup.
     const queryBtn = canRaiseQuery ? `<button type="button"
-        onclick="openInlineQueryModal('${field.key}', '${field.label.replace(/'/g, "\\'")}')"
-        title="${queryBtnTitle}"
+        data-field-key="${escAttr(field.key)}" data-field-label="${escAttr(field.label)}"
+        onclick="openInlineQueryModal(this.dataset.fieldKey, this.dataset.fieldLabel)"
+        title="${escAttr(queryBtnTitle)}"
         class="inline-flex items-center justify-center w-5 h-5 rounded-full transition ml-1.5 flex-shrink-0 ${queryBtnCls}">
         <i data-lucide="message-circle" class="w-3 h-3"></i>
     </button>` : '';
 
     const label = `<div class="flex items-center mb-1.5">
-        <label for="field-${field.key}" class="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-            ${field.label}
+        <label for="field-${escAttr(field.key)}" class="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+            ${escAttr(field.label)}
             ${field.required ? '<span class="text-red-500 ml-0.5">*</span>' : '<span class="text-slate-400 normal-case font-normal text-xs ml-1">(optional)</span>'}
-            ${(field.validation?.unit || field.unit) ? `<span class="text-slate-400 font-normal normal-case ml-1">[${field.validation?.unit ?? field.unit}]</span>` : ''}
+            ${(field.validation?.unit || field.unit) ? `<span class="text-slate-400 font-normal normal-case ml-1">[${escAttr(field.validation?.unit ?? field.unit)}]</span>` : ''}
         </label>
         ${queryBtn}
         ${hasOpenQuery ? `<span class="ml-1 text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded px-1">${openQueries.length} query</span>` : ''}
@@ -469,29 +476,29 @@ export function renderField(field, existingData = {}, isLocked = false, fieldQue
     let input = '';
     switch (field.type) {
         case 'number':
-            input = `<input type="number" id="field-${field.key}" step="${field.validation?.step || '1'}"
+            input = `<input type="number" id="field-${fkey}" step="${field.validation?.step || '1'}"
                 value="${value}" placeholder="Enter value" ${field.required ? 'required' : ''} ${disabled}
                 class="${baseCls}">`;
             break;
         case 'date':
-            input = `<input type="date" id="field-${field.key}"
+            input = `<input type="date" id="field-${fkey}"
                 value="${value}" max="${new Date().toISOString().split('T')[0]}"
                 ${field.required ? 'required' : ''} ${disabled} class="${baseCls}">`;
             break;
         case 'time':
-            input = `<input type="time" id="field-${field.key}"
+            input = `<input type="time" id="field-${fkey}"
                 value="${value}" ${field.required ? 'required' : ''} ${disabled} class="${baseCls}">`;
             break;
         case 'text':
-            input = `<input type="text" id="field-${field.key}"
+            input = `<input type="text" id="field-${fkey}"
                 value="${value}" placeholder="Enter text" ${field.required ? 'required' : ''} ${disabled} class="${baseCls}">`;
             break;
         case 'textarea':
-            input = `<textarea id="field-${field.key}" rows="3" placeholder="Enter notes"
+            input = `<textarea id="field-${fkey}" rows="3" placeholder="Enter notes"
                 ${field.required ? 'required' : ''} ${disabled} class="${baseCls} resize-none">${value}</textarea>`;
             break;
         case 'select':
-            input = `<select id="field-${field.key}" ${field.required ? 'required' : ''} ${disabled} class="${baseCls}">
+            input = `<select id="field-${fkey}" ${field.required ? 'required' : ''} ${disabled} class="${baseCls}">
                 <option value="">— Select —</option>
                 ${(field.options || []).map(opt => `<option value="${escAttr(opt)}" ${rawValue === opt ? 'selected' : ''}>${escAttr(opt)}</option>`).join('')}
             </select>`;
@@ -500,7 +507,7 @@ export function renderField(field, existingData = {}, isLocked = false, fieldQue
             input = `<div class="flex flex-wrap gap-4 mt-1">
                 ${(field.options || []).map(opt => `
                 <label class="flex items-center gap-2 cursor-pointer ${isLocked ? 'opacity-60 cursor-not-allowed' : ''}">
-                    <input type="radio" name="field-${field.key}" value="${escAttr(opt)}" ${rawValue === opt ? 'checked' : ''} ${disabled}
+                    <input type="radio" name="field-${fkey}" value="${escAttr(opt)}" ${rawValue === opt ? 'checked' : ''} ${disabled}
                         class="w-4 h-4 accent-blue-700">
                     <span class="text-sm text-slate-700">${escAttr(opt)}</span>
                 </label>`).join('')}
@@ -510,12 +517,12 @@ export function renderField(field, existingData = {}, isLocked = false, fieldQue
             // datetime-local wants "YYYY-MM-DDTHH:mm"; stored values may carry
             // seconds or a trailing Z, which the control silently rejects.
             const dtValue = escAttr(String(rawValue).replace(' ', 'T').slice(0, 16));
-            input = `<input type="datetime-local" id="field-${field.key}"
+            input = `<input type="datetime-local" id="field-${fkey}"
                 value="${dtValue}" ${field.required ? 'required' : ''} ${disabled} class="${baseCls}">`;
             break;
         }
         case 'boolean':
-            input = `<select id="field-${field.key}" ${field.required ? 'required' : ''} ${disabled} class="${baseCls}">
+            input = `<select id="field-${fkey}" ${field.required ? 'required' : ''} ${disabled} class="${baseCls}">
                 <option value="">— Select —</option>
                 <option value="Yes" ${rawValue === 'Yes' ? 'selected' : ''}>Yes</option>
                 <option value="No"  ${rawValue === 'No'  ? 'selected' : ''}>No</option>
@@ -525,10 +532,10 @@ export function renderField(field, existingData = {}, isLocked = false, fieldQue
             // Multi-select: the value is an array. Older single-value records
             // still open correctly because a string is wrapped before the test.
             const chosen = Array.isArray(rawValue) ? rawValue : (rawValue ? [rawValue] : []);
-            input = `<div id="field-${field.key}" class="flex flex-wrap gap-4 mt-1">
+            input = `<div id="field-${fkey}" class="flex flex-wrap gap-4 mt-1">
                 ${(field.options || []).map(opt => `
                 <label class="flex items-center gap-2 cursor-pointer ${isLocked ? 'opacity-60 cursor-not-allowed' : ''}">
-                    <input type="checkbox" name="field-${field.key}" value="${escAttr(opt)}" ${chosen.includes(opt) ? 'checked' : ''} ${disabled}
+                    <input type="checkbox" name="field-${fkey}" value="${escAttr(opt)}" ${chosen.includes(opt) ? 'checked' : ''} ${disabled}
                         class="w-4 h-4 rounded accent-blue-700">
                     <span class="text-sm text-slate-700">${escAttr(opt)}</span>
                 </label>`).join('')}
@@ -536,7 +543,7 @@ export function renderField(field, existingData = {}, isLocked = false, fieldQue
             break;
         }
         default:
-            input = `<input type="text" id="field-${field.key}" value="${value}" ${disabled} class="${baseCls}">`;
+            input = `<input type="text" id="field-${fkey}" value="${value}" ${disabled} class="${baseCls}">`;
     }
 
     let hint = '';

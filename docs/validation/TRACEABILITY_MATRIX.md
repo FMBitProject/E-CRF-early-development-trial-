@@ -28,7 +28,7 @@ reaches · **⬜ Not executed** — verification is scripted but has not been ru
 | AUD-03 | H | No update/delete path on `audit_trails` | — | OQ-E3 | ⬜ |
 | AUD-04 | M | `routes/audit.js` (requireRole), `routes/dashboard.js` | `tests/rbac-matrix.test.js` (OQ-A10) | OQ-E4 | ◐ |
 | DC-01 | H | `lib/validate.js`; `lib/queryrules.js` auto-query rules; `routes/entries.js` | `tests/validate.test.js` (OQ-A18) — hard/soft ranges, codelists, conditional & cross-field rules; `tests/queryrules.test.js` (OQ-A3), `tests/iecriteria.test.js` (OQ-A13), `tests/import.test.js` (OQ-A15) | OQ-F1, OQ-F2 | ✅ |
-| DC-02 | H | `routes/forms.js` PUT in-use guard | — | OQ-F3 | ⬜ |
+| DC-02 | H | `routes/forms.js` PUT in-use guard; `lib/formschema.js` key format & uniqueness | `tests/formschema.test.js` (OQ-A19) | OQ-F3 | ◐ |
 | DC-03 | H | `lib/entryrules.js` state machine; `routes/entries.js` lock/unlock | `tests/entryrules.test.js` (OQ-A2) — 20 checks over the full state machine | OQ-F4, OQ-G9 | ✅ |
 | DC-04 | M | `lib/visitschedule.js`; `routes/visits.js` autoCreateWindowDeviation | `tests/visitschedule.test.js` (OQ-A14) | OQ-F5 | ◐ |
 | DC-05 | H | `lib/aerules.js` expedited windows; `routes/adverseevents.js` | `tests/aerules.test.js` (OQ-A4) — 35 checks incl. 7/15-day boundaries and overdue logic | OQ-F6 | ✅ |
@@ -44,7 +44,7 @@ reaches · **⬜ Not executed** — verification is scripted but has not been ru
 | WF-03 | M | `routes/bdreview.js` (server-side attestation) | — | OQ-H2 | ⬜ |
 | WF-04 | M | `routes/amendments.js` (status via /approve only) | — | OQ-H3 | ⬜ |
 | WF-05 | L | `lib/email.js`, `routes/notifications.js` | — | (PQ observation) | ⬜ |
-| EXP-01 | M | `lib/odm.js`; `routes/export.js` /odm (study-scoped) | `tests/odm.test.js` (OQ-A7) — 35 checks: ODM 1.3.2 structure, XML escaping, per-subject isolation | PQ-04 | ◐ |
+| EXP-01 | M | `lib/odm.js`; `lib/isodate.js`; `routes/export.js` /odm (study-scoped) | `tests/odm.test.js` (OQ-A7) — 42 checks: ODM 1.3.2 structure, XML escaping, per-subject isolation, boolean/array fidelity, malformed-date resilience; `tests/isodate.test.js` (OQ-A20) | PQ-04 | ◐ |
 | EXP-02 | M | `lib/csv.js`; `routes/export.js` /csv (study-scoped) | `tests/csvexport.test.js` (OQ-A8) — 25 checks: RFC 4180 quoting, domain whitelist, VS long format | OQ-D4, PQ-04 | ◐ |
 
 ## Coverage summary
@@ -56,9 +56,9 @@ Executed on commit `c6a165c`, 2026-07-29 — see
 |---|---|---|
 | URS requirements | 34 | 18 |
 | ✅ Fully verified by executed automated script | 7 | 5 |
-| ◐ Partially verified (logic automated; human script outstanding) | 11 | 7 |
-| ⬜ No verification executed yet | 16 | 6 |
-| Automated checks executed | **338 pass / 0 fail** | |
+| ◐ Partially verified (logic automated; human script outstanding) | 12 | 7 |
+| ⬜ No verification executed yet | 15 | 6 |
+| Automated checks executed | **370 pass / 0 fail** | |
 
 High-risk items fully verified: **AUD-02** (reason for change), **DC-01**
 (edit checks), **DC-03** (entry state machine), **DC-05** (SAE expedited
@@ -72,15 +72,15 @@ SEC-07, AUD-03, ESG-04.
 - **Established.** The decision logic behind the entry state machine, the query
   lifecycle, SAE reporting windows, randomization and blinding, the pre-lock
   checklist, the audit-trail writer, the CRF edit checks, and both export
-  serialisers is verified by 338 automated checks that re-run on every change.
+  serialisers is verified by 370 automated checks that re-run on every change.
   Two Major deviations (DEV-001, DEV-002) were found and corrected by this
   exercise.
 
 - **Not established.** No requirement whose verification depends on a running
   database, a real session, e-signature password checks, email delivery, or
   concurrent human users has been executed. That is every ⬜ row above —
-  including all of SEC-01/03/04/05/06/07/09/10, AUD-03, DC-02, ESG-04, and the
-  whole of WF-02/03/04. IQ and PQ have not been executed at all.
+  including all of SEC-01/03/04/05/06/07/09/10, AUD-03, ESG-04, and the whole
+  of WF-02/03/04. IQ and PQ have not been executed at all.
 
 **Consequence.** The acceptance criterion in VALIDATION_PLAN §4 — *"100% of
 High-risk URS items verified with objective evidence"* — is **not met**.

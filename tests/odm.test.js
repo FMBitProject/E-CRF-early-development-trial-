@@ -270,3 +270,56 @@ test('the exporter falls back to a default study name and OID', () => {
     assert.ok(xml.includes('<StudyName>E-CRF Clinical Study</StudyName>'));
     assert.ok(xml.includes('<Study OID="ECRF.STUDY.001">'));
 });
+
+// ── Robustness and type fidelity (added after the self-review) ───────────────
+
+test('a malformed stored date degrades one value instead of failing the export', () => {
+    const xml = build({ subjects: [{
+        subject: { id: 1, subjectCode: 'S1', status: 'Active', enrolledAt: 'garbage' }, site: null,
+    }] });
+    assert.ok(xml.includes('<ItemData ItemOID="IT.DM.RFSTDTC" Value=""/>'));
+    assert.ok(xml.trimEnd().endsWith('</ODM>'), 'the rest of the document is still produced');
+});
+
+test('a malformed signature timestamp does not abort the export', () => {
+    assert.doesNotThrow(() => build({
+        signatures: [{ entryId: 100, userId: 'u1', signedAt: 'not-a-date' }],
+    }));
+    const xml = build({ signatures: [{ entryId: 100, userId: 'u1', signedAt: 'not-a-date' }] });
+    assert.ok(xml.includes('<DateTimeStamp></DateTimeStamp>'));
+});
+
+test('a Yes/No answer is exported as an ODM-legal boolean', () => {
+    // DataType="boolean" only accepts 0/1/true/false — "Yes" makes the document
+    // invalid against the ODM schema.
+    const forms = [{ id: 5, name: 'F', schemaJson: { fields: [{ key: 'smoker', label: 'Smoker', type: 'boolean' }] } }];
+    const yes = build({ forms, entries: [{ id: 100, subjectId: 1, visitId: 10, formId: 5, dataJson: { smoker: 'Yes' } }] });
+    const no  = build({ forms, entries: [{ id: 100, subjectId: 1, visitId: 10, formId: 5, dataJson: { smoker: 'No' } }] });
+    assert.ok(yes.includes('<ItemData ItemOID="IT.5.smoker" Value="true"/>'));
+    assert.ok(no.includes('<ItemData ItemOID="IT.5.smoker" Value="false"/>'));
+    assert.ok(yes.includes('DataType="boolean"'));
+});
+
+test('an unanswered boolean stays empty rather than becoming false', () => {
+    const forms = [{ id: 5, name: 'F', schemaJson: { fields: [{ key: 'smoker', label: 'S', type: 'boolean' }] } }];
+    const xml = build({ forms, entries: [{ id: 100, subjectId: 1, visitId: 10, formId: 5, dataJson: { smoker: '' } }] });
+    assert.ok(xml.includes('<ItemData ItemOID="IT.5.smoker" Value=""/>'));
+});
+
+test('boolean conversion only applies to fields declared boolean', () => {
+    const forms = [{ id: 5, name: 'F', schemaJson: { fields: [{ key: 'answer', label: 'A', type: 'text' }] } }];
+    const xml = build({ forms, entries: [{ id: 100, subjectId: 1, visitId: 10, formId: 5, dataJson: { answer: 'Yes' } }] });
+    assert.ok(xml.includes('<ItemData ItemOID="IT.5.answer" Value="Yes"/>'), 'a text answer keeps its wording');
+});
+
+test('a multi-select array is joined rather than exported as "[object Object]"', () => {
+    const forms = [{ id: 5, name: 'F', schemaJson: { fields: [{ key: 'sx', label: 'Symptoms', type: 'checkbox', options: ['A', 'B'] }] } }];
+    const xml = build({ forms, entries: [{ id: 100, subjectId: 1, visitId: 10, formId: 5, dataJson: { sx: ['A', 'B'] } }] });
+    assert.ok(xml.includes('<ItemData ItemOID="IT.5.sx" Value="A; B"/>'));
+});
+
+test('an entry with no visit gets an unscheduled study event, not "SE.Vnull"', () => {
+    const xml = build({ visits: [], entries: [{ id: 100, subjectId: 1, visitId: null, formId: 5, dataJson: { ldl: 1 } }] });
+    assert.ok(!xml.includes('SE.Vnull'));
+    assert.ok(xml.includes('StudyEventOID="SE.UNSCHEDULED"'));
+});
