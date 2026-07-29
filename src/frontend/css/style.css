@@ -164,13 +164,25 @@ tbody tr { transition: background-color 0.1s ease; }
 
 /* ---- Form controls ----
    The SPA modules use bare `class="ph-input"` / `ph-label` / `ph-btn` and rely
-   on these rules for their whole appearance. login.html instead pairs the same
-   hooks with explicit Tailwind utilities, so every rule below is wrapped in
-   :where() — zero specificity — and any utility class on the element wins.
-   Without these, inputs render with no border and labels sit inline next to
-   their field. */
+   on these rules for their whole appearance; without them inputs render with
+   no border or padding and labels sit inline next to their field.
 
-:where(.ph-label) {
+   Specificity here is deliberately exactly 0-1-0 (a single class), because it
+   has to sit between two things:
+
+     - Tailwind's Preflight reset, which zeroes `border-width` on `*` (0-0-0)
+       and `padding` on `input, select, textarea` (0-0-1). A single class beats
+       both, so the base appearance survives the reset.
+     - Tailwind's utilities, which are also 0-1-0. tailwind-play.js appends its
+       <style> to <head> after this file loads, so on a specificity tie the
+       utility wins — `pl-10` on the login fields, `w-40` on the Field ID input
+       and `text-xs` sizing in the modules all keep overriding these defaults.
+
+   Do not wrap these in :where() (drops to 0-0-0 and Preflight wins) and do not
+   qualify them with an element or id (rises above the utilities and they stop
+   overriding). */
+
+.ph-label {
     display: block;
     margin-bottom: 0.25rem;
     font-size: 0.75rem;
@@ -179,7 +191,7 @@ tbody tr { transition: background-color 0.1s ease; }
     line-height: 1.4;
 }
 
-:where(.ph-input) {
+.ph-input {
     display: block;
     width: 100%;
     padding: 0.5rem 0.625rem;
@@ -193,12 +205,12 @@ tbody tr { transition: background-color 0.1s ease; }
     outline: none;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-:where(textarea.ph-input) { resize: vertical; min-height: 4.5rem; }
-:where(select.ph-input)   { cursor: pointer; }
-:where(.ph-input)::placeholder { color: #9AA8BF; }
-:where(.ph-input):hover:not(:focus):not(:disabled) { border-color: #B9C6DA; }
-:where(.ph-input):disabled,
-:where(.ph-input)[readonly] {
+:where(textarea).ph-input { resize: vertical; min-height: 4.5rem; }
+:where(select).ph-input   { cursor: pointer; }
+.ph-input::placeholder { color: #9AA8BF; }
+.ph-input:hover { border-color: #B9C6DA; }
+.ph-input:disabled,
+.ph-input[readonly] {
     background-color: #F4F7FB;
     color: var(--text-secondary);
     cursor: not-allowed;
@@ -211,7 +223,7 @@ tbody tr { transition: background-color 0.1s ease; }
 }
 
 /* ---- Buttons ---- */
-:where(.ph-btn) {
+.ph-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -227,25 +239,25 @@ tbody tr { transition: background-color 0.1s ease; }
     cursor: pointer;
     transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
-:where(.ph-btn):disabled { opacity: 0.5; cursor: not-allowed; }
+.ph-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-:where(.ph-btn-primary) { background-color: var(--brand); color: #fff; }
-:where(.ph-btn-primary):hover:not(:disabled) { background-color: var(--brand-hover); }
+.ph-btn-primary { background-color: var(--brand); color: #fff; }
+.ph-btn-primary:hover { background-color: var(--brand-hover); }
 
-:where(.ph-btn-secondary) {
+.ph-btn-secondary {
     background-color: #fff;
     color: var(--text-primary);
     border-color: var(--card-border);
 }
-:where(.ph-btn-secondary):hover:not(:disabled) {
+.ph-btn-secondary:hover {
     background-color: #F4F7FB;
     border-color: #B9C6DA;
 }
 
-:where(.ph-btn-ghost) { background-color: transparent; color: var(--text-secondary); }
-:where(.ph-btn-ghost):hover:not(:disabled) { background-color: #EDF1F7; color: var(--text-primary); }
+.ph-btn-ghost { background-color: transparent; color: var(--text-secondary); }
+.ph-btn-ghost:hover { background-color: #EDF1F7; color: var(--text-primary); }
 
-:where(.ph-btn):focus-visible {
+.ph-btn:focus-visible {
     outline: 2px solid #4A9EFF;
     outline-offset: 2px;
 }
