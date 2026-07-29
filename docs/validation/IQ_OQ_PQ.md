@@ -49,6 +49,7 @@ of it. A non-zero exit code is a failed OQ-A and blocks release.
 | OQ-A15 | `tests/import.test.js` | Spreadsheet import parsing, schema derivation, row validation | DC-01 |
 | OQ-A16 | `tests/license.test.js`, `tests/billing.test.js` | On-prem licence validation and plan limits | — |
 | OQ-A17 | `tests/dberrors.test.js` | Database error mapping to API responses | — |
+| OQ-A18 | `tests/validate.test.js` | Server-side edit checks: required (incl. empty multi-select), hard vs soft ranges, closed codelists, conditional required, cross-field BP rule, regex patterns | DC-01 |
 
 ### OQ-B Authentication & access (SEC)
 | ID | Step | Expected | P/F |

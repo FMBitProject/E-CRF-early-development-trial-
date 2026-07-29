@@ -21,13 +21,13 @@ prepared per **GAMP 5 (2nd Ed.)**, **FDA 21 CFR Part 11**, and
 
 | Protocol | State |
 |----------|-------|
-| OQ-A (automated, 17 scripts) | ✅ **Executed** — 320/320 checks pass, 0 fail |
+| OQ-A (automated, 18 scripts) | ✅ **Executed** — 338/338 checks pass, 0 fail |
 | IQ (7 steps) | ⬜ Not executed |
 | OQ-B…OQ-H (58 steps) | ⬜ Not executed |
 | PQ (5 business processes) | ⬜ Not executed |
 | Validation Summary Report | ⬜ Not written |
 
-High-risk URS coverage: **4 of 18 fully verified**, 8 partially verified,
+High-risk URS coverage: **5 of 18 fully verified**, 7 partially verified,
 6 with no verification executed.
 
 Deviations open: **DEV-002** (Major — corrected in code, human verification

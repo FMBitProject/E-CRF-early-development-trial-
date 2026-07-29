@@ -27,7 +27,7 @@ reaches · **⬜ Not executed** — verification is scripted but has not been ru
 | AUD-02 | H | reason-required guards in `lib/entryrules.js`, `lib/aerules.js`, `lib/queryrules.js`, `lib/randomrules.js` | `tests/entryrules.test.js`, `tests/aerules.test.js`, `tests/randomrules.test.js` (OQ-A2/A4/A5) | OQ-E1 | ✅ |
 | AUD-03 | H | No update/delete path on `audit_trails` | — | OQ-E3 | ⬜ |
 | AUD-04 | M | `routes/audit.js` (requireRole), `routes/dashboard.js` | `tests/rbac-matrix.test.js` (OQ-A10) | OQ-E4 | ◐ |
-| DC-01 | H | `lib/validate.js`; `lib/queryrules.js` auto-query rules; `routes/entries.js` | `tests/queryrules.test.js` (OQ-A3), `tests/iecriteria.test.js` (OQ-A13), `tests/import.test.js` (OQ-A15) | OQ-F1, OQ-F2 | ◐ |
+| DC-01 | H | `lib/validate.js`; `lib/queryrules.js` auto-query rules; `routes/entries.js` | `tests/validate.test.js` (OQ-A18) — hard/soft ranges, codelists, conditional & cross-field rules; `tests/queryrules.test.js` (OQ-A3), `tests/iecriteria.test.js` (OQ-A13), `tests/import.test.js` (OQ-A15) | OQ-F1, OQ-F2 | ✅ |
 | DC-02 | H | `routes/forms.js` PUT in-use guard | — | OQ-F3 | ⬜ |
 | DC-03 | H | `lib/entryrules.js` state machine; `routes/entries.js` lock/unlock | `tests/entryrules.test.js` (OQ-A2) — 20 checks over the full state machine | OQ-F4, OQ-G9 | ✅ |
 | DC-04 | M | `lib/visitschedule.js`; `routes/visits.js` autoCreateWindowDeviation | `tests/visitschedule.test.js` (OQ-A14) | OQ-F5 | ◐ |
@@ -55,14 +55,14 @@ Executed on commit `c6a165c`, 2026-07-29 — see
 | | All | High-risk only |
 |---|---|---|
 | URS requirements | 34 | 18 |
-| ✅ Fully verified by executed automated script | 6 | 4 |
-| ◐ Partially verified (logic automated; human script outstanding) | 12 | 8 |
+| ✅ Fully verified by executed automated script | 7 | 5 |
+| ◐ Partially verified (logic automated; human script outstanding) | 11 | 7 |
 | ⬜ No verification executed yet | 16 | 6 |
-| Automated checks executed | **320 pass / 0 fail** | |
+| Automated checks executed | **338 pass / 0 fail** | |
 
-High-risk items fully verified: **AUD-02** (reason for change), **DC-03**
-(entry state machine), **DC-05** (SAE expedited windows), **DC-07**
-(randomization & blinding).
+High-risk items fully verified: **AUD-02** (reason for change), **DC-01**
+(edit checks), **DC-03** (entry state machine), **DC-05** (SAE expedited
+windows), **DC-07** (randomization & blinding).
 
 High-risk items with **no** verification executed: SEC-01, SEC-03, SEC-04,
 SEC-07, AUD-03, ESG-04.
@@ -71,9 +71,10 @@ SEC-07, AUD-03, ESG-04.
 
 - **Established.** The decision logic behind the entry state machine, the query
   lifecycle, SAE reporting windows, randomization and blinding, the pre-lock
-  checklist, the audit-trail writer, and both export serialisers is verified by
-  320 automated checks that re-run on every change. Two Major deviations
-  (DEV-001, DEV-002) were found and corrected by this exercise.
+  checklist, the audit-trail writer, the CRF edit checks, and both export
+  serialisers is verified by 338 automated checks that re-run on every change.
+  Two Major deviations (DEV-001, DEV-002) were found and corrected by this
+  exercise.
 
 - **Not established.** No requirement whose verification depends on a running
   database, a real session, e-signature password checks, email delivery, or
@@ -83,6 +84,6 @@ SEC-07, AUD-03, ESG-04.
 
 **Consequence.** The acceptance criterion in VALIDATION_PLAN §4 — *"100% of
 High-risk URS items verified with objective evidence"* — is **not met**.
-4 of 18 High-risk items are fully verified and 8 more are partially verified;
+5 of 18 High-risk items are fully verified and 7 more are partially verified;
 the remainder require execution of the IQ, OQ-B…OQ-H, and PQ protocols against
 a deployed validation instance with named testers.

@@ -55,7 +55,11 @@ export function validateForm(formData, schemaFields) {
 
     for (const field of schemaFields) {
         const value  = formData[field.key];
-        const isEmpty = value === undefined || value === null || value === '';
+        // A multi-select with nothing ticked arrives as [], which is not '' —
+        // without this it would satisfy a "required" field. Mirrors the same
+        // rule in backend lib/validate.js.
+        const isEmpty = value === undefined || value === null || value === ''
+            || (Array.isArray(value) && value.length === 0);
 
         // ── Conditional required ──────────────────────────────────────────
         const cr = field.conditionalRequired;

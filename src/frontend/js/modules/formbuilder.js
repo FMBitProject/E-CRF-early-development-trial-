@@ -3,22 +3,31 @@
 
 import { api } from './api.js';
 import { showToast, showModal, closeModal } from './utils.js';
+import { renderField } from './forms.js';
 
 const FIELD_TYPES = [
-    { value: 'text',     label: 'Text' },
+    { value: 'text',     label: 'Short text' },
+    { value: 'textarea', label: 'Long text (paragraph)' },
     { value: 'number',   label: 'Number' },
     { value: 'date',     label: 'Date' },
-    { value: 'datetime', label: 'Date & Time' },
-    { value: 'textarea', label: 'Textarea (Long text)' },
-    { value: 'select',   label: 'Dropdown (Select)' },
-    { value: 'radio',    label: 'Radio Buttons' },
-    { value: 'checkbox', label: 'Checkbox (Multi-select)' },
+    { value: 'datetime', label: 'Date & time' },
+    { value: 'select',   label: 'Choose one (dropdown)' },
+    { value: 'radio',    label: 'Choose one (buttons)' },
+    { value: 'checkbox', label: 'Choose several' },
     { value: 'boolean',  label: 'Yes / No' },
 ];
 
-let _forms    = [];
-let _editForm = null; // form being edited
-let _fields   = [];   // current field list in builder
+const CHOICE_TYPES = ['select', 'radio', 'checkbox'];
+
+// Form names and descriptions are operator-entered free text.
+const esc = (s) => String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+let _forms     = [];
+let _editForm  = null; // form being edited
+let _fields    = [];   // current field list in builder
+let _draftMeta = null; // header inputs held across a preview round-trip
 
 // ── Main render ──────────────────────────────────────────────────────────────
 export async function renderFormBuilder(container) {
@@ -102,9 +111,13 @@ function renderFormList(container) {
 }
 
 // ── Form Builder Modal ────────────────────────────────────────────────────────
-function openBuilderModal(form = null) {
+// `restore` carries unsaved work back from the preview so nothing typed is lost.
+function openBuilderModal(form = null, restore = null) {
     _editForm = form;
-    _fields   = form ? JSON.parse(JSON.stringify(form.schemaJson?.fields ?? [])) : [];
+    _fields   = restore
+        ? restore.fields
+        : (form ? JSON.parse(JSON.stringify(form.schemaJson?.fields ?? [])) : []);
+    const meta = restore?.meta ?? null;
 
     showModal({
         title: form ? 'Edit CRF Form' : 'New CRF Form',
@@ -114,30 +127,36 @@ function openBuilderModal(form = null) {
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="ph-label">Form Name *</label>
-            <input id="fb-name" class="ph-input" value="${form?.name ?? ''}" placeholder="e.g. Vital Signs">
+            <input id="fb-name" class="ph-input" value="${meta?.name ?? form?.name ?? ''}" placeholder="e.g. Vital Signs">
           </div>
           <div>
             <label class="ph-label">Version</label>
-            <input id="fb-version" class="ph-input" value="${form?.version ?? '1.0'}" placeholder="1.0">
+            <input id="fb-version" class="ph-input" value="${meta?.version ?? form?.version ?? '1.0'}" placeholder="1.0">
           </div>
         </div>
         <div>
           <label class="ph-label">Description</label>
-          <input id="fb-description" class="ph-input" value="${form?.description ?? ''}" placeholder="Brief description (optional)">
+          <input id="fb-description" class="ph-input" value="${meta?.description ?? form?.description ?? ''}" placeholder="Brief description (optional)">
         </div>
         <div class="border-t border-slate-100 pt-4">
-          <div class="flex items-center justify-between mb-3">
-            <p class="text-sm font-semibold text-slate-700">Fields <span id="fb-field-count" class="text-xs text-slate-400 font-normal">(${_fields.length})</span></p>
-            <button onclick="window.fbAddField()" class="ph-btn ph-btn-secondary text-xs flex items-center gap-1">
-              <i data-lucide="plus" class="w-3 h-3"></i> Add Field
-            </button>
+          <div class="flex items-center justify-between mb-1">
+            <p class="text-sm font-semibold text-slate-700">Questions <span id="fb-field-count" class="text-xs text-slate-400 font-normal">(${_fields.length})</span></p>
+            <div class="flex items-center gap-1.5">
+              <button onclick="window.fbPreviewDraft()" class="ph-btn ph-btn-ghost text-xs flex items-center gap-1" title="See this form the way the person filling it will see it">
+                <i data-lucide="eye" class="w-3 h-3"></i> Preview
+              </button>
+              <button onclick="window.fbAddField()" class="ph-btn ph-btn-secondary text-xs flex items-center gap-1">
+                <i data-lucide="plus" class="w-3 h-3"></i> Add Question
+              </button>
+            </div>
           </div>
+          <p class="text-xs text-slate-400 mb-3">Each question becomes one box on the form. Use <span class="font-medium text-slate-500">Preview</span> at any time to see the result.</p>
           <div id="fb-fields" class="space-y-2 max-h-72 overflow-y-auto pr-1"></div>
         </div>
         ${form ? `
         <div>
           <label class="ph-label">Reason for Change *</label>
-          <input id="fb-reason" class="ph-input" placeholder="Describe what changed and why">
+          <input id="fb-reason" class="ph-input" value="${meta?.reason ?? ''}" placeholder="Describe what changed and why">
         </div>` : ''}
       </div>`,
         footer: `
@@ -158,12 +177,12 @@ function renderFieldList() {
     if (cnt) cnt.textContent = `(${_fields.length})`;
 
     if (!_fields.length) {
-        el.innerHTML = `<p class="text-xs text-slate-400 text-center py-6">No fields yet. Click "Add Field" to start building.</p>`;
+        el.innerHTML = `<p class="text-xs text-slate-400 text-center py-6">No questions yet. Click "Add Question" to start building.</p>`;
         return;
     }
 
     el.innerHTML = _fields.map((f, i) => `
-    <div class="border border-slate-200 rounded-lg bg-slate-50 p-3 space-y-2">
+    <div class="fb-field-row border border-slate-200 rounded-lg bg-slate-50 p-3 space-y-2">
       <div class="flex items-center gap-2">
         <div class="flex flex-col gap-0.5">
           <button onclick="window.fbMoveField(${i},-1)" class="text-slate-300 hover:text-slate-600 leading-none" ${i === 0 ? 'disabled' : ''}>
@@ -176,7 +195,7 @@ function renderFieldList() {
         <div class="flex-1 grid grid-cols-2 gap-2">
           <div>
             <label class="ph-label text-xs">Question / Label *</label>
-            <input class="ph-input text-xs" value="${f.label}" onchange="window.fbUpdateField(${i},'label',this.value)" placeholder="e.g. Serum Creatinine">
+            <input class="fb-label-input ph-input text-xs" value="${f.label}" onchange="window.fbUpdateField(${i},'label',this.value)" placeholder="e.g. Serum Creatinine">
           </div>
           <div>
             <label class="ph-label text-xs">Answer Type *</label>
@@ -190,64 +209,66 @@ function renderFieldList() {
         </button>
       </div>
       <div class="flex items-center gap-4 pl-6 flex-wrap">
-        <label class="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
+        <label class="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer" title="The form cannot be saved while this question is blank">
           <input type="checkbox" ${f.required ? 'checked' : ''} onchange="window.fbUpdateField(${i},'required',this.checked)" class="rounded">
-          Required
+          Must be answered
         </label>
-        <label class="flex items-center gap-1.5 text-xs text-red-600 cursor-pointer" title="ICH E6(R3) §5.0.5 — Critical Data">
+        <label class="flex items-center gap-1.5 text-xs text-red-600 cursor-pointer" title="ICH E6(R3) §5.0.5 — critical data is prioritised for source data verification by the monitor">
           <input type="checkbox" ${f.isCritical ? 'checked' : ''} onchange="window.fbUpdateField(${i},'isCritical',this.checked)" class="rounded accent-red-500">
-          <span class="font-medium">Critical Data</span>
+          <span class="font-medium">Key result</span>
+          <span class="text-slate-400 font-normal">(monitor checks this first)</span>
         </label>
-        <div class="flex-1">
-          <input class="ph-input text-xs" value="${f.placeholder ?? ''}" onchange="window.fbUpdateField(${i},'placeholder',this.value)" placeholder="Placeholder text (optional)">
+        <div class="flex-1 min-w-40">
+          <input class="ph-input text-xs" value="${f.placeholder ?? ''}" onchange="window.fbUpdateField(${i},'placeholder',this.value)" placeholder="Hint shown inside the empty box (optional)">
         </div>
       </div>
       ${(f.type === 'number') ? `
-      <div class="flex items-center gap-2 pl-6 flex-wrap">
-        <div class="flex-1 min-w-16">
-          <label class="ph-label text-xs">Hard Min</label>
-          <input type="number" class="ph-input text-xs" value="${f.min ?? ''}" onchange="window.fbUpdateField(${i},'min',this.value ? +this.value : null)" placeholder="—">
+      <div class="pl-6 space-y-2">
+        <div class="flex items-end gap-2 flex-wrap">
+          <div class="w-20">
+            <label class="ph-label text-xs">Unit</label>
+            <input class="ph-input text-xs" value="${f.unit ?? ''}" onchange="window.fbUpdateField(${i},'unit',this.value)" placeholder="mmHg">
+          </div>
+          <div class="flex-1 min-w-48 rounded-md border border-red-200 bg-red-50/60 px-2 py-1.5">
+            <p class="text-xs font-medium text-red-700">Impossible values — refuse to save</p>
+            <div class="flex items-center gap-2 mt-1">
+              <input type="number" class="ph-input text-xs" value="${f.min ?? ''}" onchange="window.fbUpdateField(${i},'min',this.value ? +this.value : null)" placeholder="lowest">
+              <span class="text-xs text-slate-400">to</span>
+              <input type="number" class="ph-input text-xs" value="${f.max ?? ''}" onchange="window.fbUpdateField(${i},'max',this.value ? +this.value : null)" placeholder="highest">
+            </div>
+          </div>
+          <div class="flex-1 min-w-48 rounded-md border border-amber-200 bg-amber-50/60 px-2 py-1.5">
+            <p class="text-xs font-medium text-amber-700">Unusual values — allow, but ask</p>
+            <div class="flex items-center gap-2 mt-1">
+              <input type="number" class="ph-input text-xs" value="${f.softMin ?? ''}" onchange="window.fbUpdateField(${i},'softMin',this.value ? +this.value : null)" placeholder="lowest">
+              <span class="text-xs text-slate-400">to</span>
+              <input type="number" class="ph-input text-xs" value="${f.softMax ?? ''}" onchange="window.fbUpdateField(${i},'softMax',this.value ? +this.value : null)" placeholder="highest">
+            </div>
+          </div>
         </div>
-        <div class="flex-1 min-w-16">
-          <label class="ph-label text-xs">Hard Max</label>
-          <input type="number" class="ph-input text-xs" value="${f.max ?? ''}" onchange="window.fbUpdateField(${i},'max',this.value ? +this.value : null)" placeholder="—">
-        </div>
-        <div class="flex-1 min-w-16">
-          <label class="ph-label text-xs">Unit</label>
-          <input class="ph-input text-xs" value="${f.unit ?? ''}" onchange="window.fbUpdateField(${i},'unit',this.value)" placeholder="e.g. mmHg">
-        </div>
-        <div class="flex-1 min-w-16">
-          <label class="ph-label text-xs">Soft Min</label>
-          <input type="number" class="ph-input text-xs" value="${f.softMin ?? ''}" onchange="window.fbUpdateField(${i},'softMin',this.value ? +this.value : null)" placeholder="—">
-        </div>
-        <div class="flex-1 min-w-16">
-          <label class="ph-label text-xs">Soft Max</label>
-          <input type="number" class="ph-input text-xs" value="${f.softMax ?? ''}" onchange="window.fbUpdateField(${i},'softMax',this.value ? +this.value : null)" placeholder="—">
-        </div>
-      </div>
-      <div class="pl-6 flex items-center gap-4 flex-wrap">
-        <label class="flex items-center gap-1.5 text-xs text-amber-700 cursor-pointer" title="Auto-create a data query when a value falls outside the soft range">
+        <p class="text-xs text-slate-400">Leave a box empty for no limit. A value outside the <span class="text-red-600">red</span> range cannot be saved at all; one outside the <span class="text-amber-600">amber</span> range saves normally but raises a question for the site to confirm it.</p>
+        <label class="flex items-center gap-1.5 text-xs text-amber-700 cursor-pointer">
           <input type="checkbox" ${f.autoQueryOnRangeViolation !== false ? 'checked' : ''} onchange="window.fbUpdateField(${i},'autoQueryOnRangeViolation',this.checked)" class="rounded accent-amber-500">
-          <span>Auto-query on soft range violation</span>
+          <span>Raise that question automatically</span>
         </label>
       </div>` : ''}
-      ${(f.type === 'select' || f.type === 'radio' || f.type === 'checkbox') ? `
+      ${CHOICE_TYPES.includes(f.type) ? `
       <div class="pl-6 space-y-2">
         <div>
-          <label class="ph-label text-xs">Options (one per line) *</label>
+          <label class="ph-label text-xs">Answer choices — one per line *</label>
           <textarea class="ph-input text-xs" rows="3" onchange="window.fbUpdateOptions(${i},this.value)" placeholder="Option A&#10;Option B&#10;Option C">${(f.options ?? []).join('\n')}</textarea>
         </div>
-        <label class="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer" title="Reject any value that is not in the options list">
+        <label class="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
           <input type="checkbox" ${f.closedCodelist ? 'checked' : ''} onchange="window.fbUpdateField(${i},'closedCodelist',this.checked)" class="rounded accent-blue-500">
-          <span class="font-medium">Closed codelist</span>
-          <span class="text-slate-400">(reject values not in the list above)</span>
+          <span class="font-medium">Only these answers are allowed</span>
+          <span class="text-slate-400">— reject anything else, including imported data</span>
         </label>
       </div>` : ''}
       <div class="pl-6">
         <details class="group">
           <summary class="text-xs text-slate-400 cursor-pointer hover:text-slate-600 select-none list-none flex items-center gap-1">
             <i data-lucide="chevron-right" class="w-3 h-3 transition-transform group-open:rotate-90"></i>
-            Advanced <span class="text-slate-300">(optional — for data managers)</span>
+            Advanced <span class="text-slate-300">(optional — export codes &amp; conditional rules)</span>
             ${(f.cdashVar || f.sdtmDomain || f.sdtmVar || f.pattern || f.conditionalRequired?.ifField)
                 ? `<span class="ml-1 px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">configured</span>` : ''}
           </summary>
@@ -317,6 +338,14 @@ function renderFieldList() {
 window.fbAddField = () => {
     _fields.push({ key: '', label: '', type: 'text', required: false });
     renderFieldList();
+    // The list sits in a short scroll box, so a new row lands out of sight once
+    // there are a few questions — the click reads as "nothing happened" and
+    // people click again. Bring it into view and put the cursor in it.
+    const rows = document.querySelectorAll('#fb-fields .fb-field-row');
+    const last = rows[rows.length - 1];
+    if (!last) return;
+    last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    last.querySelector('.fb-label-input')?.focus();
 };
 
 window.fbRemoveField = (i) => {
@@ -424,35 +453,74 @@ window.fbEdit = async (id) => {
     }
 };
 
-window.fbPreview = async (id) => {
-    const form = _forms.find(f => f.id === id) || await api.request(`/api/forms/${id}`);
-    const full = await api.request(`/api/forms/${id}`);
-    const fields = full.schemaJson?.fields ?? [];
+// Show a form the way the person filling it will actually see it. This uses the
+// data-entry renderer itself, so what you preview is what gets rendered on the
+// visit — a preview drawn by separate code drifts and stops being evidence.
+// `onBack` returns to the builder modal the preview was opened from.
+function showFormPreview({ title, subtitle, fields, onBack = null }) {
     showModal({
-        title:  `${form.name} — v${form.version}`,
-        size:   'lg',
+        title,
+        size: 'lg',
         body: `
-      <div class="space-y-2 max-h-96 overflow-y-auto">
-        ${fields.length ? fields.map(f => `
-        <div class="border border-slate-200 rounded-lg p-3 bg-slate-50">
-          <div class="flex items-center justify-between mb-1">
-            <p class="text-sm font-medium text-slate-700">${f.label} ${f.required ? '<span class="text-red-500">*</span>' : ''}</p>
-            <span class="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-mono">${f.type}</span>
-          </div>
-          <p class="text-xs text-slate-400 font-mono">key: ${f.key}</p>
-          ${f.unit ? `<p class="text-xs text-slate-500">Unit: ${f.unit}</p>` : ''}
-          ${f.min != null || f.max != null ? `<p class="text-xs text-slate-500">Hard range: ${f.min ?? '—'} – ${f.max ?? '—'}${f.unit ? ' ' + f.unit : ''}</p>` : ''}
-          ${f.softMin != null || f.softMax != null ? `<p class="text-xs text-amber-600">Soft alert: ${f.softMin ?? '—'} – ${f.softMax ?? '—'}${f.unit ? ' ' + f.unit : ''}</p>` : ''}
-          ${f.autoQueryOnRangeViolation ? `<p class="text-xs text-amber-600">⚡ Auto-query on soft range violation</p>` : ''}
-          ${f.options?.length ? `<p class="text-xs text-slate-500">Options: ${f.options.join(' · ')}</p>` : ''}
-          ${f.closedCodelist ? `<p class="text-xs text-blue-600">🔒 Closed codelist</p>` : ''}
-          ${f.pattern ? `<p class="text-xs text-slate-500 font-mono">Pattern: ${f.pattern}</p>` : ''}
-          ${f.conditionalRequired?.ifField ? `<p class="text-xs text-purple-600">Required if <code>${f.conditionalRequired.ifField}</code> = "${f.conditionalRequired.ifValue}"</p>` : ''}
-        </div>`).join('') : '<p class="text-xs text-slate-400 text-center py-8">No fields defined in this form.</p>'}
+      <div class="space-y-3">
+        <div class="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2">
+          <i data-lucide="eye" class="w-3.5 h-3.5 text-blue-600 mt-0.5 flex-shrink-0"></i>
+          <p class="text-xs text-blue-800">This is how the form will look during data entry. You can type in it to try it out — nothing is saved.</p>
+        </div>
+        ${subtitle ? `<p class="text-xs text-slate-400">${esc(subtitle)}</p>` : ''}
+        <div class="max-h-[60vh] overflow-y-auto pr-1">
+          ${fields.length
+            ? `<div class="grid grid-cols-2 gap-x-4 gap-y-3">
+                 ${fields.map(f => renderField(f, {}, false, {}, { preview: true })).join('')}
+               </div>`
+            : '<p class="text-xs text-slate-400 text-center py-8">No questions yet — add one and preview again.</p>'}
+        </div>
       </div>`,
-        footer: `<button onclick="closeModal()" class="ph-btn ph-btn-ghost text-sm">Close</button>`,
+        footer: onBack
+            ? `<button onclick="window.fbBackToBuilder()" class="ph-btn ph-btn-secondary text-sm flex items-center gap-1.5">
+                 <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Back to editing
+               </button>`
+            : `<button onclick="closeModal()" class="ph-btn ph-btn-ghost text-sm">Close</button>`,
     });
     lucide.createIcons();
+}
+
+// Preview the form currently open in the builder — including unsaved edits.
+window.fbPreviewDraft = () => {
+    // Capture the header inputs so returning to the builder does not lose them.
+    _draftMeta = {
+        name:        document.getElementById('fb-name')?.value ?? '',
+        version:     document.getElementById('fb-version')?.value ?? '',
+        description: document.getElementById('fb-description')?.value ?? '',
+        reason:      document.getElementById('fb-reason')?.value ?? '',
+    };
+    const named = _fields.filter(f => f.label);
+    showFormPreview({
+        title:    `Preview — ${_draftMeta.name || 'Untitled form'}`,
+        subtitle: named.length < _fields.length
+            ? `${_fields.length - named.length} question(s) without a label are not shown.`
+            : '',
+        fields:   named,
+        onBack:   true,
+    });
+};
+
+window.fbBackToBuilder = () => {
+    openBuilderModal(_editForm, { fields: _fields, meta: _draftMeta });
+};
+
+// Preview a saved form from the list.
+window.fbPreview = async (id) => {
+    try {
+        const full = await api.request(`/api/forms/${id}`);
+        showFormPreview({
+            title:    `${full.name} — v${full.version}`,
+            subtitle: full.description || '',
+            fields:   full.schemaJson?.fields ?? [],
+        });
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
 };
 
 window.fbToggleStatus = async (id, activate) => {

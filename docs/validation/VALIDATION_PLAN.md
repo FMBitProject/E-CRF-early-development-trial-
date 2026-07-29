@@ -32,7 +32,7 @@ statistical analysis tools consuming exports.
    ROLE_MATRIX.md, PANDUAN.md) is the design specification; peer review is
    evidenced by the repository audit reports and remediation commits.
 3. **Automated verification** — `./scripts/run-oq.sh` executes the OQ-A script
-   set (320 checks) and writes a machine-generated evidence record with the
+   set (338 checks) and writes a machine-generated evidence record with the
    commit hash and environment. Covers the entry state machine, query
    lifecycle, SAE reporting windows, randomization and blinding, the pre-lock
    checklist, the audit-trail writer, both export serialisers, the RBAC matrix,
@@ -59,9 +59,9 @@ statistical analysis tools consuming exports.
 
 | # | Criterion | Status |
 |---|-----------|--------|
-| 1 | 100% of High-risk URS items verified with objective evidence | ❌ **Not met** — 4 of 18 fully verified, 8 partial ([TRACEABILITY_MATRIX.md](TRACEABILITY_MATRIX.md)) |
+| 1 | 100% of High-risk URS items verified with objective evidence | ❌ **Not met** — 5 of 18 fully verified, 7 partial ([TRACEABILITY_MATRIX.md](TRACEABILITY_MATRIX.md)) |
 | 2 | No open Critical/Major deviations; Minor dispositioned with CAPA | ❌ **Not met** — DEV-002 (Major) corrected but awaiting human verification ([DEVIATION_LOG.md](DEVIATION_LOG.md)) |
-| 3 | Automated suite green on the frozen release tag | ◐ **Partial** — 320/320 pass, but on an untagged working tree, not a frozen release |
+| 3 | Automated suite green on the frozen release tag | ◐ **Partial** — 338/338 pass, but on an untagged working tree, not a frozen release |
 | 4 | Part 11 assessment shows no unmitigated "gap" line items | ◐ **Partial** — see [PART11_ASSESSMENT.md](PART11_ASSESSMENT.md) |
 
 **The system is not released for use in a regulated trial until all four read

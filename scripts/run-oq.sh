@@ -53,7 +53,7 @@ declare -A SCRIPT_ID=(
     [consentrules.test.js]="OQ-A12" [iecriteria.test.js]="OQ-A13"
     [visitschedule.test.js]="OQ-A14" [import.test.js]="OQ-A15"
     [license.test.js]="OQ-A16"     [billing.test.js]="OQ-A16"
-    [dberrors.test.js]="OQ-A17"
+    [dberrors.test.js]="OQ-A17" [validate.test.js]="OQ-A18"
 )
 
 TOTAL=0; TOTAL_PASS=0; TOTAL_FAIL=0; OVERALL=0

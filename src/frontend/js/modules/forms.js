@@ -203,6 +203,11 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
             if (field.type === 'radio') {
                 const checked = document.querySelector(`input[name="field-${field.key}"]:checked`);
                 formData[field.key] = checked ? checked.value : '';
+            } else if (field.type === 'checkbox') {
+                // Multi-select stores an array; validate.js and both exporters
+                // already handle arrays.
+                formData[field.key] = [...document.querySelectorAll(`input[name="field-${field.key}"]:checked`)]
+                    .map(el => el.value);
             } else {
                 const el = document.getElementById(`field-${field.key}`);
                 if (el) formData[field.key] = el.value;
@@ -421,7 +426,11 @@ function escAttr(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function renderField(field, existingData = {}, isLocked = false, fieldQueryMap = {}) {
+// Renders one CRF field exactly as the investigator will see it.
+// Exported so the Form Builder's preview can use the very same renderer — a
+// preview drawn by different code is a preview you cannot trust.
+// `preview: true` drops the query button (there is no entry to query yet).
+export function renderField(field, existingData = {}, isLocked = false, fieldQueryMap = {}, { preview = false } = {}) {
     // Saved CRF values are user-controlled free text — always escape before
     // interpolating into value=""/textarea (stored XSS otherwise).
     const rawValue = existingData?.[field.key] ?? '';
@@ -439,7 +448,7 @@ function renderField(field, existingData = {}, isLocked = false, fieldQueryMap =
         : 'text-slate-300 hover:text-slate-500 hover:bg-slate-100 border border-transparent';
     // Raising queries is CRA/admin/DM only (backend queries POST guard) —
     // other roles still see the open-query count badge.
-    const canRaiseQuery = ['cra', 'admin', 'data_manager'].includes(api.getCurrentUser()?.role);
+    const canRaiseQuery = !preview && ['cra', 'admin', 'data_manager'].includes(api.getCurrentUser()?.role);
     const queryBtn = canRaiseQuery ? `<button type="button"
         onclick="openInlineQueryModal('${field.key}', '${field.label.replace(/'/g, "\\'")}')"
         title="${queryBtnTitle}"
@@ -497,6 +506,35 @@ function renderField(field, existingData = {}, isLocked = false, fieldQueryMap =
                 </label>`).join('')}
             </div>`;
             break;
+        case 'datetime': {
+            // datetime-local wants "YYYY-MM-DDTHH:mm"; stored values may carry
+            // seconds or a trailing Z, which the control silently rejects.
+            const dtValue = escAttr(String(rawValue).replace(' ', 'T').slice(0, 16));
+            input = `<input type="datetime-local" id="field-${field.key}"
+                value="${dtValue}" ${field.required ? 'required' : ''} ${disabled} class="${baseCls}">`;
+            break;
+        }
+        case 'boolean':
+            input = `<select id="field-${field.key}" ${field.required ? 'required' : ''} ${disabled} class="${baseCls}">
+                <option value="">— Select —</option>
+                <option value="Yes" ${rawValue === 'Yes' ? 'selected' : ''}>Yes</option>
+                <option value="No"  ${rawValue === 'No'  ? 'selected' : ''}>No</option>
+            </select>`;
+            break;
+        case 'checkbox': {
+            // Multi-select: the value is an array. Older single-value records
+            // still open correctly because a string is wrapped before the test.
+            const chosen = Array.isArray(rawValue) ? rawValue : (rawValue ? [rawValue] : []);
+            input = `<div id="field-${field.key}" class="flex flex-wrap gap-4 mt-1">
+                ${(field.options || []).map(opt => `
+                <label class="flex items-center gap-2 cursor-pointer ${isLocked ? 'opacity-60 cursor-not-allowed' : ''}">
+                    <input type="checkbox" name="field-${field.key}" value="${escAttr(opt)}" ${chosen.includes(opt) ? 'checked' : ''} ${disabled}
+                        class="w-4 h-4 rounded accent-blue-700">
+                    <span class="text-sm text-slate-700">${escAttr(opt)}</span>
+                </label>`).join('')}
+            </div>`;
+            break;
+        }
         default:
             input = `<input type="text" id="field-${field.key}" value="${value}" ${disabled} class="${baseCls}">`;
     }
