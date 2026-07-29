@@ -12,11 +12,16 @@ import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 import { verifyPassword } from '@better-auth/utils/password';
 import { sendDBLockRequestEmail } from '../lib/email.js';
+import {
+    buildPreLockChecks, canInitiateLock, canSignCra, canSignAdmin,
+    statusAfterCraSignature, statusAfterAdminSignature, currentLockState,
+} from '../lib/dblockrules.js';
 import { user as userTable, studies } from '../db/schemas/schema.js';
 
 const router = Router();
 
-// Run all pre-lock compliance checks per ICH GCP E6(R3) §5.5.7
+// Run all pre-lock compliance checks per ICH GCP E6(R3) §5.5.7.
+// The counting lives here; the pass/fail rules live in lib/dblockrules.js.
 async function runPreLockChecks(studyId) {
     const [
         [{ openQueries }],
@@ -25,8 +30,6 @@ async function runPreLockChecks(studyId) {
         [{ savedEntries }],
         [{ draftSAEs }],
         [{ openDeviations }],
-        [{ unconsented }],
-        [{ totalSubjects }],
     ] = await Promise.all([
         db.select({ openQueries:     count() }).from(queries).where(and(eq(queries.studyId, studyId), eq(queries.status, 'Open'))),
         db.select({ resolvedQueries: count() }).from(queries).where(and(eq(queries.studyId, studyId), eq(queries.status, 'Resolved'))),
@@ -35,65 +38,19 @@ async function runPreLockChecks(studyId) {
         db.select({ draftSAEs:       count() }).from(adverseEvents)
             .where(and(eq(adverseEvents.studyId, studyId), eq(adverseEvents.isSerious, true), eq(adverseEvents.reportStatus, 'Draft'))),
         db.select({ openDeviations:  count() }).from(protocolDeviations).where(and(eq(protocolDeviations.studyId, studyId), eq(protocolDeviations.status, 'Open'))),
-        db.select({ unconsented:     count() }).from(subjects).where(and(eq(subjects.studyId, studyId), eq(subjects.status, 'Active'))),
-        db.select({ totalSubjects:   count() }).from(subjects).where(eq(subjects.studyId, studyId)),
     ]);
 
-    const checks = [
-        {
-            id:      'queries_open',
-            label:   'All data queries closed',
-            ref:     'ICH E6(R3) §5.5.7 — no outstanding data queries at database lock',
-            passed:  Number(openQueries) === 0,
-            detail:  Number(openQueries) > 0 ? `${openQueries} open quer${openQueries === 1 ? 'y' : 'ies'} must be resolved and closed` : 'All queries closed',
-        },
-        {
-            id:      'queries_resolved',
-            label:   'No queries pending CRA review',
-            ref:     'ICH E6(R3) §5.5.7',
-            passed:  Number(resolvedQueries) === 0,
-            detail:  Number(resolvedQueries) > 0 ? `${resolvedQueries} resolved quer${resolvedQueries === 1 ? 'y' : 'ies'} awaiting CRA closure` : 'No resolved queries pending',
-        },
-        {
-            id:      'entries_draft',
-            label:   'No CRF entries in Draft status',
-            ref:     'ICH E6(R3) §5.5.7 — all data must be reviewed and signed',
-            passed:  Number(draftEntries) === 0,
-            detail:  Number(draftEntries) > 0 ? `${draftEntries} form${draftEntries === 1 ? '' : 's'} still in Draft` : 'No draft entries',
-        },
-        {
-            id:      'entries_unsigned',
-            label:   'All CRF entries signed or locked',
-            ref:     '21 CFR Part 11 §11.10 — electronic signatures required before lock',
-            passed:  Number(savedEntries) === 0,
-            detail:  Number(savedEntries) > 0 ? `${savedEntries} form${savedEntries === 1 ? '' : 's'} saved but not signed` : 'All entries signed/locked',
-        },
-        {
-            id:      'sae_unreported',
-            label:   'All SAEs reported (no Draft SAEs)',
-            ref:     'ICH E2A / E6(R3) §4.11 — all serious adverse events must be reported',
-            passed:  Number(draftSAEs) === 0,
-            detail:  Number(draftSAEs) > 0 ? `${draftSAEs} serious AE${draftSAEs === 1 ? '' : 's'} in Draft — expedited reporting required` : 'All SAEs reported',
-        },
-        {
-            id:      'deviations_open',
-            label:   'No open protocol deviations',
-            ref:     'ICH E6(R3) §4.5 — CAPA implementation required before lock',
-            passed:  Number(openDeviations) === 0,
-            detail:  Number(openDeviations) > 0 ? `${openDeviations} deviation${openDeviations === 1 ? '' : 's'} still Open` : 'No open deviations',
-        },
-    ];
-
-    const allPassed = checks.every(c => c.passed);
-    return { checks, allPassed, runAt: new Date().toISOString() };
+    return buildPreLockChecks({
+        openQueries, resolvedQueries, draftEntries, savedEntries, draftSAEs, openDeviations,
+    });
 }
+
 
 // GET /api/dblock — alias for /status (frontend compat)
 router.get('/', async (req, res) => {
     try {
         const locks = await db.select().from(studyDbLock).where(eq(studyDbLock.studyId, req.studyId)).orderBy(studyDbLock.createdAt);
-        const current = locks[locks.length - 1] || null;
-        res.json({ isLocked: current?.status === 'Locked', status: current?.status ?? null, current, history: locks });
+        res.json(currentLockState(locks));
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -103,12 +60,7 @@ router.get('/', async (req, res) => {
 router.get('/status', async (req, res) => {
     try {
         const locks = await db.select().from(studyDbLock).where(eq(studyDbLock.studyId, req.studyId)).orderBy(studyDbLock.createdAt);
-        const current = locks[locks.length - 1] || null;
-        res.json({
-            isLocked:  current?.status === 'Locked',
-            current,
-            history:   locks,
-        });
+        res.json(currentLockState(locks));
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -133,12 +85,8 @@ router.post('/initiate', requireRole('pi', 'admin', 'data_manager'), async (req,
         const existing = await db.select({ status: studyDbLock.status }).from(studyDbLock)
             .where(eq(studyDbLock.studyId, req.studyId)).orderBy(studyDbLock.createdAt);
         const current = existing[existing.length - 1];
-        if (current?.status === 'Locked') {
-            return res.status(409).json({ error: 'Study database is already locked' });
-        }
-        if (current?.status === 'Pending Approval') {
-            return res.status(409).json({ error: 'A database lock request is already pending approval' });
-        }
+        const guard = canInitiateLock(current);
+        if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
         // Run automated checks
         const preCheck = await runPreLockChecks(req.studyId);
@@ -190,11 +138,11 @@ router.post('/:id/sign-cra', requireRole('cra', 'pi', 'admin', 'data_manager'), 
     try {
         const id = parseInt(req.params.id);
         const { password } = req.body;
-        if (!password) return res.status(400).json({ error: 'Password required for electronic signature' });
 
-        const [lock] = await db.select().from(studyDbLock).where(eq(studyDbLock.id, id));
-        if (!lock) return res.status(404).json({ error: 'Lock record not found' });
-        if (lock.craSigned) return res.status(409).json({ error: 'CRA already signed' });
+        const [lock] = await db.select().from(studyDbLock)
+            .where(and(eq(studyDbLock.id, id), eq(studyDbLock.studyId, req.studyId)));
+        const guard = canSignCra(lock, { password });
+        if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
         const [acct] = await db.select({ password: account.password }).from(account)
             .where(and(eq(account.userId, req.user.id), eq(account.providerId, 'credential')));
@@ -208,7 +156,7 @@ router.post('/:id/sign-cra', requireRole('cra', 'pi', 'admin', 'data_manager'), 
                 craSignedAt:    new Date(),
                 craSignedBy:    req.user.id,
                 craSignedByName: req.user.name,
-                status:          lock.adminSigned ? 'Approved' : 'Pending Approval',
+                status:          statusAfterCraSignature(lock),
             })
             .where(eq(studyDbLock.id, id))
             .returning();
@@ -231,12 +179,11 @@ router.post('/:id/sign-admin', requireRole('admin', 'pi'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const { password } = req.body;
-        if (!password) return res.status(400).json({ error: 'Password required for electronic signature' });
 
-        const [lock] = await db.select().from(studyDbLock).where(eq(studyDbLock.id, id));
-        if (!lock) return res.status(404).json({ error: 'Lock record not found' });
-        if (!lock.craSigned) return res.status(400).json({ error: 'CRA must sign before admin approval' });
-        if (lock.adminSigned) return res.status(409).json({ error: 'Admin already signed' });
+        const [lock] = await db.select().from(studyDbLock)
+            .where(and(eq(studyDbLock.id, id), eq(studyDbLock.studyId, req.studyId)));
+        const guard = canSignAdmin(lock, { password });
+        if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
         const [acct] = await db.select({ password: account.password }).from(account)
             .where(and(eq(account.userId, req.user.id), eq(account.providerId, 'credential')));
@@ -251,7 +198,7 @@ router.post('/:id/sign-admin', requireRole('admin', 'pi'), async (req, res) => {
                 adminSignedAt:    now,
                 adminSignedBy:    req.user.id,
                 adminSignedByName: req.user.name,
-                status:           'Locked',
+                status:           statusAfterAdminSignature(),
                 lockedAt:         now,
             })
             .where(eq(studyDbLock.id, id))

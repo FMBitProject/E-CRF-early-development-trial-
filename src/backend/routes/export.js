@@ -8,24 +8,14 @@ import {
 } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
+import { buildOdmXml } from '../lib/odm.js';
+import { buildCsv, withBom, INVALID_DOMAIN_ERROR, vitalsToRows } from '../lib/csv.js';
 
 const router = Router();
 
 // ── CDISC ODM-XML 1.3.2 Export ───────────────────────────────────────────────
-
-function xmlEsc(s) {
-    if (s == null) return '';
-    return String(s)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&apos;');
-}
-
-function isoNow() {
-    return new Date().toISOString().replace(/\.\d+Z$/, '+00:00');
-}
+// The serialiser itself lives in lib/odm.js so the exact bytes we ship to a
+// regulator can be asserted in a unit test.
 
 // GET /api/export/odm — CDISC ODM-XML 1.3.2 export (admin, cra)
 router.get('/odm', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
@@ -63,222 +53,17 @@ router.get('/odm', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
         const usedFormIds = new Set(allEntries.map(e => e.formId));
         const allForms = allFormsGlobal.filter(f => usedFormIds.has(f.id));
 
-        const visitMap  = new Map(allVisits.map(v => [v.id, v]));
-        const formMap   = new Map(allForms.map(f => [f.id, f]));
-        const aeBySubj  = new Map();
-        for (const ae of allAE) {
-            if (!aeBySubj.has(ae.subjectId)) aeBySubj.set(ae.subjectId, []);
-            aeBySubj.get(ae.subjectId).push(ae);
-        }
-        const consentBySubj = new Map();
-        for (const c of allConsents) {
-            if (!consentBySubj.has(c.subjectId)) consentBySubj.set(c.subjectId, []);
-            consentBySubj.get(c.subjectId).push(c);
-        }
-        const entriesBySubj = new Map();
-        for (const e of allEntries) {
-            if (!entriesBySubj.has(e.subjectId)) entriesBySubj.set(e.subjectId, []);
-            entriesBySubj.get(e.subjectId).push(e);
-        }
-        const sigsByEntry = new Map();
-        for (const s of allSigs) {
-            if (!sigsByEntry.has(s.entryId)) sigsByEntry.set(s.entryId, []);
-            sigsByEntry.get(s.entryId).push(s);
-        }
-
-        const studyName = process.env.STUDY_NAME || 'E-CRF Clinical Study';
-        const studyOID  = process.env.STUDY_OID  || 'ECRF.STUDY.001';
-
-        let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<ODM xmlns="http://www.cdisc.org/ns/odm/v1.3"
-     xmlns:ds="http://www.w3.org/2000/09/xmldsig#"
-     ODMVersion="1.3.2"
-     FileType="Snapshot"
-     FileOID="${xmlEsc(studyOID)}.EXPORT"
-     CreationDateTime="${isoNow()}"
-     AsOfDateTime="${isoNow()}"
-     Originator="E-CRF System"
-     SourceSystem="E-CRF v1.0"
-     Description="CDISC ODM Export — ${xmlEsc(studyName)}">
-
-  <Study OID="${xmlEsc(studyOID)}">
-    <GlobalVariables>
-      <StudyName>${xmlEsc(studyName)}</StudyName>
-      <StudyDescription>Electronic Case Report Form — Clinical Trial Data</StudyDescription>
-      <ProtocolName>${xmlEsc(studyName)}</ProtocolName>
-    </GlobalVariables>
-    <MetaDataVersion OID="${xmlEsc(studyOID)}.MDV.1" Name="Version 1">`;
-
-        // FormDef blocks
-        for (const form of allForms) {
-            const schema = form.schemaJson || {};
-            const fields = schema.fields || [];
-            xml += `
-      <FormDef OID="F.${form.id}" Name="${xmlEsc(form.name)}" Repeating="No">`;
-            for (const field of fields) {
-                xml += `
-        <ItemGroupRef ItemGroupOID="IG.${form.id}.${xmlEsc(field.key)}" Mandatory="${field.required ? 'Yes' : 'No'}"/>`;
-            }
-            xml += `
-      </FormDef>`;
-        }
-
-        // ItemGroupDef + ItemDef blocks (CDASH/SDTM annotations via Alias elements per CDISC ODM 1.3.2)
-        for (const form of allForms) {
-            const schema = form.schemaJson || {};
-            const fields = schema.fields || [];
-            for (const field of fields) {
-                const hasCdash = !!field.cdashVar;
-                const hasSdtm  = !!(field.sdtmDomain && field.sdtmVar);
-                const dataType = field.type === 'number'   ? 'float'
-                               : field.type === 'date'     ? 'date'
-                               : field.type === 'datetime' ? 'datetime'
-                               : field.type === 'boolean'  ? 'boolean'
-                               : 'text';
-                const aliases = [
-                    hasCdash ? `        <Alias Context="CDASH" Name="${xmlEsc(field.cdashVar)}"/>` : '',
-                    hasSdtm  ? `        <Alias Context="SDTM"  Name="${xmlEsc(field.sdtmDomain + '.' + field.sdtmVar)}"/>` : '',
-                    field.isCritical ? `        <Alias Context="ICH-E6R3" Name="CriticalDataField"/>` : '',
-                ].filter(Boolean).join('\n');
-                xml += `
-      <ItemGroupDef OID="IG.${form.id}.${xmlEsc(field.key)}" Name="${xmlEsc(field.label || field.key)}" Repeating="No">
-        <ItemRef ItemOID="IT.${form.id}.${xmlEsc(field.key)}" Mandatory="${field.required ? 'Yes' : 'No'}"/>
-      </ItemGroupDef>
-      <ItemDef OID="IT.${form.id}.${xmlEsc(field.key)}" Name="${xmlEsc(field.label || field.key)}" DataType="${dataType}"${hasSdtm ? ` SDSVarName="${xmlEsc(field.sdtmVar)}"` : ''}>
-        <Question><TranslatedText>${xmlEsc(field.label || field.key)}</TranslatedText></Question>${aliases ? '\n' + aliases : ''}
-      </ItemDef>`;
-            }
-        }
-
-        xml += `
-    </MetaDataVersion>
-  </Study>
-
-  <ClinicalData StudyOID="${xmlEsc(studyOID)}" MetaDataVersionOID="${xmlEsc(studyOID)}.MDV.1">`;
-
-        // Subject data
-        for (const row of allSubjects) {
-            const subj = row.subjects ?? row;
-            const site = row.sites    ?? null;
-            const subjEntries = entriesBySubj.get(subj.id) || [];
-            const subjAE      = aeBySubj.get(subj.id)       || [];
-            const subjConsents = consentBySubj.get(subj.id)  || [];
-
-            xml += `
-    <SubjectData SubjectKey="${xmlEsc(subj.subjectCode)}"
-                 mnemonic="${xmlEsc(subj.initials || '')}"
-                 TransactionType="Snapshot">
-      <SiteRef LocationOID="${xmlEsc(site?.code || 'UNKNOWN')}"/>`;
-
-            // DM domain fields
-            xml += `
-      <StudyEventData StudyEventOID="SE.DEMOGRAPHICS" StudyEventRepeatKey="1">
-        <FormData FormOID="F.DM" TransactionType="Snapshot">
-          <ItemGroupData ItemGroupOID="IG.DM.SUBJECT" TransactionType="Snapshot">
-            <ItemData ItemOID="IT.DM.SUBJID"  Value="${xmlEsc(subj.subjectCode)}"/>
-            <ItemData ItemOID="IT.DM.SITEID"  Value="${xmlEsc(site?.code || '')}"/>
-            <ItemData ItemOID="IT.DM.SEX"     Value="${xmlEsc(subj.sex || 'U')}"/>
-            <ItemData ItemOID="IT.DM.GENDERIDENTITY" Value="${xmlEsc(subj.genderIdentity || '')}"/>
-            <ItemData ItemOID="IT.DM.DTHFL"   Value="${subj.status === 'Withdrawn' ? 'Y' : 'N'}"/>
-            <ItemData ItemOID="IT.DM.RFSTDTC" Value="${xmlEsc(subj.enrolledAt ? new Date(subj.enrolledAt).toISOString().split('T')[0] : '')}"/>
-            <ItemData ItemOID="IT.DM.DSSTDTC" Value="${xmlEsc(subj.withdrawnAt ? new Date(subj.withdrawnAt).toISOString().split('T')[0] : '')}"/>
-            <ItemData ItemOID="IT.DM.STATUS"  Value="${xmlEsc(subj.status)}"/>
-          </ItemGroupData>
-        </FormData>
-      </StudyEventData>`;
-
-            // CRF entries grouped by visit
-            const visitGrouped = new Map();
-            for (const entry of subjEntries) {
-                const vid = entry.visitId;
-                if (!visitGrouped.has(vid)) visitGrouped.set(vid, []);
-                visitGrouped.get(vid).push(entry);
-            }
-
-            for (const [visitId, entries] of visitGrouped) {
-                const visit = visitMap.get(visitId);
-                xml += `
-      <StudyEventData StudyEventOID="SE.V${String(visit?.visitOrder || visitId).padStart(2,'0')}" StudyEventRepeatKey="${visitId}">`;
-                for (const entry of entries) {
-                    const data = entry.dataJson || {};
-                    const sigs = sigsByEntry.get(entry.id) || [];
-                    xml += `
-        <FormData FormOID="F.${entry.formId}" TransactionType="Snapshot">`;
-                    for (const [key, value] of Object.entries(data)) {
-                        xml += `
-          <ItemGroupData ItemGroupOID="IG.${entry.formId}.${xmlEsc(key)}" TransactionType="Snapshot">
-            <ItemData ItemOID="IT.${entry.formId}.${xmlEsc(key)}" Value="${xmlEsc(String(value ?? ''))}"/>
-          </ItemGroupData>`;
-                    }
-                    for (const sig of sigs) {
-                        xml += `
-          <Signature>
-            <UserRef UserOID="${xmlEsc(sig.userId)}"/>
-            <LocationRef LocationOID="${xmlEsc(site?.code || 'UNKNOWN')}"/>
-            <SignatureRef MethodOID="ESIG"/>
-            <DateTimeStamp>${new Date(sig.signedAt).toISOString()}</DateTimeStamp>
-          </Signature>`;
-                    }
-                    xml += `
-        </FormData>`;
-                }
-                xml += `
-      </StudyEventData>`;
-            }
-
-            // AE domain
-            if (subjAE.length > 0) {
-                xml += `
-      <StudyEventData StudyEventOID="SE.AE" StudyEventRepeatKey="1">`;
-                for (const ae of subjAE) {
-                    xml += `
-        <FormData FormOID="F.AE" TransactionType="Snapshot">
-          <ItemGroupData ItemGroupOID="IG.AE.${ae.id}" TransactionType="Snapshot">
-            <ItemData ItemOID="IT.AE.AETERM"   Value="${xmlEsc(ae.aeTerm)}"/>
-            <ItemData ItemOID="IT.AE.AEDECOD"  Value="${xmlEsc(ae.meddraPt || '')}"/>
-            <ItemData ItemOID="IT.AE.AESOC"    Value="${xmlEsc(ae.meddraSoc || '')}"/>
-            <ItemData ItemOID="IT.AE.AESTDTC"  Value="${xmlEsc(ae.onsetDate || '')}"/>
-            <ItemData ItemOID="IT.AE.AEENDTC"  Value="${xmlEsc(ae.resolutionDate || '')}"/>
-            <ItemData ItemOID="IT.AE.AESEV"    Value="${xmlEsc(ae.severity)}"/>
-            <ItemData ItemOID="IT.AE.AESER"    Value="${ae.isSerious ? 'Y' : 'N'}"/>
-            <ItemData ItemOID="IT.AE.AEREL"    Value="${xmlEsc(ae.causality || '')}"/>
-            <ItemData ItemOID="IT.AE.AEOUT"    Value="${xmlEsc(ae.outcome || '')}"/>
-            <ItemData ItemOID="IT.AE.AEACN"    Value="${xmlEsc(ae.actionTaken || '')}"/>
-          </ItemGroupData>
-        </FormData>`;
-                }
-                xml += `
-      </StudyEventData>`;
-            }
-
-            // Consent domain (UU PDP)
-            if (subjConsents.length > 0) {
-                xml += `
-      <StudyEventData StudyEventOID="SE.CONSENT" StudyEventRepeatKey="1">`;
-                for (const c of subjConsents) {
-                    xml += `
-        <FormData FormOID="F.IC" TransactionType="Snapshot">
-          <ItemGroupData ItemGroupOID="IG.IC.${c.id}" TransactionType="Snapshot">
-            <ItemData ItemOID="IT.IC.VERSION"    Value="${xmlEsc(c.consentVersion)}"/>
-            <ItemData ItemOID="IT.IC.DATE"       Value="${xmlEsc(c.consentDate)}"/>
-            <ItemData ItemOID="IT.IC.TYPE"       Value="${xmlEsc(c.consentType)}"/>
-            <ItemData ItemOID="IT.IC.LANGUAGE"   Value="${xmlEsc(c.language)}"/>
-            <ItemData ItemOID="IT.IC.WITNESS"    Value="${xmlEsc(c.witnessName || '')}"/>
-            <ItemData ItemOID="IT.IC.WITHDRAWN"  Value="${c.isWithdrawn ? 'Y' : 'N'}"/>
-          </ItemGroupData>
-        </FormData>`;
-                }
-                xml += `
-      </StudyEventData>`;
-            }
-
-            xml += `
-    </SubjectData>`;
-        }
-
-        xml += `
-  </ClinicalData>
-</ODM>`;
+        const xml = buildOdmXml({
+            studyName: process.env.STUDY_NAME || 'E-CRF Clinical Study',
+            studyOID:  process.env.STUDY_OID  || 'ECRF.STUDY.001',
+            subjects:  allSubjects.map(r => ({ subject: r.subjects ?? r, site: r.sites ?? null })),
+            visits:    allVisits,
+            entries:   allEntries,
+            forms:     allForms,
+            adverseEvents: allAE,
+            consents:  allConsents,
+            signatures: allSigs,
+        });
 
         res.set('Content-Type', 'application/xml; charset=utf-8');
         res.set('Content-Disposition', `attachment; filename="study_export_${Date.now()}.xml"`);
@@ -402,34 +187,16 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
         } else if (domain === 'VS') {
             // Vital Signs — SDTM-style long format (one row per measurement).
             headers = ['SUBJID','VISIT','VSTESTCD','VSTEST','VSORRES','VSORRESU','VSDTC'];
-            const VITALS = [
-                ['SYSBP','Systolic Blood Pressure','systolicBp','mmHg'],
-                ['DIABP','Diastolic Blood Pressure','diastolicBp','mmHg'],
-                ['HR','Heart Rate','heartRate','beats/min'],
-                ['RESP','Respiratory Rate','respiratoryRate','breaths/min'],
-                ['TEMP','Temperature','temperature', null],
-                ['WEIGHT','Weight','weight', null],
-                ['HEIGHT','Height','height', null],
-                ['BMI','Body Mass Index','bmi','kg/m2'],
-                ['SPO2','Oxygen Saturation','oxygenSaturation','%'],
-            ];
             const data = await db.select().from(vitalSigns)
                 .leftJoin(subjects, eq(vitalSigns.subjectId, subjects.id))
                 .leftJoin(visits, eq(vitalSigns.visitId, visits.id))
                 .where(eq(vitalSigns.studyId, sid))
                 .orderBy(vitalSigns.subjectId, vitalSigns.id);
-            rows = data.flatMap(r => {
-                const v = r.vital_signs ?? r;
-                const subj = r.subjects?.subjectCode || '';
-                const vis = r.visits?.visitName || '';
-                return VITALS
-                    .filter(([, , key]) => v[key] != null && String(v[key]) !== '')
-                    .map(([code, name, key, unit]) => [
-                        subj, vis, code, name, v[key],
-                        unit ?? (key === 'temperature' ? (v.temperatureUnit || '') : key === 'weight' ? (v.weightUnit || '') : key === 'height' ? (v.heightUnit || '') : ''),
-                        v.assessmentDate || '',
-                    ]);
-            });
+            rows = data.flatMap(r => vitalsToRows(
+                r.vital_signs ?? r,
+                r.subjects?.subjectCode || '',
+                r.visits?.visitName || '',
+            ));
         } else if (domain === 'CRF') {
             // CRF form data — long format (one row per captured field), safe across
             // forms with different field sets.
@@ -451,19 +218,10 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
                 ]);
             });
         } else {
-            return res.status(400).json({ error: 'domain must be DM, AE, DEV, IC, LB, VS, or CRF' });
+            return res.status(400).json({ error: INVALID_DOMAIN_ERROR });
         }
 
-        function csvRow(cells) {
-            return cells.map(c => {
-                const s = String(c ?? '');
-                return s.includes(',') || s.includes('"') || s.includes('\n')
-                    ? `"${s.replace(/"/g, '""')}"`
-                    : s;
-            }).join(',');
-        }
-
-        const csv = [csvRow(headers), ...rows.map(csvRow)].join('\r\n');
+        const csv = buildCsv(headers, rows);
         res.set('Content-Type', 'text/csv; charset=utf-8');
         res.set('Content-Disposition', `attachment; filename="${domain}_${Date.now()}.csv"`);
 
@@ -474,7 +232,7 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
             user: req.user, ipAddress: req.ip,
         });
 
-        res.send('﻿' + csv); // BOM for Excel UTF-8
+        res.send(withBom(csv)); // BOM so Excel detects UTF-8
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

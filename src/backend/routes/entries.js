@@ -6,33 +6,39 @@ import { requireRole } from '../middleware/rbac.js';
 import { writeAudit, writeFieldDiffAudit } from '../lib/audit.js';
 import { validateCRFData } from '../lib/validate.js';
 import { siteCondition, subjectInSiteScope } from '../lib/sitescope.js';
+import {
+    canUpdateEntry, canLockEntry, canUnlockEntry,
+    checkEntryScope, statusAfterUpdate, statusForNewEntry,
+} from '../lib/entryrules.js';
+import {
+    pendingAutoQueries, autoQueryText, AUTO_QUERY_AUTHOR, ACTIVE_QUERY_STATUSES,
+} from '../lib/queryrules.js';
 
 const router = Router();
 
 export async function createAutoQueries(db, req, softViolations, entryId, subjectId, visitId, formId) {
     if (!softViolations?.length) return;
-    for (const v of softViolations) {
-        const [dup] = await db.select({ id: queries.id })
-            .from(queries)
-            .where(and(
-                eq(queries.entryId, entryId),
-                eq(queries.fieldKey, v.key),
-                inArray(queries.status, ['Open', 'Resolved']),
-            ));
-        if (!dup) {
-            await db.insert(queries).values({
-                studyId:      req.studyId,
-                subjectId:    parseInt(subjectId),
-                visitId:      visitId  ? parseInt(visitId)  : null,
-                formId:       formId   ? parseInt(formId)   : null,
-                entryId,
-                fieldKey:     v.key,
-                fieldLabel:   v.label,
-                queryText:    `[Auto] ${v.message}`,
-                status:       'Open',
-                raisedByName: 'Auto-validation',
-            });
-        }
+
+    const existing = await db.select({ fieldKey: queries.fieldKey, status: queries.status })
+        .from(queries)
+        .where(and(
+            eq(queries.entryId, entryId),
+            inArray(queries.status, ACTIVE_QUERY_STATUSES),
+        ));
+
+    for (const v of pendingAutoQueries(softViolations, existing)) {
+        await db.insert(queries).values({
+            studyId:      req.studyId,
+            subjectId:    parseInt(subjectId),
+            visitId:      visitId  ? parseInt(visitId)  : null,
+            formId:       formId   ? parseInt(formId)   : null,
+            entryId,
+            fieldKey:     v.key,
+            fieldLabel:   v.label,
+            queryText:    autoQueryText(v),
+            status:       'Open',
+            raisedByName: AUTO_QUERY_AUTHOR,
+        });
     }
 }
 
@@ -85,13 +91,8 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
         // Subject must belong to the active study (entries are not study-scoped directly)
         const [subject] = await db.select({ studyId: subjects.studyId, siteId: subjects.siteId }).from(subjects)
             .where(eq(subjects.id, parseInt(subjectId)));
-        if (!subject) return res.status(404).json({ error: 'Subject not found' });
-        if (subject.studyId !== req.studyId) {
-            return res.status(403).json({ error: 'Subject does not belong to the active study' });
-        }
-        if (Array.isArray(req.siteScope) && !req.siteScope.includes(subject.siteId)) {
-            return res.status(403).json({ error: 'Subject is not at your assigned site' });
-        }
+        const scope = checkEntryScope({ subject, activeStudyId: req.studyId, siteScope: req.siteScope });
+        if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
 
         // Load form schema for validation
         const [form] = await db.select().from(crfForms).where(eq(crfForms.id, formId));
@@ -110,15 +111,11 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
             ));
 
         if (existing) {
-            if (existing.status === 'Locked') {
-                return res.status(409).json({ error: 'Entry is locked and cannot be modified' });
-            }
-            if (!reason) {
-                return res.status(400).json({ error: 'reason is required when updating an existing entry (21 CFR Part 11)' });
-            }
+            const guard = canUpdateEntry(existing, { reason });
+            if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
             const [updated] = await db.update(crfDataEntries)
-                .set({ dataJson: dataJson ?? {}, status: 'Saved', updatedAt: new Date(), updatedBy: req.user.id })
+                .set({ dataJson: dataJson ?? {}, status: statusAfterUpdate(), updatedAt: new Date(), updatedBy: req.user.id })
                 .where(eq(crfDataEntries.id, existing.id))
                 .returning();
 
@@ -136,7 +133,7 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
         const [created] = await db.insert(crfDataEntries).values({
             subjectId, visitId, formId,
             dataJson: dataJson ?? {},
-            status: (body.status === 'Draft') ? 'Draft' : 'Saved',
+            status: statusForNewEntry(body.status),
             createdBy: req.user.id,
             updatedBy: req.user.id,
         }).returning();
@@ -158,18 +155,17 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
 router.patch('/:id/lock', requireRole('cra', 'pi', 'admin'), async (req, res) => {
     try {
         const { reason } = req.body;
-        if (!reason) return res.status(400).json({ error: 'Lock reason is required' });
 
         const [row] = await db.select({ entry: crfDataEntries, studyId: subjects.studyId })
             .from(crfDataEntries)
             .innerJoin(subjects, eq(crfDataEntries.subjectId, subjects.id))
             .where(eq(crfDataEntries.id, parseInt(req.params.id)));
-        const entry = row?.entry;
-        if (!entry || row.studyId !== req.studyId) return res.status(404).json({ error: 'Entry not found' });
-        if (!(await subjectInSiteScope(req, entry.subjectId))) {
+        const entry = (row && row.studyId === req.studyId) ? row.entry : null;
+        if (entry && !(await subjectInSiteScope(req, entry.subjectId))) {
             return res.status(404).json({ error: 'Entry not found' });
         }
-        if (entry.status === 'Locked') return res.status(409).json({ error: 'Already locked' });
+        const guard = canLockEntry(entry, { reason });
+        if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
         const [locked] = await db.update(crfDataEntries)
             .set({ status: 'Locked', lockedAt: new Date(), lockedBy: req.user.id, lockReason: reason, updatedAt: new Date() })
@@ -191,15 +187,14 @@ router.patch('/:id/lock', requireRole('cra', 'pi', 'admin'), async (req, res) =>
 router.patch('/:id/unlock', requireRole('admin'), async (req, res) => {
     try {
         const { reason } = req.body;
-        if (!reason) return res.status(400).json({ error: 'Unlock reason is required' });
 
         const [row] = await db.select({ entry: crfDataEntries, studyId: subjects.studyId })
             .from(crfDataEntries)
             .innerJoin(subjects, eq(crfDataEntries.subjectId, subjects.id))
             .where(eq(crfDataEntries.id, parseInt(req.params.id)));
-        const entry = row?.entry;
-        if (!entry || row.studyId !== req.studyId) return res.status(404).json({ error: 'Entry not found' });
-        if (entry.status !== 'Locked') return res.status(409).json({ error: 'Entry is not locked' });
+        const entry = (row && row.studyId === req.studyId) ? row.entry : null;
+        const guard = canUnlockEntry(entry, { reason });
+        if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
         const [unlocked] = await db.update(crfDataEntries)
             .set({ status: 'Saved', unlockedAt: new Date(), unlockedBy: req.user.id, unlockReason: reason, updatedAt: new Date() })

@@ -5,6 +5,7 @@ import { db } from '../db/connection.js';
 import { esignatures, crfDataEntries, account } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
+import { canSignEntry } from '../lib/entryrules.js';
 
 const router = Router();
 
@@ -27,10 +28,8 @@ router.post('/', requireRole('investigator', 'pi', 'admin'), async (req, res) =>
 
         const [entry] = await db.select().from(crfDataEntries)
             .where(eq(crfDataEntries.id, parseInt(entryId)));
-        if (!entry) return res.status(404).json({ error: 'Entry not found' });
-        if (entry.status === 'Locked') return res.status(409).json({ error: 'Entry is locked' });
-        if (entry.status === 'Signed') return res.status(409).json({ error: 'Entry already signed' });
-        if (entry.status === 'Draft')  return res.status(400).json({ error: 'Save entry before signing' });
+        const guard = canSignEntry(entry);
+        if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
         const valid = await checkPassword(req.user.id, password);
         if (!valid) {

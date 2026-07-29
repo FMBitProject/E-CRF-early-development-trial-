@@ -5,20 +5,12 @@ import { adverseEvents, subjects } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 import { siteCondition, subjectInSiteScope } from '../lib/sitescope.js';
+import {
+    calcExpeditedDeadline, requiresExpeditedReport, computeAeStats,
+    canCreateAe, canEditAe, resolveSeriousness, resolveReportStatus,
+} from '../lib/aerules.js';
 
 const router = Router();
-
-// Expedited reporting deadline: 7 days for fatal/life-threatening SAE, 15 days for all other SAE
-function calcExpeditedDeadline(isSerious, seriousCriteria) {
-    if (!isSerious) return null;
-    const urgent = (seriousCriteria || []).some(c =>
-        ['death', 'life_threatening'].includes(c)
-    );
-    const days = urgent ? 7 : 15;
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    return d;
-}
 
 // GET /api/ae — list AEs, optional ?subjectId=&serious=&status=
 router.get('/', async (req, res) => {
@@ -77,18 +69,7 @@ router.get('/stats', async (req, res) => {
             expeditedDeadline: adverseEvents.expeditedDeadline,
         }).from(adverseEvents).where(eq(adverseEvents.studyId, req.studyId));
 
-        const now = new Date();
-        res.json({
-            total:           all.length,
-            serious:         all.filter(a => a.isSerious).length,
-            draft:           all.filter(a => a.reportStatus === 'Draft').length,
-            overdue:         all.filter(a =>
-                a.requiresExpeditedReport &&
-                a.reportStatus !== 'Closed' &&
-                a.expeditedDeadline &&
-                new Date(a.expeditedDeadline) < now
-            ).length,
-        });
+        res.json(computeAeStats(all));
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -121,9 +102,8 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
             causality, actionTaken, narrative,
         } = req.body;
 
-        if (!subjectId || !aeTerm || !severity) {
-            return res.status(400).json({ error: 'subjectId, aeTerm, and severity are required' });
-        }
+        const guard = canCreateAe({ subjectId, aeTerm, severity });
+        if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
         const [subject] = await db.select({ siteId: subjects.siteId }).from(subjects)
             .where(and(eq(subjects.id, parseInt(subjectId)), eq(subjects.studyId, req.studyId)));
@@ -132,9 +112,9 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
             return res.status(404).json({ error: 'Subject not found in the active study' });
         }
 
-        const serious = Boolean(isSerious);
-        const criteria = Array.isArray(seriousCriteria) ? seriousCriteria : [];
-        const requiresExpedited = serious;
+        const { isSerious: serious, seriousCriteria: criteria } =
+            resolveSeriousness({ isSerious, seriousCriteria });
+        const requiresExpedited = requiresExpeditedReport(serious);
         const deadline = calcExpeditedDeadline(serious, criteria);
 
         const [created] = await db.insert(adverseEvents).values({
@@ -181,21 +161,17 @@ router.patch('/:id', requireRole('investigator', 'pi', 'admin', 'crc'), async (r
     try {
         const id = parseInt(req.params.id);
         const { reason, ...fields } = req.body;
-        if (!reason) return res.status(400).json({ error: 'reason is required for edits (ICH GCP)' });
 
         const [existing] = await db.select().from(adverseEvents)
             .where(and(eq(adverseEvents.id, id), eq(adverseEvents.studyId, req.studyId)));
         if (existing && !(await subjectInSiteScope(req, existing.subjectId))) {
             return res.status(404).json({ error: 'Adverse event not found' });
         }
-        if (!existing) return res.status(404).json({ error: 'Adverse event not found' });
-        if (existing.reportStatus === 'Closed') {
-            return res.status(409).json({ error: 'Cannot edit a closed adverse event' });
-        }
+        const guard = canEditAe(existing, { reason });
+        if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
-        const serious = fields.isSerious !== undefined ? Boolean(fields.isSerious) : existing.isSerious;
-        const criteria = Array.isArray(fields.seriousCriteria) ? fields.seriousCriteria : existing.seriousCriteria;
-        const requiresExpedited = serious;
+        const { isSerious: serious, seriousCriteria: criteria } = resolveSeriousness(fields, existing);
+        const requiresExpedited = requiresExpeditedReport(serious);
         const deadline = calcExpeditedDeadline(serious, criteria);
 
         const updates = {
@@ -257,9 +233,7 @@ router.patch('/:id/report', requireRole('investigator', 'pi', 'admin'), async (r
         if (reportedToSponsor) updates.reportedToSponsorAt = now;
         if (reportedToIrb)    updates.reportedToIrbAt = now;
 
-        const allReported = (reportedToSponsor || existing.reportedToSponsorAt) &&
-                            (reportedToIrb    || existing.reportedToIrbAt);
-        if (allReported) updates.reportStatus = 'Reported';
+        updates.reportStatus = resolveReportStatus(existing, { reportedToSponsor, reportedToIrb });
 
         const [updated] = await db.update(adverseEvents)
             .set(updates)

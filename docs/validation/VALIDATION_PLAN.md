@@ -31,9 +31,13 @@ statistical analysis tools consuming exports.
 2. **Design/Configuration review** — the codebase itself (git history,
    ROLE_MATRIX.md, PANDUAN.md) is the design specification; peer review is
    evidenced by the repository audit reports and remediation commits.
-3. **Automated verification** — `npm test` (RBAC permission matrix pinned to
-   ROLE_MATRIX.md, middleware behavior, site-scoping semantics). Runs on
-   every change; failures block release.
+3. **Automated verification** — `./scripts/run-oq.sh` executes the OQ-A script
+   set (320 checks) and writes a machine-generated evidence record with the
+   commit hash and environment. Covers the entry state machine, query
+   lifecycle, SAE reporting windows, randomization and blinding, the pre-lock
+   checklist, the audit-trail writer, both export serialisers, the RBAC matrix,
+   and scoping predicates. Runs on every change; a non-zero exit blocks
+   release.
 4. **IQ** — scripted installation into the validation environment.
 5. **OQ** — scripted functional challenges per module, including negative
    tests (403s, locked-state rejections, validation errors).
@@ -53,16 +57,47 @@ statistical analysis tools consuming exports.
 
 ## 4. Acceptance criteria
 
-- 100% of High-risk URS items verified with objective evidence
-- No open Critical/Major deviations; Minor deviations dispositioned with CAPA
-- Automated suite green on the frozen release tag
-- Part 11 assessment shows no unmitigated "gap" line items
+| # | Criterion | Status |
+|---|-----------|--------|
+| 1 | 100% of High-risk URS items verified with objective evidence | ❌ **Not met** — 4 of 18 fully verified, 8 partial ([TRACEABILITY_MATRIX.md](TRACEABILITY_MATRIX.md)) |
+| 2 | No open Critical/Major deviations; Minor dispositioned with CAPA | ❌ **Not met** — DEV-002 (Major) corrected but awaiting human verification ([DEVIATION_LOG.md](DEVIATION_LOG.md)) |
+| 3 | Automated suite green on the frozen release tag | ◐ **Partial** — 320/320 pass, but on an untagged working tree, not a frozen release |
+| 4 | Part 11 assessment shows no unmitigated "gap" line items | ◐ **Partial** — see [PART11_ASSESSMENT.md](PART11_ASSESSMENT.md) |
+
+**The system is not released for use in a regulated trial until all four read
+"met".** Status as of 2026-07-29, commit `c6a165c`.
 
 ## 5. Deliverables
 
-URS, Part 11 assessment, executed IQ/OQ/PQ with evidence (screenshots,
-exports, audit-trail extracts), traceability matrix, deviation log,
-Validation Summary Report.
+| Deliverable | State |
+|-------------|-------|
+| [URS.md](URS.md) | ✅ Complete |
+| [PART11_ASSESSMENT.md](PART11_ASSESSMENT.md) | ✅ Complete |
+| [IQ_OQ_PQ.md](IQ_OQ_PQ.md) protocols | ✅ Written |
+| OQ-A automated execution + evidence | ✅ **Executed** — [evidence/OQ-A_RUN.md](evidence/OQ-A_RUN.md) |
+| IQ execution + evidence | ⬜ Not executed |
+| OQ-B…OQ-H execution + evidence | ⬜ Not executed |
+| PQ execution + evidence | ⬜ Not executed |
+| [TRACEABILITY_MATRIX.md](TRACEABILITY_MATRIX.md) | ✅ Complete, with executed-status column |
+| [DEVIATION_LOG.md](DEVIATION_LOG.md) | ✅ Open — 2 deviations, 3 observations |
+| Validation Summary Report | ⬜ Cannot be written until the above are executed |
+
+### 5.1 What remains, concretely
+
+1. Freeze a release: tag the commit, deploy it to a dedicated validation
+   instance with a fresh database (`npm run db:migrate`, `npm run db:seed`).
+2. Provision one named, trained tester account per role, with unique
+   credentials — testers must not share logins, or ESG-01 evidence is void.
+3. Execute IQ-01…IQ-07 and record actual results.
+4. Execute OQ-B through OQ-H (58 steps) with screenshot/audit-extract evidence
+   per step. **OQ-D5, OQ-D6 and OQ-G8 are the regression steps for DEV-001 and
+   DEV-002 and must pass.**
+5. Execute PQ-01…PQ-05 as end-to-end business processes under the SOPs.
+6. Disposition every deviation raised, then write and sign the Validation
+   Summary Report.
+
+Steps 3–5 need a person at a keyboard against a live instance; they cannot be
+automated and are the reason criterion 1 is not yet met.
 
 ## 6. Environment & data
 

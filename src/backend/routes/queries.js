@@ -6,6 +6,7 @@ import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 import { sendQueryRaisedEmail, sendQueryResolvedEmail } from '../lib/email.js';
 import { checkAndNotifyVisitClean } from '../lib/visitclean.js';
+import { canRaiseQuery, canResolveQuery, canCloseQuery } from '../lib/queryrules.js';
 
 const router = Router();
 
@@ -56,9 +57,8 @@ router.get('/', async (req, res) => {
 router.post('/', requireRole('cra', 'admin', 'data_manager'), async (req, res) => {
     try {
         const { subjectId, visitId, formId, entryId, fieldKey, fieldLabel, queryText } = req.body;
-        if (!subjectId || !queryText) {
-            return res.status(400).json({ error: 'subjectId and queryText are required' });
-        }
+        const guard = canRaiseQuery({ subjectId, queryText });
+        if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
         const [created] = await db.insert(queries).values({
             studyId:    req.studyId,
@@ -116,11 +116,11 @@ router.post('/', requireRole('cra', 'admin', 'data_manager'), async (req, res) =
 router.patch('/:id/resolve', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, res) => {
     try {
         const { resolutionText } = req.body;
-        if (!resolutionText) return res.status(400).json({ error: 'resolutionText is required' });
 
-        const [q] = await db.select().from(queries).where(eq(queries.id, parseInt(req.params.id)));
-        if (!q) return res.status(404).json({ error: 'Query not found' });
-        if (q.status !== 'Open') return res.status(409).json({ error: 'Only Open queries can be resolved' });
+        const [q] = await db.select().from(queries)
+            .where(and(eq(queries.id, parseInt(req.params.id)), eq(queries.studyId, req.studyId)));
+        const guard = canResolveQuery(q, { resolutionText });
+        if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
         const [updated] = await db.update(queries)
             .set({
@@ -164,9 +164,10 @@ router.patch('/:id/resolve', requireRole('investigator', 'pi', 'admin', 'crc'), 
 // PATCH /api/queries/:id/close — CRA closes a resolved query
 router.patch('/:id/close', requireRole('cra', 'admin', 'data_manager'), async (req, res) => {
     try {
-        const [q] = await db.select().from(queries).where(eq(queries.id, parseInt(req.params.id)));
-        if (!q) return res.status(404).json({ error: 'Query not found' });
-        if (q.status !== 'Resolved') return res.status(409).json({ error: 'Only Resolved queries can be closed' });
+        const [q] = await db.select().from(queries)
+            .where(and(eq(queries.id, parseInt(req.params.id)), eq(queries.studyId, req.studyId)));
+        const guard = canCloseQuery(q);
+        if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
         const [updated] = await db.update(queries)
             .set({ status: 'Closed', closedBy: req.user.id, closedAt: new Date() })

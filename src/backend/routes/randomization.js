@@ -4,6 +4,10 @@ import { db } from '../db/connection.js';
 import { randomizationList, subjectRandomization, subjects } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
+import {
+    BLINDED_LABEL, maskTreatmentArms, validateRandList, normalizeRandList,
+    canRandomize, canUnblind, noSlotError, randomizationStats,
+} from '../lib/randomrules.js';
 
 const router = Router();
 
@@ -24,22 +28,13 @@ router.get('/list', requireRole('admin'), async (req, res) => {
 router.post('/list', requireRole('admin'), async (req, res) => {
     try {
         const { entries } = req.body;
-        if (!Array.isArray(entries) || entries.length === 0) {
-            return res.status(400).json({ error: 'entries array is required' });
-        }
-        for (const e of entries) {
-            if (!e.randCode || !e.treatmentArm) {
-                return res.status(400).json({ error: 'Each entry needs randCode and treatmentArm' });
-            }
-        }
+        const guard = validateRandList(entries);
+        if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
-        const values = entries.map(e => ({
-            studyId:      req.studyId,
-            randCode:     e.randCode.trim().toUpperCase(),
-            treatmentArm: e.treatmentArm,
-            stratum:      e.stratum ?? null,
-            isUsed:       false,
-            uploadedBy:   req.user.id,
+        const values = normalizeRandList(entries).map(e => ({
+            ...e,
+            studyId:    req.studyId,
+            uploadedBy: req.user.id,
         }));
 
         // Upsert — skip already existing codes
@@ -93,13 +88,7 @@ router.get('/', async (req, res) => {
             .orderBy(subjectRandomization.randomizedAt);
 
         // Blind treatment arm for non-admin users
-        const user = req.user;
-        const blinded = rows.map(r => ({
-            ...r,
-            treatmentArm: (!r.isBlinded || user.role === 'admin') ? r.treatmentArm : '*** BLINDED ***',
-        }));
-
-        res.json(blinded);
+        res.json(maskTreatmentArms(rows, req.user.role));
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -116,18 +105,11 @@ router.post('/', requireRole('admin', 'investigator', 'pi'), async (req, res) =>
         // Check subject exists in this study, is at the caller's site, and is Active
         const [subject] = await db.select().from(subjects)
             .where(and(eq(subjects.id, sid), eq(subjects.studyId, req.studyId)));
-        if (!subject) return res.status(404).json({ error: 'Subject not found' });
-        if (Array.isArray(req.siteScope) && !req.siteScope.includes(subject.siteId)) {
-            return res.status(404).json({ error: 'Subject not found' });
-        }
-        if (subject.status !== 'Active') {
-            return res.status(409).json({ error: 'Only Active subjects can be randomized' });
-        }
-
-        // Check not already randomized
         const [existing] = await db.select().from(subjectRandomization)
             .where(eq(subjectRandomization.subjectId, sid));
-        if (existing) return res.status(409).json({ error: 'Subject already randomized' });
+
+        const guard = canRandomize({ subject, existingAssignment: existing, siteScope: req.siteScope });
+        if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
         // Find next available slot (matching stratum if provided, scoped to study)
         const listConditions = [eq(randomizationList.isUsed, false), eq(randomizationList.studyId, req.studyId)];
@@ -138,9 +120,7 @@ router.post('/', requireRole('admin', 'investigator', 'pi'), async (req, res) =>
             .orderBy(randomizationList.id)
             .limit(1);
 
-        if (!slot) {
-            return res.status(409).json({ error: 'No available randomization slots' + (stratum ? ` for stratum "${stratum}"` : '') });
-        }
+        if (!slot) return res.status(409).json({ error: noSlotError(stratum) });
 
         // Mark slot as used
         await db.update(randomizationList)
@@ -167,7 +147,7 @@ router.post('/', requireRole('admin', 'investigator', 'pi'), async (req, res) =>
 
         res.status(201).json({
             ...assignment,
-            treatmentArm: '*** BLINDED ***', // always blind at creation
+            treatmentArm: BLINDED_LABEL, // always blind at creation
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -179,12 +159,11 @@ router.patch('/:id/unblind', requireRole('admin'), async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const { reason } = req.body;
-        if (!reason) return res.status(400).json({ error: 'reason is required for unblinding' });
 
         const [existing] = await db.select().from(subjectRandomization)
             .where(eq(subjectRandomization.id, id));
-        if (!existing) return res.status(404).json({ error: 'Randomization record not found' });
-        if (!existing.isBlinded) return res.status(409).json({ error: 'Already unblinded' });
+        const guard = canUnblind(existing, { reason });
+        if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
         const [updated] = await db.update(subjectRandomization)
             .set({ isBlinded: false, unblindedAt: new Date(), unblindedBy: req.user.id, unblindReason: reason })
@@ -214,13 +193,7 @@ router.get('/stats', async (req, res) => {
             .leftJoin(subjects, eq(subjectRandomization.subjectId, subjects.id))
             .where(eq(subjects.studyId, req.studyId));
 
-        res.json({
-            totalSlots:     allList.length,
-            usedSlots:      allList.filter(l => l.isUsed).length,
-            available:      allList.filter(l => !l.isUsed).length,
-            randomized:     assignments.length,
-            unblinded:      assignments.filter(a => !a.isBlinded).length,
-        });
+        res.json(randomizationStats(allList, assignments));
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
