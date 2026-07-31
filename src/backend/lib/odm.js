@@ -74,6 +74,29 @@ function signerOid(sig) {
 }
 
 /**
+ * Application role → ODM UserType, whose vocabulary is fixed at Sponsor,
+ * Investigator, SiteCoordinator, Subject, LabTechnician and Other.
+ *
+ * This used to emit UserType="Investigator" for anyone with a role at all,
+ * which asserts a qualification the signer may not hold — in the document a
+ * regulator reads to see who signed what. An unmapped role says Other rather
+ * than guessing.
+ */
+const ODM_USER_TYPE = {
+    investigator:   'Investigator',
+    pi:             'Investigator',
+    crc:            'SiteCoordinator',
+    cra:            'Sponsor',
+    data_manager:   'Sponsor',
+    admin:          'Other',
+    platform_owner: 'Other',
+};
+
+function odmUserType(role) {
+    return ODM_USER_TYPE[String(role ?? '').toLowerCase()] || 'Other';
+}
+
+/**
  * Study event OID for a visit. Shared by MetaDataVersion and ClinicalData so
  * the two cannot drift — an OID that only one of them knows about is exactly
  * the defect this replaced.
@@ -211,7 +234,40 @@ export function buildOdmXml(data, { now = new Date() } = {}) {
     // Protocol, StudyEventDef*, FormDef*, ItemGroupDef*, ItemDef*. Emitting an
     // ItemGroupDef next to its ItemDef reads better but is schema-invalid, so
     // the two are built in separate passes below.
-    const formOids = new Set(forms.map(f => `F.${f.id}`));
+    // ── What the metadata has to cover ──────────────────────────────────────
+    // Building FormDefs from `forms` alone was not enough. dataJson is stored
+    // verbatim (routes/entries.js) and the import tool maps CSV columns onto
+    // field keys without checking them against the schema (routes/import.js),
+    // so a captured record can carry a key the schema does not declare — and a
+    // form row can be deleted while its entries survive. Both cases put an OID
+    // in ClinicalData that MetaDataVersion never defined, which is the whole
+    // defect this section exists to prevent.
+    //
+    // So the metadata is built from the union of "what the schema declares" and
+    // "what the data actually contains". An undeclared key is exported and
+    // flagged, not dropped: it is real captured data, and hiding it from an
+    // archive is worse than annotating it.
+    const formById   = new Map(forms.map(f => [f.id, f]));
+    const extraByForm = new Map();
+    for (const e of entries) {
+        const declared = typesByForm.get(e.formId);
+        for (const key of Object.keys(e.dataJson || {})) {
+            if (declared?.has(key)) continue;
+            if (!extraByForm.has(e.formId)) extraByForm.set(e.formId, new Set());
+            extraByForm.get(e.formId).add(key);
+        }
+    }
+    const formSpecs = [...new Set([...formById.keys(), ...entries.map(e => e.formId)])]
+        .map((id) => {
+            const form = formById.get(id);
+            const declared = (form?.schemaJson?.fields ?? []).filter(f => f?.key);
+            const extra = [...(extraByForm.get(id) ?? [])].map(key => ({
+                key, label: key, type: 'text', undeclared: true,
+            }));
+            return { id, name: form?.name ?? `Form ${id} (definition unavailable)`, fields: [...declared, ...extra] };
+        });
+
+    const formOids = new Set(formSpecs.map(f => `F.${f.id}`));
 
     // visits rows are per subject, so the same scheduled visit appears once per
     // enrolled subject. Collapse to one definition per event OID and union the
@@ -273,11 +329,10 @@ export function buildOdmXml(data, { now = new Date() } = {}) {
         <ItemGroupRef ItemGroupOID="${d.groupOid}" Mandatory="Yes"/>
       </FormDef>`;
     }
-    for (const form of forms) {
-        const fields = form.schemaJson?.fields ?? [];
+    for (const form of formSpecs) {
         xml += `
       <FormDef OID="F.${form.id}" Name="${xmlEsc(form.name)}" Repeating="No">`;
-        for (const field of fields) {
+        for (const field of form.fields) {
             xml += `
         <ItemGroupRef ItemGroupOID="IG.${form.id}.${xmlEsc(field.key)}" Mandatory="${field.required ? 'Yes' : 'No'}"/>`;
         }
@@ -296,8 +351,8 @@ export function buildOdmXml(data, { now = new Date() } = {}) {
         xml += `
       </ItemGroupDef>`;
     }
-    for (const form of forms) {
-        for (const field of form.schemaJson?.fields ?? []) {
+    for (const form of formSpecs) {
+        for (const field of form.fields) {
             xml += `
       <ItemGroupDef OID="IG.${form.id}.${xmlEsc(field.key)}" Name="${xmlEsc(field.label || field.key)}" Repeating="No">
         <ItemRef ItemOID="IT.${form.id}.${xmlEsc(field.key)}" Mandatory="${field.required ? 'Yes' : 'No'}"/>
@@ -316,8 +371,8 @@ export function buildOdmXml(data, { now = new Date() } = {}) {
       </ItemDef>`;
         }
     }
-    for (const form of forms) {
-        for (const field of form.schemaJson?.fields ?? []) {
+    for (const form of formSpecs) {
+        for (const field of form.fields) {
             const hasCdash = !!field.cdashVar;
             const hasSdtm  = !!(field.sdtmDomain && field.sdtmVar);
             const sds      = hasSdtm ? sdsVarName(field.sdtmVar) : '';
@@ -325,6 +380,10 @@ export function buildOdmXml(data, { now = new Date() } = {}) {
                 hasCdash ? `        <Alias Context="CDASH" Name="${xmlEsc(field.cdashVar)}"/>` : '',
                 hasSdtm  ? `        <Alias Context="SDTM"  Name="${xmlEsc(field.sdtmDomain + '.' + field.sdtmVar)}"/>` : '',
                 field.isCritical ? `        <Alias Context="ICH-E6R3" Name="CriticalDataField"/>` : '',
+                // The value exists in the record but not in the form schema.
+                // A reviewer reconciling the export against the CRF needs to
+                // see that, rather than wonder where the column came from.
+                field.undeclared ? `        <Alias Context="E-CRF" Name="NotInCurrentFormSchema"/>` : '',
             ].filter(Boolean).join('\n');
             xml += `
       <ItemDef OID="IT.${form.id}.${xmlEsc(field.key)}" Name="${xmlEsc(field.label || field.key)}" DataType="${odmDataType(field.type)}"${sds ? ` SDSVarName="${sds}"` : ''}>
@@ -353,7 +412,7 @@ export function buildOdmXml(data, { now = new Date() } = {}) {
   <AdminData StudyOID="${xmlEsc(studyOID)}">`;
     for (const [userId, sig] of users) {
         xml += `
-    <User OID="${xmlEsc(userId)}"${sig.userRole ? ` UserType="Investigator"` : ''}>
+    <User OID="${xmlEsc(userId)}" UserType="${odmUserType(sig.userRole)}">
       <FullName>${xmlEsc(sig.userName || userId)}</FullName>
     </User>`;
     }

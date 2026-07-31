@@ -69,3 +69,44 @@ test('the value zero is a real date, not treated as absent', () => {
     // A plain `value ? ... : ''` guard would have dropped the epoch.
     assert.notEqual(isoDay(0), '');
 });
+
+// ── Date-only values ────────────────────────────────────────────────────────
+// consentDate, onsetDate and dateOfBirth are stored as plain "YYYY-MM-DD" text.
+// Such a value carries no time and no offset, so there is no instant to
+// convert — but `new Date('2026-07-15')` invents midnight UTC, and formatting
+// that anywhere west of UTC moved the day backwards.
+
+test('a date-only string is returned unchanged, in any timezone', () => {
+    for (const tz of ['Asia/Jakarta', 'UTC', 'America/New_York', 'America/Sao_Paulo', 'Pacific/Auckland']) {
+        assert.equal(isoDay('2026-07-15', tz), '2026-07-15', `shifted in ${tz}`);
+    }
+});
+
+test('a date-only string that is not a real date is still rejected', () => {
+    // JS rolls 2026-02-31 over to 2026-03-03 rather than refusing it, so the
+    // shortcut has to confirm the calendar contains the date before echoing it.
+    assert.equal(isoDay('2026-02-31'), '');
+    assert.equal(isoDay('2026-13-45'), '');
+    assert.equal(isoDay('0000-00-00'), '');
+});
+
+test('surrounding whitespace does not defeat the date-only path', () => {
+    assert.equal(isoDay('  2026-07-15  '), '2026-07-15');
+});
+
+// ── Coercion artefacts ──────────────────────────────────────────────────────
+
+test('booleans and arrays are not dates, however willing JS is to coerce them', () => {
+    // new Date(false) is the epoch and new Date([2026]) is 2026-01-01. Both put
+    // a confident wrong value in a regulatory export.
+    for (const v of [false, true, [], [2026], [2026, 1, 1]]) {
+        assert.equal(isoDay(v), '', `${JSON.stringify(v)} must not become a date`);
+        assert.equal(isoDateTime(v), '');
+        assert.equal(toDate(v), null);
+    }
+});
+
+test('a number is still an epoch offset — that is a real date', () => {
+    assert.equal(isoDay(0, 'UTC'), '1970-01-01');
+    assert.notEqual(toDate(1785000000000), null);
+});

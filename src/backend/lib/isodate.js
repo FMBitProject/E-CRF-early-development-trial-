@@ -24,48 +24,71 @@
  * IANA zone the sites operate in. Override per deployment; the default suits a
  * single-country Indonesian install, which is what this is sold as.
  */
-export const EXPORT_TZ = resolveZone(process.env.EXPORT_TZ);
+export const EXPORT_TZ = usableZone(process.env.EXPORT_TZ);
 
 /**
- * An unknown zone name makes Intl throw. Failing here would take the whole
- * server down at import time over a typo in .env, so fall back to UTC — the
- * previous behaviour — and say so loudly rather than refusing to boot.
+ * Resolve a zone name to one Intl will accept.
+ *
+ * An unknown name makes Intl throw. Failing hard would take the server down at
+ * import time over a typo in .env, so fall back to UTC and say so — but say it
+ * exactly once per bad name, since this runs per row of an export and would
+ * otherwise bury the log. Silence was the worse bug: a mistyped zone used to
+ * hand back UTC dates that looked entirely plausible.
  */
-function resolveZone(name) {
+const zoneCache = new Map();   // requested name → name Intl accepts
+
+function usableZone(name) {
     if (!name) return 'Asia/Jakarta';
+    const hit = zoneCache.get(name);
+    if (hit !== undefined) return hit;
+
+    let resolved;
     try {
         new Intl.DateTimeFormat('en-CA', { timeZone: name });
-        return name;
+        resolved = name;
     } catch {
-        console.warn(`[isodate] EXPORT_TZ="${name}" is not a valid IANA timezone; falling back to UTC for export dates.`);
-        return 'UTC';
+        console.warn(`[isodate] "${name}" is not a valid IANA timezone; export dates fall back to UTC.`);
+        resolved = 'UTC';
     }
+    // The cache exists to avoid re-validating per row, not to remember every
+    // string ever passed. A caller feeding it varying names must not grow it
+    // without bound.
+    if (zoneCache.size < 64) zoneCache.set(name, resolved);
+    return resolved;
 }
 
 const dayFormatters = new Map();
 
 function dayFormatter(timeZone) {
-    let fmt = dayFormatters.get(timeZone);
+    const zone = usableZone(timeZone);
+    let fmt = dayFormatters.get(zone);
     if (!fmt) {
-        const opts = { year: 'numeric', month: '2-digit', day: '2-digit' };
-        try {
-            fmt = new Intl.DateTimeFormat('en-CA', { timeZone, ...opts });
-        } catch {
-            // Same reasoning as resolveZone: a bad zone name must degrade one
-            // column, not abort an export that runs over the whole study.
-            fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', ...opts });
-        }
-        dayFormatters.set(timeZone, fmt);
+        fmt = new Intl.DateTimeFormat('en-CA', {
+            timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',
+        });
+        dayFormatters.set(zone, fmt);
     }
     return fmt;
 }
 
-/** Parse to a Date, or null if the value is absent or not a real date. */
+/**
+ * Parse to a Date, or null if the value is absent or not a real date.
+ *
+ * Booleans and arrays are rejected outright rather than coerced. `new Date(false)`
+ * is the epoch and `new Date([2026])` is 2026-01-01 — both are JS coercion
+ * artefacts, not dates anyone stored, and letting them through put a confident
+ * wrong value in a regulatory export. A number still means an epoch offset,
+ * which is a real date and is covered by a test.
+ */
 export function toDate(value) {
     if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'boolean' || Array.isArray(value)) return null;
     const d = value instanceof Date ? value : new Date(value);
     return Number.isNaN(d.getTime()) ? null : d;
 }
+
+/** A bare calendar day, with no time and no zone attached. */
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * "YYYY-MM-DD" in `timeZone`, or '' — for SDTM --DTC date fields and CSV date
@@ -73,6 +96,20 @@ export function toDate(value) {
  * to render ISO order today, but that is a locale-data detail, not a guarantee.
  */
 export function isoDay(value, timeZone = EXPORT_TZ) {
+    // A date-only string is already the answer. It carries no time and no
+    // offset, so there is no instant to convert — but `new Date('2026-07-15')`
+    // invents midnight UTC, and formatting that anywhere west of UTC moved the
+    // day backwards. Several columns (consentDate, onsetDate, dateOfBirth) are
+    // stored exactly like this, so the guard has to come before parsing.
+    if (typeof value === 'string' && DATE_ONLY_RE.test(value.trim())) {
+        const day = value.trim();
+        // JS rolls 2026-02-31 over to 2026-03-03 rather than rejecting it, so
+        // confirm the calendar actually contains the date before echoing it.
+        const probe = new Date(`${day}T00:00:00Z`);
+        if (Number.isNaN(probe.getTime())) return '';
+        return probe.toISOString().slice(0, 10) === day ? day : '';
+    }
+
     const d = toDate(value);
     if (!d) return '';
     const parts = {};

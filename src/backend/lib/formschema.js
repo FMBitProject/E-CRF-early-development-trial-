@@ -105,24 +105,68 @@ export function schemasEqual(a, b) {
     return ka.every(k => Object.prototype.hasOwnProperty.call(b, k) && schemasEqual(a[k], b[k]));
 }
 
+/** How a field property reads to someone who has never seen the JSON. */
+const PROP_LABEL = {
+    label: 'wording', type: 'answer type', required: 'required flag',
+    options: 'answer choices', closedCodelist: 'closed-codelist flag',
+    min: 'minimum', max: 'maximum', softMin: 'expected minimum', softMax: 'expected maximum',
+    unit: 'unit', pattern: 'format rule', patternMessage: 'format message',
+    placeholder: 'hint text', isCritical: 'key-result flag',
+    conditionalRequired: 'conditional-required rule',
+    cdashVar: 'CDASH mapping', sdtmDomain: 'SDTM domain', sdtmVar: 'SDTM variable',
+    autoQueryOnRangeViolation: 'auto-query setting',
+};
+
 /**
  * Plain-language summary of what a schema change did, so a blocked update says
- * more than "something differs". Returns [] when only cosmetic details moved.
+ * more than "something differs".
+ *
+ * The first version only reported added, removed and retyped questions, which
+ * left the most common edits — changing the answer choices, or a min/max —
+ * falling through to a generic message that told the admin nothing. Every
+ * difference schemasEqual can detect is now named, because anything it detects
+ * is something that will block the save.
  */
 export function describeSchemaChange(next, prev) {
     const fieldsOf = (s) => (Array.isArray(s?.fields) ? s.fields : []);
     const byKey    = (s) => new Map(fieldsOf(s).filter(f => f?.key).map(f => [f.key, f]));
     const before = byKey(prev), after = byKey(next);
     const changes = [];
+    const name = (key, f) => `question "${f?.label || key}" (${key})`;
 
     for (const [key, f] of after) {
-        if (!before.has(key)) changes.push(`question "${f.label || key}" (${key}) added`);
-        else if (before.get(key).type !== f.type) {
-            changes.push(`question "${f.label || key}" (${key}) changed answer type from ${before.get(key).type} to ${f.type}`);
+        const was = before.get(key);
+        if (!was) { changes.push(`${name(key, f)} added`); continue; }
+        if (was.type !== f.type) {
+            changes.push(`${name(key, f)} changed answer type from ${was.type} to ${f.type}`);
+            continue;   // a retype subsumes whatever else moved with it
         }
+        const props = [...new Set([...Object.keys(was), ...Object.keys(f)])]
+            .filter(p => p !== 'key' && p !== 'type')
+            .filter(p => !schemasEqual(was[p], f[p]))
+            .map(p => PROP_LABEL[p] ?? p);
+        if (props.length) changes.push(`${name(key, f)}: ${props.join(', ')} changed`);
     }
     for (const [key, f] of before) {
-        if (!after.has(key)) changes.push(`question "${f.label || key}" (${key}) removed — its captured answers would be orphaned`);
+        if (!after.has(key)) changes.push(`${name(key, f)} removed — its captured answers would be orphaned`);
     }
+
+    // Reordering is a real change (it is the order sites fill the form in) and
+    // schemasEqual blocks on it, so it has to be reported or the admin sees a
+    // 409 with an empty explanation.
+    const keysBefore = [...before.keys()], keysAfter = [...after.keys()];
+    if (changes.length === 0
+        && keysBefore.length === keysAfter.length
+        && keysBefore.some((k, i) => k !== keysAfter[i])) {
+        changes.push('the questions were reordered');
+    }
+
+    // Anything outside `fields` — the builder does not edit these, but a
+    // hand-written or migrated schema can carry them.
+    const topLevel = (s) => Object.keys(s ?? {}).filter(k => k !== 'fields');
+    for (const k of new Set([...topLevel(prev), ...topLevel(next)])) {
+        if (!schemasEqual(prev?.[k], next?.[k])) changes.push(`schema property "${k}" changed`);
+    }
+
     return changes;
 }

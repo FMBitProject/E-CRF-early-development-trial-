@@ -455,3 +455,82 @@ test('a signature whose user account is gone still resolves to a declared User',
     const dec  = new Set([...xml.matchAll(/<User OID="([^"]+)"/g)].map(m => m[1]));
     for (const oid of used) assert.ok(dec.has(oid), `UserOID="${oid}" is not declared`);
 });
+
+// No ODM 1.3.2 XSD ships with this repo and xmllint is not available, so these
+// encode the schema rules that can be checked structurally. They are not a
+// substitute for validating against the real XSD before a regulatory
+// submission — attribute cardinality and datatype formats remain unchecked.
+
+test('no OID is declared twice', () => {
+    // Two definitions sharing an OID make the reference ambiguous; a loader may
+    // take either. Field keys are unique per form and form ids are unique, but
+    // nothing enforced that across the built-in domains.
+    const xml = buildOdmXml(RICH, { now: NOW });
+    for (const el of ['StudyEventDef', 'FormDef', 'ItemGroupDef', 'ItemDef', 'User', 'Location', 'SignatureDef']) {
+        const oids = [...xml.matchAll(new RegExp(`<${el} OID="([^"]+)"`, 'g'))].map(m => m[1]);
+        const dupes = oids.filter((o, i) => oids.indexOf(o) !== i);
+        assert.deepEqual([...new Set(dupes)], [], `duplicate <${el}> OID(s)`);
+    }
+});
+
+test('every enumerated attribute carries a value the vocabulary allows', () => {
+    const xml = buildOdmXml(RICH, { now: NOW });
+    const enums = {
+        Repeating:    ['Yes', 'No'],
+        Mandatory:    ['Yes', 'No'],
+        Type:         ['Scheduled', 'Unscheduled', 'Common'],
+        UserType:     ['Sponsor', 'Investigator', 'SiteCoordinator', 'Subject', 'LabTechnician', 'Other'],
+        LocationType: ['Sponsor', 'Site', 'CRO', 'Lab', 'Other'],
+        Methodology:  ['Electronic', 'Digital'],
+        DataType:     ['text', 'integer', 'float', 'date', 'datetime', 'time', 'string', 'boolean', 'double', 'hexBinary', 'base64Binary', 'hexFloat', 'base64Float', 'partialDate', 'partialTime', 'partialDatetime', 'durationDatetime', 'intervalDatetime', 'incompleteDatetime', 'incompleteDate', 'incompleteTime', 'URI'],
+        FileType:     ['Snapshot', 'Transactional'],
+    };
+    for (const [attr, allowed] of Object.entries(enums)) {
+        for (const v of new Set([...xml.matchAll(new RegExp(`\\b${attr}="([^"]*)"`, 'g'))].map(m => m[1]))) {
+            assert.ok(allowed.includes(v), `${attr}="${v}" is not in the ODM vocabulary`);
+        }
+    }
+});
+
+test('a signer is typed by their actual role, not assumed to be an investigator', () => {
+    const sig = (userRole) => buildOdmXml({
+        ...RICH, signatures: [{ entryId: 100, userId: 'u-1', userName: 'X', userRole, signedAt: '2026-03-01T02:00:00.000Z' }],
+    }, { now: NOW });
+    assert.ok(sig('pi').includes('UserType="Investigator"'));
+    assert.ok(sig('crc').includes('UserType="SiteCoordinator"'));
+    assert.ok(sig('cra').includes('UserType="Sponsor"'));
+    assert.ok(sig('data_manager').includes('UserType="Sponsor"'));
+    // The bug: any role at all was reported as Investigator.
+    assert.ok(!sig('cra').includes('UserType="Investigator"'), 'a monitor is not an investigator');
+    assert.ok(sig(null).includes('UserType="Other"'), 'unknown role must not be guessed');
+});
+
+// ── Captured data that the schema no longer describes ───────────────────────
+
+test('a dataJson key missing from the schema is still declared and exported', () => {
+    // dataJson is stored verbatim and the import tool maps CSV columns onto
+    // field keys without checking them against the schema, so a record can
+    // carry a key the form does not declare. Emitting it with no ItemDef left a
+    // dangling OID — the exact defect the metadata rewrite set out to remove.
+    const xml = buildOdmXml({
+        ...RICH,
+        entries: [{ id: 100, subjectId: 1, visitId: 10, formId: 5, dataJson: { ldl: 230, retired_field: 'keep me' } }],
+    }, { now: NOW });
+
+    assert.ok(xml.includes('<ItemData ItemOID="IT.5.retired_field" Value="keep me"/>'), 'the value must survive');
+    assert.ok(xml.includes('<ItemDef OID="IT.5.retired_field"'), 'and must be declared');
+    assert.ok(xml.includes('<ItemGroupDef OID="IG.5.retired_field"'));
+    assert.ok(xml.includes('<Alias Context="E-CRF" Name="NotInCurrentFormSchema"/>'), 'flagged for the reviewer');
+});
+
+test('an entry whose form row is gone still resolves to a FormDef', () => {
+    const xml = buildOdmXml({
+        ...RICH, forms: [],
+        entries: [{ id: 100, subjectId: 1, visitId: 10, formId: 5, dataJson: { ldl: 1 } }],
+    }, { now: NOW });
+    assert.ok(xml.includes('<FormDef OID="F.5"'), 'a deleted form still needs a definition');
+    const declared = new Set([...xml.matchAll(/<FormDef OID="([^"]+)"/g)].map(m => m[1]));
+    for (const oid of [...xml.matchAll(/<FormData FormOID="([^"]+)"/g)].map(m => m[1])) {
+        assert.ok(declared.has(oid), `FormOID="${oid}" is not declared`);
+    }
+});

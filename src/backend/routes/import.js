@@ -167,9 +167,18 @@ router.post('/visit', licenseGuardCreate, requireRole(...IMPORT_ROLES), async (r
                         .where(and(eq(crfDataEntries.subjectId, subj.id), eq(crfDataEntries.visitId, visit.id), eq(crfDataEntries.formId, parseInt(formId))));
                     if (existEntry) {
                         if (existEntry.status === 'Locked') throw new Error('CRF entry is locked');
-                        await db.update(crfDataEntries).set({ dataJson: plan.crf, status: 'Saved', updatedAt: new Date(), updatedBy: req.user.id }).where(eq(crfDataEntries.id, existEntry.id));
+                        // Merge, never replace. plan.crf holds only the columns
+                        // this file mapped and left non-empty (importengine.js),
+                        // so assigning it wholesale deleted every answer the CSV
+                        // did not happen to contain: re-importing a two-column
+                        // correction against a ten-question form silently
+                        // destroyed the other eight. An import can add or
+                        // overwrite an answer; it must not erase one it never
+                        // mentioned.
+                        const mergedData = { ...(existEntry.dataJson ?? {}), ...plan.crf };
+                        await db.update(crfDataEntries).set({ dataJson: mergedData, status: 'Saved', updatedAt: new Date(), updatedBy: req.user.id }).where(eq(crfDataEntries.id, existEntry.id));
                         summary.entriesUpdated++;
-                        await writeFieldDiffAudit(db, { tableName: 'crf_data_entries', recordId: existEntry.id, oldData: existEntry.dataJson, newData: plan.crf, reason: reasonText, user: req.user, ipAddress: req.ip });
+                        await writeFieldDiffAudit(db, { tableName: 'crf_data_entries', recordId: existEntry.id, oldData: existEntry.dataJson, newData: mergedData, reason: reasonText, user: req.user, ipAddress: req.ip });
                         await createAutoQueries(db, req, plan.validation.softViolations, existEntry.id, subj.id, visit.id, formId);
                     } else {
                         const [ie] = await db.insert(crfDataEntries).values({

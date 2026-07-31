@@ -206,3 +206,63 @@ test('describing a change never throws on a malformed schema', () => {
         assert.doesNotThrow(() => describeSchemaChange(schema(field()), bad));
     }
 });
+
+test('an edit to the answer choices is named, not lumped into a generic message', () => {
+    // These are the most common edits. Reporting only add/remove/retype left
+    // them falling through to "the question list or its validation rules
+    // changed", which tells the admin nothing actionable.
+    const before = schema(field({ key: 'sev', label: 'Severity', type: 'select', options: ['Mild', 'Severe'] }));
+    const after  = schema(field({ key: 'sev', label: 'Severity', type: 'select', options: ['Mild', 'Moderate', 'Severe'] }));
+    const out = describeSchemaChange(after, before);
+    assert.equal(out.length, 1);
+    assert.match(out[0], /answer choices changed/);
+    assert.match(out[0], /sev/);
+});
+
+test('a min/max edit is named', () => {
+    const out = describeSchemaChange(schema(field({ max: 300 })), schema(field({ max: 200 })));
+    assert.match(out.join(' '), /maximum changed/);
+});
+
+test('a wording-only edit is named', () => {
+    const out = describeSchemaChange(schema(field({ label: 'LDL-C' })), schema(field({ label: 'LDL' })));
+    assert.match(out.join(' '), /wording changed/);
+});
+
+test('reordering questions is reported rather than left unexplained', () => {
+    const a = schema(field({ key: 'a', label: 'A' }), field({ key: 'b', label: 'B' }));
+    const b = schema(field({ key: 'b', label: 'B' }), field({ key: 'a', label: 'A' }));
+    assert.ok(!schemasEqual(a, b), 'reordering must still block');
+    assert.deepEqual(describeSchemaChange(b, a), ['the questions were reordered']);
+});
+
+test('a retype is reported once, not alongside every property that moved with it', () => {
+    const before = schema(field({ key: 'x', label: 'X', type: 'number', max: 10 }));
+    const after  = schema(field({ key: 'x', label: 'X', type: 'text', pattern: '^a$' }));
+    const out = describeSchemaChange(after, before);
+    assert.equal(out.length, 1);
+    assert.match(out[0], /answer type from number to text/);
+});
+
+test('a change outside `fields` is reported', () => {
+    const out = describeSchemaChange({ fields: [field()], sections: ['A'] }, { fields: [field()] });
+    assert.deepEqual(out, ['schema property "sections" changed']);
+});
+
+test('every difference schemasEqual blocks on produces an explanation', () => {
+    // A 409 with an empty details list is the failure mode this guards against.
+    const base = schema(field({ key: 'x', label: 'X', type: 'number' }));
+    const variants = [
+        schema(field({ key: 'x', label: 'X', type: 'number', required: true })),
+        schema(field({ key: 'x', label: 'Y', type: 'number' })),
+        schema(field({ key: 'x', label: 'X', type: 'text' })),
+        schema(field({ key: 'x', label: 'X', type: 'number', min: 1 })),
+        schema(field({ key: 'x', label: 'X', type: 'number' }), field({ key: 'y', label: 'Y' })),
+        schema(),
+        { fields: [field({ key: 'x', label: 'X', type: 'number' })], extra: true },
+    ];
+    for (const v of variants) {
+        assert.ok(!schemasEqual(base, v), 'fixture must actually differ');
+        assert.ok(describeSchemaChange(v, base).length > 0, `no explanation for ${JSON.stringify(v)}`);
+    }
+});
