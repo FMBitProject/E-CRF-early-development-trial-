@@ -23,12 +23,25 @@ export function validateCRFData(formData, schemaFields) {
     // they are the same field failing the same rule. importengine's merge guard
     // needs to tell "this field was already broken" from "this import broke it".
     const errorFields    = [];
-    let currentKey = null;
-    const push = (msg) => { errors.push(msg); errorFields.push({ key: currentKey, message: msg }); };
+    // Key and rule are passed explicitly rather than tracked in a mutable
+    // `currentKey`: with ambient state, any rule added outside the field loop
+    // silently inherits the last field's key unless its author remembers to
+    // reset it. Making it an argument removes the whole class of mistake.
+    const push = (key, rule, msg) => { errors.push(msg); errorFields.push({ key, rule, message: msg }); };
 
-    for (const field of schemaFields) {
-        currentKey = field.key ?? null;
-        const value = formData[field.key];
+    // A caller that hands over a non-array (a schema stored as an object, a
+    // null from a form with no schema) must get "nothing to check", not a
+    // TypeError from for...of half-way through an import.
+    const fields = Array.isArray(schemaFields) ? schemaFields : [];
+
+    for (const field of fields) {
+        // A null or non-object entry threw on field.conditionalRequired below.
+        // validateFormSchema rejects those on write, but a legacy row or a
+        // hand-posted schema can still carry one, and reached from an import
+        // that aborts the whole row with a TypeError rather than a result.
+        if (!field || typeof field !== 'object') continue;
+        const key = field.key ?? null;
+        const value = formData[key];
         // A multi-select with nothing ticked arrives as [], which is not '' —
         // without this it would satisfy a "required" field.
         const isEmpty = value === undefined || value === null || value === ''
@@ -40,14 +53,14 @@ export function validateCRFData(formData, schemaFields) {
             const otherVal = String(formData[cr.ifField] ?? '');
             const isCondMet = otherVal === String(cr.ifValue);
             if (isCondMet && isEmpty) {
-                push(`${field.label} is required when ${cr.ifField} is "${cr.ifValue}".`);
+                push(key, 'conditional-required', `${field.label} is required when ${cr.ifField} is "${cr.ifValue}".`);
                 continue;
             }
         }
 
         // ── Standard required ───────────────────────────────────────────────
         if (field.required && isEmpty) {
-            push(`${field.label} is required.`);
+            push(key, 'required', `${field.label} is required.`);
             continue;
         }
 
@@ -57,7 +70,7 @@ export function validateCRFData(formData, schemaFields) {
         if (field.type === 'number') {
             const num     = parseFloat(value);
             if (isNaN(num)) {
-                push(`${field.label} must be a valid number.`);
+                push(key, 'number-format', `${field.label} must be a valid number.`);
                 continue;
             }
 
@@ -68,9 +81,9 @@ export function validateCRFData(formData, schemaFields) {
             const softMax = field.softMax     ?? field.validation?.softMax;
 
             if (hardMin !== undefined && hardMin !== null && num < hardMin) {
-                push(`${field.label} (${num}) is below the allowed minimum (${hardMin}${field.unit ? ' ' + field.unit : ''}).`);
+                push(key, 'min', `${field.label} (${num}) is below the allowed minimum (${hardMin}${field.unit ? ' ' + field.unit : ''}).`);
             } else if (hardMax !== undefined && hardMax !== null && num > hardMax) {
-                push(`${field.label} (${num}) exceeds the allowed maximum (${hardMax}${field.unit ? ' ' + field.unit : ''}).`);
+                push(key, 'max', `${field.label} (${num}) exceeds the allowed maximum (${hardMax}${field.unit ? ' ' + field.unit : ''}).`);
             } else {
                 if (softMin !== undefined && softMin !== null && num < softMin) {
                     const msg = `${field.label} (${num}) is unusually low (expected ≥ ${softMin}). Please verify.`;
@@ -94,7 +107,7 @@ export function validateCRFData(formData, schemaFields) {
             const vals = Array.isArray(value) ? value : [value];
             const invalid = vals.filter(v => !allowed.includes(v));
             if (invalid.length > 0) {
-                push(`${field.label}: "${invalid.join('", "')}" is not a valid codelist value.`);
+                push(key, 'codelist', `${field.label}: "${invalid.join('", "')}" is not a valid codelist value.`);
             }
         }
 
@@ -103,7 +116,7 @@ export function validateCRFData(formData, schemaFields) {
             try {
                 const rx = new RegExp(field.pattern);
                 if (!rx.test(value)) {
-                    push(field.patternMessage || `${field.label} does not match the required format.`);
+                    push(key, 'pattern', field.patternMessage || `${field.label} does not match the required format.`);
                 }
             } catch {
                 // invalid regex in schema — skip silently
@@ -114,9 +127,12 @@ export function validateCRFData(formData, schemaFields) {
     // ── Hardcoded cross-field: diastolic < systolic ─────────────────────────
     const sbp = parseFloat(formData.systolic_bp);
     const dbp = parseFloat(formData.diastolic_bp);
+    // Cross-field rules belong to no single field, so they carry key null and a
+    // rule id of their own. The id is what distinguishes them from each other —
+    // matching cross-field errors by message would break the moment a rule
+    // embedded a value the way the range messages do.
     if (!isNaN(sbp) && !isNaN(dbp) && dbp >= sbp) {
-        currentKey = null;
-        push('Diastolic BP must be less than Systolic BP.');
+        push(null, 'cross-field:bp', 'Diastolic BP must be less than Systolic BP.');
     }
 
     return { valid: errors.length === 0, errors, errorFields, warnings, softViolations };

@@ -14,7 +14,7 @@ import { licenseGuardCreate } from '../lib/licenseguard.js';
 import { writeAudit, writeFieldDiffAudit } from '../lib/audit.js';
 import { sameOrg, effectiveOrgId } from '../lib/tenantscope.js';
 import { checkLimit } from '../lib/plans.js';
-import { isUniqueViolation } from '../lib/dberrors.js';
+import { isUniqueViolation, uniqueConstraintName } from '../lib/dberrors.js';
 import { createAutoQueries } from './entries.js';
 import { deriveForm, planRow, mergeEntryData } from '../lib/importengine.js';
 
@@ -290,8 +290,14 @@ router.post('/visit', licenseGuardCreate, requireRole(...IMPORT_ROLES), async (r
                 rr.status = 'ok';
                 results.push(rr);
             } catch (rowErr) {
-                if (isUniqueViolation(rowErr)) rr.messages = ['Subject code already exists'];
-                else rr.messages = [rowErr.message];
+                if (isUniqueViolation(rowErr)) {
+                    // Two unique constraints can fire here now, and reporting
+                    // both as "Subject code already exists" would send the
+                    // operator looking in the wrong place entirely.
+                    rr.messages = [uniqueConstraintName(rowErr).includes('crf_entry')
+                        ? 'Another import or data entry created this CRF entry at the same moment — re-run this row'
+                        : 'Subject code already exists'];
+                } else rr.messages = [rowErr.message];
                 rr.status = 'error'; summary.errors++;
                 results.push(rr);
             }

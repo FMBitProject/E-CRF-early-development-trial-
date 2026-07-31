@@ -931,6 +931,35 @@ async function runMigrations() {
         `ALTER TABLE visits ADD COLUMN IF NOT EXISTS investigator_unsigned_by_name TEXT`,
         `ALTER TABLE visits ADD COLUMN IF NOT EXISTS investigator_unsign_reason TEXT`,
         `ALTER TABLE visits DROP COLUMN IF EXISTS notes`,
+
+        // One CRF entry per (subject, visit, form). Both the import route and
+        // the data-entry route do "select, then insert if absent" with no lock,
+        // and a SELECT ... FOR UPDATE takes no lock when the row does not exist
+        // yet — so two concurrent saves both found nothing and both inserted.
+        // The duplicate is invisible in the UI (the reader takes the first
+        // match) but both are emitted to the ODM export, which is worse than
+        // either outcome alone. Only the database can settle this.
+        //
+        // Creating the index outright would fail on any deployment that already
+        // has duplicates, and the migration runner would swallow that as a
+        // one-line warning. Deduplicating automatically is not an option
+        // either: esignatures cascade-delete with the entry, so a well-meant
+        // cleanup would destroy Part 11 signature records. So: create it when
+        // the data is clean, and say plainly what to do when it is not.
+        `DO $$
+         DECLARE dupes integer;
+         BEGIN
+             SELECT count(*) INTO dupes FROM (
+                 SELECT 1 FROM crf_data_entries
+                 GROUP BY subject_id, visit_id, form_id HAVING count(*) > 1
+             ) d;
+             IF dupes = 0 THEN
+                 CREATE UNIQUE INDEX IF NOT EXISTS idx_crf_entry_unique
+                     ON crf_data_entries (subject_id, visit_id, form_id);
+             ELSE
+                 RAISE WARNING 'crf_data_entries has % duplicate (subject, visit, form) group(s); idx_crf_entry_unique was NOT created. Reconcile them, then restart. To list them: SELECT subject_id, visit_id, form_id, count(*), array_agg(id) FROM crf_data_entries GROUP BY 1,2,3 HAVING count(*) > 1;', dupes;
+             END IF;
+         END $$`,
     ];
     for (const stmt of stmts) {
         try {

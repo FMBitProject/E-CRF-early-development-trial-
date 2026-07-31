@@ -13,3 +13,21 @@ export function isUniqueViolation(err) {
     }
     return false;
 }
+
+/**
+ * Which constraint was violated, walking the same cause chain.
+ *
+ * A route with more than one unique constraint in play cannot phrase a useful
+ * message without this: the import handler reported every 23505 as "Subject
+ * code already exists", which became wrong the moment a second constraint
+ * (one CRF entry per subject/visit/form) existed. Returns '' when the driver
+ * did not name one.
+ */
+export function uniqueConstraintName(err) {
+    for (let e = err, depth = 0; e && depth < 5; e = e.cause, depth++) {
+        // postgres-js exposes constraint_name; node-postgres uses constraint.
+        const name = e.constraint_name ?? e.constraint;
+        if (name) return String(name);
+    }
+    return '';
+}

@@ -186,3 +186,43 @@ test('the same field failing the same rule at two values keeps one stable key', 
 test('a clean record reports no errorFields', () => {
     assert.deepEqual(validateCRFData({ ldl: '50' }, [{ key: 'ldl', label: 'LDL', type: 'number', min: 10 }]).errorFields, []);
 });
+
+test('each error names the rule that failed, not just the field', () => {
+    // The merge guard compares (field, rule). Without the rule, one field
+    // failing two different rules looked like the same problem.
+    const f = [{ key: 'ldl', label: 'LDL', type: 'number', min: 10 }];
+    const low = validateCRFData({ ldl: '5' }, f).errorFields[0];
+    const nan = validateCRFData({ ldl: 'abc' }, f).errorFields[0];
+    assert.equal(low.key, nan.key, 'same field');
+    assert.notEqual(low.rule, nan.rule, 'different rule');
+});
+
+test('a cross-field rule has its own rule id, so a second one cannot collide with it', () => {
+    const f = [
+        { key: 'systolic_bp', label: 'SBP', type: 'number' },
+        { key: 'diastolic_bp', label: 'DBP', type: 'number' },
+    ];
+    const [e] = validateCRFData({ systolic_bp: '90', diastolic_bp: '120' }, f).errorFields;
+    assert.equal(e.key, null);
+    assert.ok(e.rule && e.rule !== 'required', `cross-field rule id missing: ${e.rule}`);
+});
+
+test('validateCRFData does not throw when schemaFields is not an array', () => {
+    for (const bad of [null, undefined, 'x', 42, {}]) {
+        assert.doesNotThrow(() => validateCRFData({ a: 1 }, bad), `schemaFields=${JSON.stringify(bad)}`);
+    }
+});
+
+test('a malformed entry inside schemaFields is skipped, not fatal', () => {
+    // A null in the fields array threw on field.conditionalRequired. Reached
+    // from an import, that aborts the whole row with a TypeError instead of a
+    // validation result.
+    const good = { key: 'ldl', label: 'LDL', type: 'number', min: 10 };
+    for (const bad of [null, undefined, 'x', 7, []]) {
+        assert.doesNotThrow(() => validateCRFData({ ldl: '5' }, [bad, good]), `entry ${JSON.stringify(bad)}`);
+    }
+    // The valid field beside it is still checked.
+    const { errorFields } = validateCRFData({ ldl: '5' }, [null, good]);
+    assert.equal(errorFields.length, 1);
+    assert.equal(errorFields[0].key, 'ldl');
+});

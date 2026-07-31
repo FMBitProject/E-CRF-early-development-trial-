@@ -63,9 +63,11 @@ function usableZone(name) {
         resolved = 'UTC';
     }
     // The cache exists to avoid re-validating per row, not to remember every
-    // string ever passed. A caller feeding it varying names must not grow it
-    // without bound.
-    if (zoneCache.size < 64) zoneCache.set(name, resolved);
+    // string ever passed. Cleared rather than frozen at the cap, matching
+    // warnedZones: freezing it meant every later name re-validated through a
+    // thrown-and-caught Intl exception on every single call.
+    if (zoneCache.size >= 64) zoneCache.clear();
+    zoneCache.set(name, resolved);
     return resolved;
 }
 

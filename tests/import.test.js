@@ -267,3 +267,36 @@ test('a cross-field rule already broken stays un-introduced', () => {
     const broken = { systolic_bp: '90', diastolic_bp: '120' };
     assert.deepEqual(mergeEntryData(broken, { systolic_bp: '95' }, BP_FIELDS).introduced, []);
 });
+
+test('breaking an already-invalid field in a NEW way is still caught', () => {
+    // Comparing by field key alone was too coarse: once a field had any error,
+    // every later error on it was suppressed. An out-of-range number being
+    // replaced by text is a different rule failing, and storing 'abc' in a
+    // number column is worse than storing 5.
+    const f = [{ key: 'ldl', label: 'LDL', type: 'number', min: 10 }];
+    const { introduced } = mergeEntryData({ ldl: '5' }, { ldl: 'abc' }, f);
+    assert.equal(introduced.length, 1, 'a different rule failing is a new problem');
+    assert.match(introduced[0], /must be a valid number/);
+});
+
+test('the same rule failing at a different value is still not "introduced"', () => {
+    const f = [{ key: 'ldl', label: 'LDL', type: 'number', min: 10 }];
+    assert.deepEqual(mergeEntryData({ ldl: '5' }, { ldl: '3' }, f).introduced, []);
+});
+
+test('a required field left empty stays un-introduced, but a codelist break is caught', () => {
+    const f = [{ key: 'sev', label: 'Severity', type: 'select', required: true,
+                 options: ['Mild', 'Severe'], closedCodelist: true }];
+    // Was empty and required; still empty → same rule, not introduced.
+    assert.deepEqual(mergeEntryData({}, { other: 'x' }, f).introduced, []);
+    // Now filled with something off the codelist → a different rule.
+    const { introduced } = mergeEntryData({}, { sev: 'Catastrophic' }, f);
+    assert.equal(introduced.length, 1);
+    assert.match(introduced[0], /not a valid codelist value/);
+});
+
+test('mergeEntryData tolerates a non-array formFields instead of throwing', () => {
+    for (const bad of [null, undefined, 'x', 42, {}]) {
+        assert.doesNotThrow(() => mergeEntryData({ a: '1' }, { b: '2' }, bad), `formFields=${JSON.stringify(bad)}`);
+    }
+});

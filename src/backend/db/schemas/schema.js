@@ -1,5 +1,5 @@
 import {
-    pgTable, text, timestamp, boolean, integer, jsonb, pgEnum, varchar
+    pgTable, text, timestamp, boolean, integer, jsonb, pgEnum, varchar, uniqueIndex
 } from 'drizzle-orm/pg-core';
 
 // ─── Better Auth required tables ────────────────────────────────────────────
@@ -394,7 +394,16 @@ export const crfDataEntries = pgTable('crf_data_entries', {
     createdBy:    text('created_by').references(() => user.id),
     updatedAt:    timestamp('updated_at').notNull().defaultNow(),
     updatedBy:    text('updated_by').references(() => user.id),
-});
+}, (t) => ({
+    // A form is filled once per visit. Both writers (routes/entries.js and
+    // routes/import.js) check-then-insert without a lock, and no lock is
+    // possible on a row that does not exist yet — so concurrency was settled
+    // here or not at all. Created by the guarded migration in server.js, which
+    // refuses on a database that already holds duplicates rather than deleting
+    // anything: esignatures cascade with the entry.
+    oneEntryPerVisitForm: uniqueIndex('idx_crf_entry_unique')
+        .on(t.subjectId, t.visitId, t.formId),
+}));
 
 export const auditActionEnum = pgEnum('audit_action', ['INSERT', 'UPDATE', 'DELETE', 'LOCK', 'UNLOCK', 'LOGIN', 'LOGOUT', 'EXPORT', 'SIGN', 'AGREE']);
 

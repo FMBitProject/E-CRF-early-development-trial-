@@ -252,14 +252,17 @@ export function mergeEntryData(existingData, incoming, formFields = []) {
     // of a long-broken record that this guard is documented as allowing.
     // A field already failing stays failing; what matters is whether this
     // import broke something that was previously fine.
-    const beforeErrors = validateCRFData(before, formFields).errorFields;
-    const wasBad = new Set(beforeErrors.filter(e => e.key !== null).map(e => e.key));
-    // Cross-field rules belong to no single field, so those are still matched
-    // by message — and those messages do not embed values, so they are stable.
-    const wasBadCross = new Set(beforeErrors.filter(e => e.key === null).map(e => e.message));
+    // Identity is (field, rule) — not the message, and not the field alone.
+    // The message embeds the offending value, so it changed whenever the value
+    // did. The field alone was too coarse in the other direction: once a field
+    // had any error, every later error on it was suppressed, so replacing an
+    // out-of-range number with text sailed through. Cross-field rules carry a
+    // null key and their own rule id, which is what keeps two of them apart.
+    const ident = (e) => `${e.key ?? ''} ${e.rule ?? ''}`;
+    const wasBad = new Set(validateCRFData(before, formFields).errorFields.map(ident));
 
     const introduced = validateCRFData(merged, formFields).errorFields
-        .filter(e => (e.key === null ? !wasBadCross.has(e.message) : !wasBad.has(e.key)))
+        .filter(e => !wasBad.has(ident(e)))
         .map(e => e.message);
 
     return { merged, introduced };
