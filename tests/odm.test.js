@@ -534,3 +534,37 @@ test('an entry whose form row is gone still resolves to a FormDef', () => {
         assert.ok(declared.has(oid), `FormOID="${oid}" is not declared`);
     }
 });
+
+test('a role that collides with an Object prototype key does not leak a function', () => {
+    // ODM_USER_TYPE is an object literal, so it inherits from Object.prototype.
+    // A lowercase inherited key ("constructor") satisfied the `|| 'Other'`
+    // fallback and put "function Object() { [native code] }" in the attribute.
+    const enums = ['Sponsor', 'Investigator', 'SiteCoordinator', 'Subject', 'LabTechnician', 'Other'];
+    for (const role of ['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__', 'prototype', '']) {
+        const xml = buildOdmXml({
+            ...RICH,
+            signatures: [{ entryId: 100, userId: 'u-1', userName: 'X', userRole: role, signedAt: '2026-03-01T02:00:00.000Z' }],
+        }, { now: NOW });
+        const got = /UserType="([^"]*)"/.exec(xml)?.[1];
+        assert.ok(enums.includes(got), `role ${JSON.stringify(role)} produced UserType=${JSON.stringify(got)}`);
+    }
+});
+
+test('a legacy schema with duplicate field keys does not produce duplicate OIDs', () => {
+    // validateFormSchema rejects duplicate keys today, but rows written before
+    // it existed can still hold them. Two ItemDefs sharing an OID make the
+    // reference ambiguous — the "no OID is declared twice" test above only ever
+    // saw clean fixtures.
+    const xml = buildOdmXml({
+        ...RICH,
+        forms: [{ id: 5, name: 'Legacy', schemaJson: { fields: [
+            { key: 'ldl', label: 'LDL', type: 'number' },
+            { key: 'ldl', label: 'LDL again', type: 'text' },
+        ] } }],
+        entries: [{ id: 100, subjectId: 1, visitId: 10, formId: 5, dataJson: { ldl: 1 } }],
+    }, { now: NOW });
+    for (const el of ['ItemGroupDef', 'ItemDef']) {
+        const oids = [...xml.matchAll(new RegExp(`<${el} OID="([^"]+)"`, 'g'))].map(m => m[1]);
+        assert.deepEqual(oids.filter((o, i) => oids.indexOf(o) !== i), [], `duplicate <${el}> OID`);
+    }
+});

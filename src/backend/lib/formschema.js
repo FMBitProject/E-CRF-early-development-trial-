@@ -105,8 +105,14 @@ export function schemasEqual(a, b) {
     return ka.every(k => Object.prototype.hasOwnProperty.call(b, k) && schemasEqual(a[k], b[k]));
 }
 
-/** How a field property reads to someone who has never seen the JSON. */
+/**
+ * How a field property reads to someone who has never seen the JSON.
+ * `__proto__: null` so a property named after an inherited Object member (a
+ * field literally keyed "constructor") cannot resolve to a function and get
+ * spliced into the message.
+ */
 const PROP_LABEL = {
+    __proto__: null,
     label: 'wording', type: 'answer type', required: 'required flag',
     options: 'answer choices', closedCodelist: 'closed-codelist flag',
     min: 'minimum', max: 'maximum', softMin: 'expected minimum', softMax: 'expected maximum',

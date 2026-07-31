@@ -82,7 +82,12 @@ function signerOid(sig) {
  * regulator reads to see who signed what. An unmapped role says Other rather
  * than guessing.
  */
+// `__proto__: null` so a role that happens to name an inherited Object member
+// cannot satisfy the lookup. "constructor" lowercases to itself, returned
+// Object.prototype.constructor, and put "function Object() { [native code] }"
+// into a UserType attribute.
 const ODM_USER_TYPE = {
+    __proto__:      null,
     investigator:   'Investigator',
     pi:             'Investigator',
     crc:            'SiteCoordinator',
@@ -114,8 +119,11 @@ function studyEventOid(visitOrder) {
  * validate against the ODM 1.3.2 schema, which is the one thing a regulator's
  * loader checks before it will read the ClinicalData at all.
  *
- * Declaring them from a table keeps the definition next to the writer below:
- * adding a column in one place without the other shows up in a diff.
+ * The writer below is still hand-written, so this table does not keep the two
+ * in step by itself. What it does buy is that the metadata half lives in one
+ * place, and the referential-integrity test catches the direction that
+ * matters: an ItemData emitted without a matching entry here fails the suite.
+ * The reverse — a row here with no writer — is harmless, just an unused def.
  * Items are [OID suffix, name, ODM DataType, SDTM variable or ''].
  */
 const BUILTIN_DOMAINS = [
@@ -260,10 +268,16 @@ export function buildOdmXml(data, { now = new Date() } = {}) {
     const formSpecs = [...new Set([...formById.keys(), ...entries.map(e => e.formId)])]
         .map((id) => {
             const form = formById.get(id);
-            const declared = (form?.schemaJson?.fields ?? []).filter(f => f?.key);
-            const extra = [...(extraByForm.get(id) ?? [])].map(key => ({
-                key, label: key, type: 'text', undeclared: true,
-            }));
+            // First definition wins per key. validateFormSchema rejects
+            // duplicates today, but rows written before it existed can still
+            // hold them, and two ItemDefs sharing an OID make the reference
+            // ambiguous — the defect this whole section exists to prevent.
+            const seen = new Set();
+            const declared = (form?.schemaJson?.fields ?? [])
+                .filter(f => f?.key && !seen.has(f.key) && seen.add(f.key));
+            const extra = [...(extraByForm.get(id) ?? [])]
+                .filter(key => !seen.has(key))
+                .map(key => ({ key, label: key, type: 'text', undeclared: true }));
             return { id, name: form?.name ?? `Form ${id} (definition unavailable)`, fields: [...declared, ...extra] };
         });
 

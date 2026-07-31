@@ -404,6 +404,10 @@ function slugifyKey(label, excludeIndex = -1) {
 
 window.fbUpdateField = (i, key, value) => {
     const prev = _fields[i];
+    // A handler left over from a render that has since shrunk the list would
+    // otherwise throw on prev.key below, and an inline onchange has nowhere to
+    // report that — the edit just silently stops working.
+    if (!prev) return;
     _fields[i] = { ...prev, [key]: value };
     // Auto-generate the field key from the label unless the user customized it.
     // Two questions labelled the same would otherwise claim one storage slot;

@@ -16,7 +16,7 @@ import { sameOrg, effectiveOrgId } from '../lib/tenantscope.js';
 import { checkLimit } from '../lib/plans.js';
 import { isUniqueViolation } from '../lib/dberrors.js';
 import { createAutoQueries } from './entries.js';
-import { deriveForm, planRow } from '../lib/importengine.js';
+import { deriveForm, planRow, mergeEntryData } from '../lib/importengine.js';
 
 const router = Router();
 const IMPORT_ROLES = ['admin', 'crc', 'data_manager', 'investigator', 'pi'];
@@ -175,7 +175,14 @@ router.post('/visit', licenseGuardCreate, requireRole(...IMPORT_ROLES), async (r
                         // destroyed the other eight. An import can add or
                         // overwrite an answer; it must not erase one it never
                         // mentioned.
-                        const mergedData = { ...(existEntry.dataJson ?? {}), ...plan.crf };
+                        // plan.validation covers the mapped columns only, so the
+                        // merged result — the thing actually stored — has to be
+                        // re-checked. A cross-field rule can only fail once both
+                        // sides are present, which is after the merge.
+                        const { merged: mergedData, introduced } = mergeEntryData(existEntry.dataJson, plan.crf, formFields);
+                        if (introduced.length) {
+                            throw new Error(`merging into the existing entry would break: ${introduced.join('; ')}`);
+                        }
                         await db.update(crfDataEntries).set({ dataJson: mergedData, status: 'Saved', updatedAt: new Date(), updatedBy: req.user.id }).where(eq(crfDataEntries.id, existEntry.id));
                         summary.entriesUpdated++;
                         await writeFieldDiffAudit(db, { tableName: 'crf_data_entries', recordId: existEntry.id, oldData: existEntry.dataJson, newData: mergedData, reason: reasonText, user: req.user, ipAddress: req.ip });

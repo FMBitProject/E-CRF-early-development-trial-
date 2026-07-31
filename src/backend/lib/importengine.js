@@ -222,3 +222,29 @@ export function planRow(row, columnMap, formFields = []) {
         ok:       structuralErrors.length === 0 && validation.valid,
     };
 }
+
+/**
+ * Merge an imported row onto an entry that already exists, and report only the
+ * validation errors this import introduced.
+ *
+ * Two defects meet here. The importer originally assigned plan.crf wholesale,
+ * so re-importing a two-column correction against a ten-question form deleted
+ * the other eight answers. Merging fixes that, but planRow validates the mapped
+ * columns alone — and a cross-field rule can only fail once both sides are
+ * present, which is after the merge. Validating only the incoming half let the
+ * import store an entry that validateCRFData rejects.
+ *
+ * The comparison against the pre-merge state matters: an entry saved before a
+ * rule existed is already failing, and blocking on that would make a legacy
+ * record impossible to correct by import — the opposite of the point. Only
+ * problems that were not there before are attributed to this import.
+ *
+ * @returns {{ merged: object, introduced: string[] }}
+ */
+export function mergeEntryData(existingData, incoming, formFields = []) {
+    const before = { ...(existingData ?? {}) };
+    const merged = { ...before, ...(incoming ?? {}) };
+    const already = new Set(validateCRFData(before, formFields).errors);
+    const introduced = validateCRFData(merged, formFields).errors.filter(e => !already.has(e));
+    return { merged, introduced };
+}

@@ -266,3 +266,15 @@ test('every difference schemasEqual blocks on produces an explanation', () => {
         assert.ok(describeSchemaChange(v, base).length > 0, `no explanation for ${JSON.stringify(v)}`);
     }
 });
+
+test('a field property named like an Object prototype key is labelled as itself', () => {
+    // PROP_LABEL is an object literal, so PROP_LABEL['constructor'] is a
+    // function rather than undefined and would be spliced into the message.
+    const out = describeSchemaChange(
+        schema({ key: 'x', label: 'X', type: 'text', constructor: 'b' }),
+        schema({ key: 'x', label: 'X', type: 'text', constructor: 'a' }),
+    );
+    assert.equal(out.length, 1);
+    assert.match(out[0], /constructor changed/);
+    assert.ok(!/native code/.test(out[0]), out[0]);
+});

@@ -54,9 +54,14 @@ test('a calendar day is resolved in the export timezone, not in UTC', () => {
     assert.equal(isoDay(earlyMorningJakarta, 'UTC'), '2026-07-30', 'the old behaviour, kept as the contrast');
 });
 
-test('the export timezone defaults to the sites, so isoDay needs no argument', () => {
-    assert.equal(EXPORT_TZ, process.env.EXPORT_TZ || 'Asia/Jakarta');
+test('isoDay falls back to EXPORT_TZ when no zone is passed', () => {
+    // This used to also assert `EXPORT_TZ === process.env.EXPORT_TZ || 'Asia/Jakarta'`,
+    // which is true whatever the environment holds — a tautology that could
+    // never fail. What EXPORT_TZ resolves to under each environment is now
+    // covered by the child-process tests at the bottom of this file, which is
+    // the only place module-initialisation order can actually be observed.
     assert.equal(isoDay('2026-07-31T06:00:00+07:00'), isoDay('2026-07-31T06:00:00+07:00', EXPORT_TZ));
+    assert.equal(isoDay('2026-07-31T20:00:00Z'), isoDay('2026-07-31T20:00:00Z', EXPORT_TZ));
 });
 
 test('an unusable timezone degrades to UTC instead of throwing', () => {
@@ -109,4 +114,48 @@ test('booleans and arrays are not dates, however willing JS is to coerce them', 
 test('a number is still an epoch offset — that is a real date', () => {
     assert.equal(isoDay(0, 'UTC'), '1970-01-01');
     assert.notEqual(toDate(1785000000000), null);
+});
+
+// ── Module initialisation ───────────────────────────────────────────────────
+// EXPORT_TZ is read at import time, so a fault there takes down every route
+// that touches an exporter. The previous test here asserted
+// `EXPORT_TZ === process.env.EXPORT_TZ || 'Asia/Jakarta'`, which is true
+// whatever the environment holds and therefore could never fail — and the
+// branch that runs when the variable IS set was never executed by CI at all.
+// These spawn a real process with the variable set, which is the only way to
+// exercise module-initialisation order.
+
+import { execFileSync } from 'node:child_process';
+
+const loadWith = (env) => execFileSync(
+    process.execPath,
+    ['--input-type=module', '-e', `
+        const m = await import('${new URL('../src/backend/lib/isodate.js', import.meta.url).href}');
+        process.stdout.write(m.EXPORT_TZ + '|' + m.isoDay('2026-07-31T06:00:00+07:00'));
+    `],
+    { env: { ...process.env, ...env }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+);
+
+test('the module loads when EXPORT_TZ is set — the documented setup path', () => {
+    // .env.example ships EXPORT_TZ uncommented, so this is what a fresh install
+    // does. A ReferenceError here means the server does not start at all.
+    const [zone, day] = loadWith({ EXPORT_TZ: 'Asia/Makassar' }).split('|');
+    assert.equal(zone, 'Asia/Makassar');
+    assert.equal(day, '2026-07-31', 'WITA is UTC+8, so 06:00 WIB is the same day');
+});
+
+test('the module loads when EXPORT_TZ is unset', () => {
+    const env = { ...process.env };
+    delete env.EXPORT_TZ;
+    const out = execFileSync(process.execPath, ['--input-type=module', '-e', `
+        const m = await import('${new URL('../src/backend/lib/isodate.js', import.meta.url).href}');
+        process.stdout.write(m.EXPORT_TZ);
+    `], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    assert.equal(out, 'Asia/Jakarta');
+});
+
+test('a bad EXPORT_TZ degrades to UTC instead of killing the process', () => {
+    const [zone, day] = loadWith({ EXPORT_TZ: 'Not/AZone' }).split('|');
+    assert.equal(zone, 'UTC');
+    assert.equal(day, '2026-07-30', 'UTC really is the previous day for that instant');
 });

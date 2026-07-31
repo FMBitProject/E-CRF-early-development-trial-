@@ -21,12 +21,6 @@
  */
 
 /**
- * IANA zone the sites operate in. Override per deployment; the default suits a
- * single-country Indonesian install, which is what this is sold as.
- */
-export const EXPORT_TZ = usableZone(process.env.EXPORT_TZ);
-
-/**
  * Resolve a zone name to one Intl will accept.
  *
  * An unknown name makes Intl throw. Failing hard would take the server down at
@@ -34,8 +28,17 @@ export const EXPORT_TZ = usableZone(process.env.EXPORT_TZ);
  * exactly once per bad name, since this runs per row of an export and would
  * otherwise bury the log. Silence was the worse bug: a mistyped zone used to
  * hand back UTC dates that looked entirely plausible.
+ *
+ * Every `const` this function touches has to be declared above the EXPORT_TZ
+ * assignment below. `function` declarations hoist and `const` does not, so a
+ * cache declared underneath sat in the temporal dead zone at module-init time
+ * and threw a ReferenceError — but only when EXPORT_TZ was actually set, since
+ * the unset path returns before reading it. Setting it is the documented
+ * install step, so this took the server down on exactly the fresh installs it
+ * was written to serve.
  */
 const zoneCache = new Map();   // requested name → name Intl accepts
+const warnedZones = new Set();
 
 function usableZone(name) {
     if (!name) return 'Asia/Jakarta';
@@ -47,7 +50,13 @@ function usableZone(name) {
         new Intl.DateTimeFormat('en-CA', { timeZone: name });
         resolved = name;
     } catch {
-        console.warn(`[isodate] "${name}" is not a valid IANA timezone; export dates fall back to UTC.`);
+        // Warn once per name even if the cache is full, or a caller passing
+        // varying bad names would flood the log — the flood the cache exists
+        // to prevent. The name set is small; the warn set is bounded with it.
+        if (!warnedZones.has(name) && warnedZones.size < 64) {
+            warnedZones.add(name);
+            console.warn(`[isodate] "${name}" is not a valid IANA timezone; export dates fall back to UTC.`);
+        }
         resolved = 'UTC';
     }
     // The cache exists to avoid re-validating per row, not to remember every
@@ -58,6 +67,14 @@ function usableZone(name) {
 }
 
 const dayFormatters = new Map();
+
+/**
+ * IANA zone the sites operate in. Override per deployment; the default suits a
+ * single-country Indonesian install, which is what this is sold as.
+ *
+ * Declared after usableZone and everything it reads — see the note above.
+ */
+export const EXPORT_TZ = usableZone(process.env.EXPORT_TZ);
 
 function dayFormatter(timeZone) {
     const zone = usableZone(timeZone);

@@ -179,3 +179,59 @@ test('planRow creates an AE from a non-NIHIL safety column, serious from SAE', (
     assert.equal(p2.ae.serious, true);
     assert.equal(p2.ae.term, 'Dirawat inap');
 });
+
+// ── Merging an import onto an existing entry ────────────────────────────────
+// The importer used to assign plan.crf wholesale, deleting every answer the CSV
+// did not contain. Merging fixed that but opened a second hole: plan.validation
+// is computed over the mapped columns alone, so the merged result — the thing
+// actually stored — was never checked. A cross-field rule can only fail once
+// both sides are present, which by definition is after the merge.
+
+import { mergeEntryData } from '../src/backend/lib/importengine.js';
+
+const BP_FIELDS = [
+    { key: 'systolic_bp',  label: 'SBP', type: 'number' },
+    { key: 'diastolic_bp', label: 'DBP', type: 'number' },
+];
+
+test('merging preserves answers the imported file never mentioned', () => {
+    const { merged } = mergeEntryData({ a: '1', b: '2', c: '3' }, { b: '9' }, []);
+    assert.deepEqual(merged, { a: '1', b: '9', c: '3' });
+});
+
+test('an import that only supplies part of a cross-field rule is caught', () => {
+    // Validated alone, { diastolic_bp: 120 } is fine — the other side is
+    // missing so the comparison is skipped. Merged, it is not.
+    const { introduced } = mergeEntryData({ systolic_bp: '90' }, { diastolic_bp: '120' }, BP_FIELDS);
+    assert.equal(introduced.length, 1);
+    assert.match(introduced[0], /Diastolic BP must be less than Systolic BP/);
+});
+
+test('a valid merge introduces nothing', () => {
+    const { merged, introduced } = mergeEntryData({ systolic_bp: '120' }, { diastolic_bp: '80' }, BP_FIELDS);
+    assert.deepEqual(introduced, []);
+    assert.deepEqual(merged, { systolic_bp: '120', diastolic_bp: '80' });
+});
+
+test('a problem the entry already had does not block an unrelated correction', () => {
+    // The entry was saved before the rule existed. Blocking here would make a
+    // legacy record impossible to correct by import, which is the opposite of
+    // what the guard is for.
+    const broken = { systolic_bp: '90', diastolic_bp: '120' };
+    const { introduced } = mergeEntryData(broken, { systolic_bp: '90' }, BP_FIELDS);
+    assert.deepEqual(introduced, [], 'the pre-existing error is not attributed to this import');
+});
+
+test('an import that fixes a pre-existing problem introduces nothing', () => {
+    const broken = { systolic_bp: '90', diastolic_bp: '120' };
+    const { merged, introduced } = mergeEntryData(broken, { systolic_bp: '140' }, BP_FIELDS);
+    assert.deepEqual(introduced, []);
+    assert.equal(merged.systolic_bp, '140');
+});
+
+test('null and undefined sides are handled', () => {
+    assert.deepEqual(mergeEntryData(null, { a: '1' }, []).merged, { a: '1' });
+    assert.deepEqual(mergeEntryData({ a: '1' }, null, []).merged, { a: '1' });
+    assert.deepEqual(mergeEntryData(undefined, undefined, []).merged, {});
+    assert.doesNotThrow(() => mergeEntryData({ a: '1' }, { b: '2' }));
+});
