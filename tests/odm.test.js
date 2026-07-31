@@ -173,9 +173,14 @@ test('CRF data is grouped under a StudyEventOID derived from the visit order', (
     assert.ok(build().includes('StudyEventOID="SE.V02" StudyEventRepeatKey="10"'));
 });
 
-test('an entry whose visit is missing from the visit list still exports', () => {
+test('an entry whose visit is missing from the visit list exports as unscheduled', () => {
+    // It used to fall back to the visit *id*, which is a different numbering
+    // space from visitOrder: entry on visit id 10 came out as "SE.V10" and
+    // merged with whatever real visit happened to be number 10. It also
+    // referenced an OID that MetaDataVersion never declared.
     const xml = build({ visits: [] });
-    assert.ok(xml.includes('StudyEventOID="SE.V10"'), 'falls back to the visit id');
+    assert.ok(xml.includes('StudyEventData StudyEventOID="SE.UNSCHEDULED"'));
+    assert.ok(!xml.includes('StudyEventData StudyEventOID="SE.V10"'));
 });
 
 test('each captured field becomes an ItemData under its own ItemGroupData', () => {
@@ -223,8 +228,13 @@ test('a non-serious AE exports AESER="N"', () => {
     assert.ok(xml.includes('<ItemData ItemOID="IT.AE.AESER"    Value="N"/>'));
 });
 
-test('a subject with no AEs emits no SE.AE block at all', () => {
-    assert.ok(!build().includes('StudyEventOID="SE.AE"'));
+test('a subject with no AEs emits no SE.AE data block at all', () => {
+    // SE.AE is always *declared* in MetaDataVersion — metadata describes the
+    // study design, not what one subject happens to have. What must be absent
+    // is the ClinicalData block.
+    const xml = build();
+    assert.ok(!xml.includes('<StudyEventData StudyEventOID="SE.AE"'));
+    assert.ok(xml.includes('<StudyEventDef OID="SE.AE"'), 'still declared in metadata');
 });
 
 test('consent records export into SE.CONSENT with a withdrawal flag', () => {
@@ -322,4 +332,126 @@ test('an entry with no visit gets an unscheduled study event, not "SE.Vnull"', (
     const xml = build({ visits: [], entries: [{ id: 100, subjectId: 1, visitId: null, formId: 5, dataJson: { ldl: 1 } }] });
     assert.ok(!xml.includes('SE.Vnull'));
     assert.ok(xml.includes('StudyEventOID="SE.UNSCHEDULED"'));
+});
+
+// ── Referential integrity ───────────────────────────────────────────────────
+// An ODM document is only useful if a regulator's loader will read it, and the
+// first thing a loader does is resolve OIDs. MetaDataVersion used to declare
+// nothing for DM/AE/IC or for any study event, so ClinicalData referenced 42
+// OIDs that did not exist and the document failed schema validation outright.
+// Asserting on individual OIDs would not have caught that — the check has to be
+// "every reference resolves", run over a document that exercises every branch.
+
+const RICH = {
+    studyName: 'LKT Trial', studyOID: 'ECRF.LKT.001',
+    subjects: [
+        { subject: { id: 1, subjectCode: '01LKT', initials: 'AB', sex: 'M', status: 'Active', enrolledAt: '2026-01-15T00:00:00.000Z' }, site: { code: 'SITE01', name: 'RS Umum' } },
+        { subject: { id: 2, subjectCode: '02LKT', sex: 'F', status: 'Withdrawn', enrolledAt: '2026-02-01T00:00:00.000Z' }, site: null },
+    ],
+    visits: [
+        { id: 10, visitOrder: 2, visitName: 'Week 4',   visitType: 'Scheduled',   formIds: [5] },
+        { id: 11, visitOrder: 1, visitName: 'Baseline', visitType: 'Scheduled',   formIds: [5, 6] },
+        { id: 12, visitOrder: null, visitName: 'Ad hoc', visitType: 'Unscheduled', formIds: [] },
+    ],
+    forms: [
+        { id: 5, name: 'Lipid Panel', schemaJson: { fields: [
+            { key: 'ldl', label: 'LDL', type: 'number', required: true, sdtmDomain: 'LB', sdtmVar: 'LBORRES' },
+            { key: 'ok',  label: 'Tolerated?', type: 'boolean' },
+        ] } },
+        { id: 6, name: 'Vitals', schemaJson: { fields: [{ key: 'sbp', label: 'SBP', type: 'number' }] } },
+    ],
+    entries: [
+        { id: 100, subjectId: 1, visitId: 10, formId: 5, dataJson: { ldl: 230, ok: 'Yes' } },
+        { id: 101, subjectId: 1, visitId: 11, formId: 6, dataJson: { sbp: 120 } },
+        { id: 102, subjectId: 2, visitId: 99, formId: 5, dataJson: { ldl: 1 } },  // visit not in the list
+        { id: 103, subjectId: 2, visitId: 12, formId: 5, dataJson: { ldl: 2 } },  // unscheduled visit
+    ],
+    adverseEvents: [{ id: 3, subjectId: 1, aeTerm: 'Headache', severity: 'Mild', isSerious: false }],
+    consents: [{ id: 2, subjectId: 1, consentVersion: '2.1', consentDate: '2026-01-10', consentType: 'Initial', language: 'id', isWithdrawn: false }],
+    signatures: [{ entryId: 100, userId: 'u-1', userName: 'Dr Sari', userRole: 'pi', signedAt: '2026-03-01T02:00:00.000Z' }],
+};
+
+test('every OID referenced anywhere in the document is declared', () => {
+    const xml = buildOdmXml(RICH, { now: NOW });
+    const all = (re) => [...xml.matchAll(re)].map(m => m[1]);
+    const declared = {
+        StudyEvent: new Set(all(/<StudyEventDef OID="([^"]+)"/g)),
+        Form:       new Set(all(/<FormDef OID="([^"]+)"/g)),
+        ItemGroup:  new Set(all(/<ItemGroupDef OID="([^"]+)"/g)),
+        Item:       new Set(all(/<ItemDef OID="([^"]+)"/g)),
+        User:       new Set(all(/<User OID="([^"]+)"/g)),
+        Location:   new Set(all(/<Location OID="([^"]+)"/g)),
+        Signature:  new Set(all(/<SignatureDef OID="([^"]+)"/g)),
+    };
+    const refs = [
+        ['StudyEvent', /<StudyEventRef StudyEventOID="([^"]+)"/g,  'Protocol/StudyEventRef'],
+        ['StudyEvent', /<StudyEventData StudyEventOID="([^"]+)"/g, 'ClinicalData/StudyEventData'],
+        ['Form',       /<FormRef FormOID="([^"]+)"/g,              'StudyEventDef/FormRef'],
+        ['Form',       /<FormData FormOID="([^"]+)"/g,             'ClinicalData/FormData'],
+        ['ItemGroup',  /<ItemGroupRef ItemGroupOID="([^"]+)"/g,    'FormDef/ItemGroupRef'],
+        ['ItemGroup',  /<ItemGroupData ItemGroupOID="([^"]+)"/g,   'ClinicalData/ItemGroupData'],
+        ['Item',       /<ItemRef ItemOID="([^"]+)"/g,              'ItemGroupDef/ItemRef'],
+        ['Item',       /<ItemData ItemOID="([^"]+)"/g,             'ClinicalData/ItemData'],
+        ['User',       /<UserRef UserOID="([^"]+)"/g,              'Signature/UserRef'],
+        ['Location',   /<SiteRef LocationOID="([^"]+)"/g,          'SubjectData/SiteRef'],
+        ['Location',   /<LocationRef LocationOID="([^"]+)"/g,      'Signature/LocationRef'],
+        ['Signature',  /<SignatureRef MethodOID="([^"]+)"/g,       'Signature/SignatureRef'],
+    ];
+    const dangling = [];
+    for (const [kind, re, where] of refs) {
+        for (const oid of new Set(all(re))) {
+            if (!declared[kind].has(oid)) dangling.push(`${where} → ${kind}OID="${oid}"`);
+        }
+    }
+    assert.deepEqual(dangling, [], `unresolvable OID reference(s):\n  ${dangling.join('\n  ')}`);
+});
+
+test('MetaDataVersion children follow the ODM 1.3.2 sequence', () => {
+    // The schema declares a sequence, not a choice: Protocol, StudyEventDef,
+    // FormDef, ItemGroupDef, ItemDef. Emitting an ItemGroupDef beside its
+    // ItemDef reads better and is invalid.
+    const xml  = buildOdmXml(RICH, { now: NOW });
+    const mdv  = xml.slice(xml.indexOf('<MetaDataVersion'), xml.indexOf('</MetaDataVersion>'));
+    const rank = { Protocol: 0, StudyEventDef: 1, FormDef: 2, ItemGroupDef: 3, ItemDef: 4 };
+    const seen = [...mdv.matchAll(/<(Protocol|StudyEventDef|FormDef|ItemGroupDef|ItemDef)\b/g)].map(m => m[1]);
+    assert.ok(seen.length > 0, 'metadata must not be empty');
+    for (let i = 1; i < seen.length; i++) {
+        assert.ok(rank[seen[i]] >= rank[seen[i - 1]], `<${seen[i]}> may not follow <${seen[i - 1]}>`);
+    }
+});
+
+test('SDSVarName stays a valid SAS name even when the builder was given a long one', () => {
+    // SDSVarName is capped at 8 characters. A well-meant mapping typed into the
+    // form builder would otherwise make every ItemDef in the export invalid.
+    const forms = [{ id: 5, name: 'F', schemaJson: { fields: [
+        { key: 'a', label: 'A', type: 'text', sdtmDomain: 'XX', sdtmVar: 'WAYTOOLONGNAME' },
+    ] } }];
+    const xml = buildOdmXml({ ...RICH, forms, entries: [] }, { now: NOW });
+    assert.ok(!xml.includes('SDSVarName="WAYTOOLONGNAME"'), 'an over-long name must be dropped');
+    for (const v of [...xml.matchAll(/SDSVarName="([^"]+)"/g)].map(m => m[1])) {
+        assert.match(v, /^[A-Za-z_][A-Za-z0-9_]{0,7}$/, `SDSVarName="${v}" is not a SAS name`);
+    }
+    // The mapping is still recorded, just where length is not constrained.
+    assert.ok(xml.includes('<Alias Context="SDTM"  Name="XX.WAYTOOLONGNAME"/>'));
+});
+
+test('the electronic signature method and its signer are declared in AdminData', () => {
+    const xml = buildOdmXml(RICH, { now: NOW });
+    assert.ok(xml.includes('<SignatureDef OID="ESIG" Methodology="Electronic">'));
+    assert.ok(xml.includes('<FullName>Dr Sari</FullName>'));
+    assert.ok(xml.includes('<Location OID="SITE01"'));
+    assert.ok(xml.includes('<Location OID="UNKNOWN"'), 'the SiteRef fallback needs a declaration too');
+});
+
+test('a signature whose user account is gone still resolves to a declared User', () => {
+    // esignatures.user_id is nullable. An empty UserOID is a dangling reference
+    // in exactly the same way an undeclared one is.
+    const xml = buildOdmXml({
+        ...RICH,
+        signatures: [{ entryId: 100, userId: null, userName: null, signedAt: '2026-03-01T02:00:00.000Z' }],
+    }, { now: NOW });
+    assert.ok(!xml.includes('UserOID=""'), 'must never emit an empty UserOID');
+    const used = [...xml.matchAll(/<UserRef UserOID="([^"]+)"/g)].map(m => m[1]);
+    const dec  = new Set([...xml.matchAll(/<User OID="([^"]+)"/g)].map(m => m[1]));
+    for (const oid of used) assert.ok(dec.has(oid), `UserOID="${oid}" is not declared`);
 });

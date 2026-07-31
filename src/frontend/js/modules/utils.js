@@ -71,7 +71,11 @@ export function closeModal() {
     if (root) root.innerHTML = '';
 }
 
-function escHtml(str) {
+// Element-content escaping. Stripping `<` is what actually prevents a tag from
+// being opened; quotes are left alone because callers interpolate into text
+// nodes, never into an attribute. Exported so every module that builds a
+// message list with innerHTML uses the same one.
+export function escHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

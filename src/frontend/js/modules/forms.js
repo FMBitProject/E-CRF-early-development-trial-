@@ -3,7 +3,7 @@
 // ============================================================
 
 import { api } from './api.js';
-import { showToast, showModal, closeModal } from './utils.js';
+import { showToast, showModal, closeModal, escHtml } from './utils.js';
 import { validateForm, validateNumericField, applyFieldValidation } from './validation.js';
 
 const SPINNER = `<div class="flex items-center justify-center h-40">
@@ -219,7 +219,12 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
         const errorList = document.getElementById('validation-error-list');
 
         if (!valid) {
-            errorList.innerHTML = Object.values(errors).map(e => `<li>${e}</li>`).join('');
+            // Validation messages are built from field.label (admin free text) and,
+            // for a closed-codelist failure, from the value the site just typed.
+            // renderField escapes labels; this summary is the path that did not,
+            // so a form named `<img src=x onerror=…>` executed in every
+            // investigator's session the moment a required field was left blank.
+            errorList.innerHTML = Object.values(errors).map(e => `<li>${escHtml(e)}</li>`).join('');
             summaryEl.classList.remove('hidden');
             summaryEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
             Object.keys(errors).forEach(key => {
@@ -233,7 +238,7 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
         summaryEl.classList.add('hidden');
 
         if (Object.keys(warnings).length > 0) {
-            document.getElementById('soft-warning-list').innerHTML = Object.values(warnings).map(w => `<li>${w}</li>`).join('');
+            document.getElementById('soft-warning-list').innerHTML = Object.values(warnings).map(w => `<li>${escHtml(w)}</li>`).join('');
             document.getElementById('soft-warning-summary').classList.remove('hidden');
             const proceed = await new Promise(resolve => {
                 showModal({
@@ -245,7 +250,7 @@ export async function renderDataEntry({ subjectId, visitId, formId }) {
                             ${Object.values(warnings).map(w => `
                             <div class="flex items-start gap-2 p-3 bg-amber-50 rounded-md border border-amber-100">
                                 <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5"></i>
-                                <span class="text-sm text-amber-800">${w}</span>
+                                <span class="text-sm text-amber-800">${escHtml(w)}</span>
                             </div>`).join('')}
                         </div>
                         <p class="text-sm font-semibold text-slate-700">Confirm these values are correct?</p>

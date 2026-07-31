@@ -7,7 +7,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toDate, isoDay, isoDateTime } from '../src/backend/lib/isodate.js';
+import { toDate, isoDay, isoDateTime, EXPORT_TZ } from '../src/backend/lib/isodate.js';
 
 test('an ISO timestamp is reduced to its calendar day', () => {
     assert.equal(isoDay('2026-07-28T09:30:00.000Z'), '2026-07-28');
@@ -42,7 +42,27 @@ test('an Invalid Date object is handled like any other bad value', () => {
 
 test('a numeric epoch is accepted', () => {
     assert.equal(isoDay(0), '1970-01-01');
-    assert.equal(isoDay(1785000000000), isoDateTime(1785000000000).split('T')[0]);
+    assert.equal(isoDay(1785000000000, 'UTC'), isoDateTime(1785000000000).split('T')[0]);
+});
+
+// OQ-A20.1 — a stored timestamp is an instant, a --DTC column is a calendar day.
+// Reducing one to the other in UTC reported every enrolment before 07:00 WIB a
+// day early, which is roughly the whole of a site's morning clinic.
+test('a calendar day is resolved in the export timezone, not in UTC', () => {
+    const earlyMorningJakarta = '2026-07-31T06:00:00+07:00';   // = 2026-07-30T23:00Z
+    assert.equal(isoDay(earlyMorningJakarta, 'Asia/Jakarta'), '2026-07-31');
+    assert.equal(isoDay(earlyMorningJakarta, 'UTC'), '2026-07-30', 'the old behaviour, kept as the contrast');
+});
+
+test('the export timezone defaults to the sites, so isoDay needs no argument', () => {
+    assert.equal(EXPORT_TZ, process.env.EXPORT_TZ || 'Asia/Jakarta');
+    assert.equal(isoDay('2026-07-31T06:00:00+07:00'), isoDay('2026-07-31T06:00:00+07:00', EXPORT_TZ));
+});
+
+test('an unusable timezone degrades to UTC instead of throwing', () => {
+    // Intl throws RangeError on an unknown zone. An exporter must not die
+    // because one caller passed a bad name.
+    assert.doesNotThrow(() => isoDay('2026-07-31T06:00:00Z', 'Not/AZone'));
 });
 
 test('the value zero is a real date, not treated as absent', () => {
