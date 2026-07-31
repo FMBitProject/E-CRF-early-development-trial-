@@ -19,11 +19,16 @@ export const SERIOUS_CRITERIA = [
     'disability', 'congenital', 'medically_important',
 ];
 
-/** Days allowed before an SAE must reach the sponsor/authority. */
+/**
+ * Days allowed before an SAE must reach the sponsor/authority.
+ * A non-array `seriousCriteria` is treated as no criteria rather than throwing:
+ * an SAE must always come out with a deadline, and defaulting to the shorter-is-
+ * safer 15 days is better than a 500 that loses the report entirely.
+ */
 export function expeditedWindowDays(isSerious, seriousCriteria) {
     if (!isSerious) return null;
-    const urgent = (seriousCriteria || []).some(c => URGENT_CRITERIA.includes(c));
-    return urgent ? 7 : 15;
+    const criteria = Array.isArray(seriousCriteria) ? seriousCriteria : [];
+    return criteria.some(c => URGENT_CRITERIA.includes(c)) ? 7 : 15;
 }
 
 /**
@@ -57,6 +62,20 @@ export function canEditAe(existing, { reason } = {}) {
     if (!existing) return deny(404, 'Adverse event not found');
     if (existing.reportStatus === 'Closed') {
         return deny(409, 'Cannot edit a closed adverse event');
+    }
+    return allow();
+}
+
+/**
+ * Guard for PATCH /api/ae/:id/report. A closed AE has completed its safety
+ * review; recording a further report against it would move it backwards from
+ * Closed to Reported, so the record is frozen here the same way canEditAe
+ * freezes it against ordinary edits.
+ */
+export function canReportAe(existing) {
+    if (!existing) return deny(404, 'Adverse event not found');
+    if (existing.reportStatus === 'Closed') {
+        return deny(409, 'Cannot record a report against a closed adverse event');
     }
     return allow();
 }

@@ -504,7 +504,7 @@ export function renderField(field, existingData = {}, isLocked = false, fieldQue
             </select>`;
             break;
         case 'radio':
-            input = `<div class="flex flex-wrap gap-4 mt-1">
+            input = `<div id="field-${fkey}" class="flex flex-wrap gap-4 mt-1 border border-transparent rounded-md px-2 py-1.5 -mx-2">
                 ${(field.options || []).map(opt => `
                 <label class="flex items-center gap-2 cursor-pointer ${isLocked ? 'opacity-60 cursor-not-allowed' : ''}">
                     <input type="radio" name="field-${fkey}" value="${escAttr(opt)}" ${rawValue === opt ? 'checked' : ''} ${disabled}
@@ -532,7 +532,7 @@ export function renderField(field, existingData = {}, isLocked = false, fieldQue
             // Multi-select: the value is an array. Older single-value records
             // still open correctly because a string is wrapped before the test.
             const chosen = Array.isArray(rawValue) ? rawValue : (rawValue ? [rawValue] : []);
-            input = `<div id="field-${fkey}" class="flex flex-wrap gap-4 mt-1">
+            input = `<div id="field-${fkey}" class="flex flex-wrap gap-4 mt-1 border border-transparent rounded-md px-2 py-1.5 -mx-2">
                 ${(field.options || []).map(opt => `
                 <label class="flex items-center gap-2 cursor-pointer ${isLocked ? 'opacity-60 cursor-not-allowed' : ''}">
                     <input type="checkbox" name="field-${fkey}" value="${escAttr(opt)}" ${chosen.includes(opt) ? 'checked' : ''} ${disabled}

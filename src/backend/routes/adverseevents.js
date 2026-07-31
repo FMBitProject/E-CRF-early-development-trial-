@@ -7,7 +7,7 @@ import { writeAudit } from '../lib/audit.js';
 import { siteCondition, subjectInSiteScope } from '../lib/sitescope.js';
 import {
     calcExpeditedDeadline, requiresExpeditedReport, computeAeStats,
-    canCreateAe, canEditAe, resolveSeriousness, resolveReportStatus,
+    canCreateAe, canEditAe, canReportAe, resolveSeriousness, resolveReportStatus,
 } from '../lib/aerules.js';
 
 const router = Router();
@@ -226,7 +226,8 @@ router.patch('/:id/report', requireRole('investigator', 'pi', 'admin'), async (r
         if (existing && !(await subjectInSiteScope(req, existing.subjectId))) {
             return res.status(404).json({ error: 'Adverse event not found' });
         }
-        if (!existing) return res.status(404).json({ error: 'Adverse event not found' });
+        const guard = canReportAe(existing);
+        if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
         const now = new Date();
         const updates = { updatedBy: req.user.id, updatedAt: now };

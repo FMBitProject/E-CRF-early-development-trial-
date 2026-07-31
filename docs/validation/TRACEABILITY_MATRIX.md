@@ -58,7 +58,7 @@ Executed on commit `c6a165c`, 2026-07-29 — see
 | ✅ Fully verified by executed automated script | 7 | 5 |
 | ◐ Partially verified (logic automated; human script outstanding) | 12 | 7 |
 | ⬜ No verification executed yet | 15 | 6 |
-| Automated checks executed | **370 pass / 0 fail** | |
+| Automated checks executed | **380 pass / 0 fail** | |
 
 High-risk items fully verified: **AUD-02** (reason for change), **DC-01**
 (edit checks), **DC-03** (entry state machine), **DC-05** (SAE expedited
@@ -72,9 +72,10 @@ SEC-07, AUD-03, ESG-04.
 - **Established.** The decision logic behind the entry state machine, the query
   lifecycle, SAE reporting windows, randomization and blinding, the pre-lock
   checklist, the audit-trail writer, the CRF edit checks, and both export
-  serialisers is verified by 370 automated checks that re-run on every change.
-  Two Major deviations (DEV-001, DEV-002) were found and corrected by this
-  exercise.
+  serialisers is verified by 380 automated checks that re-run on every change.
+  Three Major deviations (DEV-001, DEV-002, DEV-003) plus two Minor ones were
+  found and corrected by this exercise; two of them by reviewing the changes it
+  had just made.
 
 - **Not established.** No requirement whose verification depends on a running
   database, a real session, e-signature password checks, email delivery, or

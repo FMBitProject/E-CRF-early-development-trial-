@@ -23,8 +23,13 @@ export function buildCsv(headers, rows) {
     return [csvRow(headers), ...rows.map(csvRow)].join('\r\n');
 }
 
-/** Excel only detects UTF-8 in a CSV when it starts with a byte-order mark. */
-export const UTF8_BOM = '﻿';
+/**
+ * Excel only detects UTF-8 in a CSV when it starts with a byte-order mark.
+ * Written as an escape, not the literal character: a BOM in source is invisible,
+ * and an editor or a "strip BOM" lint rule silently removing it would break
+ * every export in a way nobody would spot by reading the diff.
+ */
+export const UTF8_BOM = '\uFEFF';
 
 export function withBom(csv) {
     return UTF8_BOM + csv;

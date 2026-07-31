@@ -216,3 +216,47 @@ test('stats on an empty study are all zero', () => {
         totalSlots: 0, usedSlots: 0, available: 0, randomized: 0, unblinded: 0,
     });
 });
+
+// ── Upload hygiene (added after the self-review) ─────────────────────────────
+
+test('a whitespace-only randCode is refused, not stored as an empty code', () => {
+    // "   " is truthy, so a plain falsy check let it through and normalisation
+    // then trimmed it to '' — an allocation slot with no code.
+    for (const randCode of ['   ', '\t', '\n', '']) {
+        const r = validateRandList([{ randCode, treatmentArm: 'A' }]);
+        assert.equal(r.ok, false, `randCode ${JSON.stringify(randCode)} must be refused`);
+        assert.equal(r.status, 400);
+    }
+});
+
+test('a whitespace-only treatment arm is refused too', () => {
+    assert.equal(validateRandList([{ randCode: 'R1', treatmentArm: '  ' }]).ok, false);
+});
+
+test('a duplicate code inside one upload is reported rather than silently dropped', () => {
+    // The insert loop uses onConflictDoNothing, so without this check the second
+    // row would vanish and the reported upload count would quietly disagree.
+    const r = validateRandList([
+        { randCode: 'R001', treatmentArm: 'A' },
+        { randCode: ' r001 ', treatmentArm: 'B' },
+    ]);
+    assert.equal(r.ok, false);
+    assert.match(r.error, /Duplicate randCode "R001"/);
+});
+
+test('a non-object entry is refused rather than crashing the upload', () => {
+    for (const e of [null, 'R001', 42]) {
+        assert.equal(validateRandList([e]).ok, false, `${JSON.stringify(e)} must be refused`);
+    }
+});
+
+test('normalisation trims the treatment arm and blank strata become null', () => {
+    const e = normalizeRandEntry({ randCode: ' r1 ', treatmentArm: '  Drug A  ', stratum: '   ' });
+    assert.equal(e.randCode, 'R1');
+    assert.equal(e.treatmentArm, 'Drug A');
+    assert.equal(e.stratum, null, 'a blank stratum must not create a stratum of spaces');
+});
+
+test('a real stratum survives normalisation', () => {
+    assert.equal(normalizeRandEntry({ randCode: 'R1', treatmentArm: 'A', stratum: ' female ' }).stratum, 'female');
+});

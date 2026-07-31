@@ -162,6 +162,41 @@ added to `tests/odm.test.js` (OQ-A7).
 
 ---
 
+### DEV-006 — A closed adverse event could be pushed back to Reported
+
+| | |
+|---|---|
+| Raised | 2026-07-29, self-review |
+| URS | DC-05 |
+| Severity | **Minor** |
+| Status | **Closed — corrected and verified** |
+
+**Description.** `PATCH /api/ae/:id/report` had no guard against
+`reportStatus === 'Closed'`. An AE closed with both the sponsor and IRB
+timestamps already set returned to `Reported` when the endpoint was called
+again. `canEditAe` froze a closed AE against ordinary edits; `/report` did not
+use an equivalent.
+
+**Impact.** A completed safety review could be reopened by an ordinary report
+call, moving the record backwards through its status flow. Every call is
+audited, so the change was traceable, but the AE count by status became wrong.
+
+**Correction.** `canReportAe` added to `lib/aerules.js` and applied to the
+route, refusing 409 for a closed AE.
+
+**Note on how this was found.** The automated test suite had *documented this
+behaviour as expected* — a test asserted that `resolveReportStatus` answers
+'Reported' for a closed AE, framed as a division of responsibility rather than
+a defect. Written that way, the suite would have defended the bug against a
+future fix. The test now asserts the rejection instead. This is worth carrying
+into the Validation Summary Report: an automated check that encodes a defect as
+a requirement is worse than no check, and reviewing the tests is as much a part
+of qualification as running them.
+
+**Verification.** `tests/aerules.test.js` (OQ-A4).
+
+---
+
 ## Observations
 
 ### OBS-001 — An invalidated signature is not marked invalid in the record
@@ -182,30 +217,6 @@ signature that no longer attests to the current data.
 the audit trail records the edit with its reason, so the sequence is
 reconstructible. **CAPA:** add `invalidatedAt` to `esignatures`, set it on
 edit, and filter it out of the export. Target: next release.
-
----
-
-### OBS-004 — A closed adverse event can be pushed back to Reported
-
-| | |
-|---|---|
-| URS | DC-05 |
-| Severity | **Minor** |
-| Status | **Open — accepted for this release** |
-
-`PATCH /api/ae/:id/report` has no guard against `reportStatus === 'Closed'`.
-An AE that was closed with both the sponsor and IRB timestamps already set
-returns to `Reported` if the endpoint is called again. `canEditAe` freezes a
-closed AE on the general edit route, but `/report` does not use it.
-
-Found during the self-review, and noted here because the automated test
-`tests/aerules.test.js` currently *documents this as expected behaviour* rather
-than flagging it — a reader could mistake it for an intentional rule.
-
-**Risk accepted because** the transition is forward-only in practice (a closed
-AE has already been reported) and every call is audited. **CAPA:** apply the
-same closed-record guard to `/report` and change the test to assert the
-rejection. Target: next release.
 
 ---
 
@@ -253,16 +264,20 @@ this satisfies the protocol's data-management plan.
 | DEV-003 | Major | Corrected; **awaiting human verification (OQ-F1/OQ-F2)** |
 | DEV-004 | Minor | Closed — corrected, automated regression in place |
 | DEV-005 | Minor | Closed — corrected, automated regression in place |
+| DEV-006 | Minor | Closed — corrected; the test that encoded it was rewritten |
 | OBS-001 | Minor | Open, accepted with CAPA |
 | OBS-002 | Minor | Open, accepted with CAPA |
 | OBS-003 | Minor | Open, accepted |
-| OBS-004 | Minor | Open, accepted with CAPA |
 
 **The Validation Summary Report cannot be signed while DEV-002 and DEV-003 are
 awaiting verification.** No Critical deviations are open.
 
-DEV-003, DEV-004, DEV-005 and OBS-004 were raised by a review of the changes
-made during this validation exercise, not by protocol execution. That is worth
-noting in the summary report: it shows the review step is finding defects, and
-it also shows that four of them were introduced or left standing in code that
-had already passed its automated checks.
+DEV-003 through DEV-006 were raised by reviewing the changes made during this
+validation exercise, not by protocol execution. Two points belong in the
+summary report:
+
+1. Four defects were sitting in code that had already passed its automated
+   checks — the checks were verifying the wrong things, not failing.
+2. DEV-006 had been *encoded as expected behaviour* by a test. A suite in that
+   state actively defends the defect. Reviewing what the tests assert is
+   therefore part of qualification, not a nicety on top of running them.

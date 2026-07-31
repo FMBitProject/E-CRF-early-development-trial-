@@ -14,10 +14,21 @@ cd "$(dirname "$0")/.."
 OUT=docs/validation/evidence/OQ-A_RUN.md
 mkdir -p "$(dirname "$OUT")"
 
-if git diff --quiet && git diff --cached --quiet; then
-    TREE="clean"
+# Evidence must state which source it was produced from. If that cannot be
+# established, say so loudly rather than emitting a record that looks authoritative.
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    COMMIT="UNKNOWN — not a git working tree"
+    BRANCH="UNKNOWN"; TAG="UNKNOWN"
+    TREE="UNKNOWN — provenance cannot be established; NOT valid qualification evidence"
 else
-    TREE="MODIFIED — not a frozen release; this run is developmental evidence only"
+    COMMIT=$(git rev-parse HEAD 2>/dev/null || echo 'UNKNOWN — no commits yet')
+    BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'UNKNOWN')
+    TAG=$(git describe --tags --exact-match 2>/dev/null || echo '(none — untagged)')
+    if git diff --quiet 2>/dev/null && git diff --cached --quiet 2>/dev/null; then
+        TREE="clean"
+    else
+        TREE="MODIFIED — not a frozen release; this run is developmental evidence only"
+    fi
 fi
 
 {
@@ -27,9 +38,9 @@ fi
     echo
     echo '```'
     echo "Executed at : $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-    echo "Commit      : $(git rev-parse HEAD)"
-    echo "Branch      : $(git rev-parse --abbrev-ref HEAD)"
-    echo "Tag         : $(git describe --tags --exact-match 2>/dev/null || echo '(none — untagged)')"
+    echo "Commit      : $COMMIT"
+    echo "Branch      : $BRANCH"
+    echo "Tag         : $TAG"
     echo "Tree state  : $TREE"
     echo "Node        : $(node -v)"
     echo "npm         : $(npm -v)"
@@ -42,25 +53,44 @@ fi
     echo "|-----------|-----------|-------|------|------|--------|"
 } > "$OUT"
 
-# OQ script id per test file — mirrors the table in ../IQ_OQ_PQ.md
-declare -A SCRIPT_ID=(
-    [entryrules.test.js]="OQ-A2"   [queryrules.test.js]="OQ-A3"
-    [aerules.test.js]="OQ-A4"      [randomrules.test.js]="OQ-A5"
-    [dblockrules.test.js]="OQ-A6"  [odm.test.js]="OQ-A7"
-    [csvexport.test.js]="OQ-A8"    [audit.test.js]="OQ-A9"
-    [rbac-matrix.test.js]="OQ-A10" [rbac-middleware.test.js]="OQ-A10"
-    [sitescope.test.js]="OQ-A11"   [tenantscope.test.js]="OQ-A11"
-    [consentrules.test.js]="OQ-A12" [iecriteria.test.js]="OQ-A13"
-    [visitschedule.test.js]="OQ-A14" [import.test.js]="OQ-A15"
-    [license.test.js]="OQ-A16"     [billing.test.js]="OQ-A16"
-    [dberrors.test.js]="OQ-A17" [validate.test.js]="OQ-A18"
-    [formschema.test.js]="OQ-A19" [isodate.test.js]="OQ-A20"
-)
+# OQ script id per test file — mirrors the table in ../IQ_OQ_PQ.md.
+# A `case` rather than an associative array: `declare -A` needs bash 4, and
+# macOS still ships bash 3.2 as /bin/bash, where this script is most likely to
+# be run by QA. Silently failing to produce qualification evidence is worse
+# than the extra lines.
+script_id() {
+    case "$1" in
+        entryrules.test.js)                       echo "OQ-A2"  ;;
+        queryrules.test.js)                       echo "OQ-A3"  ;;
+        aerules.test.js)                          echo "OQ-A4"  ;;
+        randomrules.test.js)                      echo "OQ-A5"  ;;
+        dblockrules.test.js)                      echo "OQ-A6"  ;;
+        odm.test.js)                              echo "OQ-A7"  ;;
+        csvexport.test.js)                        echo "OQ-A8"  ;;
+        audit.test.js)                            echo "OQ-A9"  ;;
+        rbac-matrix.test.js|rbac-middleware.test.js) echo "OQ-A10" ;;
+        sitescope.test.js|tenantscope.test.js)    echo "OQ-A11" ;;
+        consentrules.test.js)                     echo "OQ-A12" ;;
+        iecriteria.test.js)                       echo "OQ-A13" ;;
+        visitschedule.test.js)                    echo "OQ-A14" ;;
+        import.test.js)                           echo "OQ-A15" ;;
+        license.test.js|billing.test.js)          echo "OQ-A16" ;;
+        dberrors.test.js)                         echo "OQ-A17" ;;
+        validate.test.js)                         echo "OQ-A18" ;;
+        formschema.test.js)                       echo "OQ-A19" ;;
+        isodate.test.js)                          echo "OQ-A20" ;;
+        *)                                        echo "OQ-A?"  ;;
+    esac
+}
 
-TOTAL=0; TOTAL_PASS=0; TOTAL_FAIL=0; OVERALL=0
+TOTAL=0; TOTAL_PASS=0; TOTAL_FAIL=0; OVERALL=0; UNREGISTERED=""
 
 for f in tests/*.test.js; do
     base=$(basename "$f")
+    id=$(script_id "$base")
+    # A test file with no OQ id means the suite and the OQ protocol table have
+    # drifted apart: work is being verified that the protocol does not claim.
+    [ "$id" = "OQ-A?" ] && UNREGISTERED="$UNREGISTERED $base"
     raw=$(node --test "$f" 2>&1)
     t=$(printf '%s\n' "$raw" | awk '/^# tests /{print $3; exit}')
     p=$(printf '%s\n' "$raw" | awk '/^# pass /{print $3; exit}')
@@ -68,7 +98,7 @@ for f in tests/*.test.js; do
     t=${t:-0}; p=${p:-0}; fl=${fl:-0}
     if [ "$fl" -eq 0 ] && [ "$t" -gt 0 ]; then res="PASS"; else res="**FAIL**"; OVERALL=1; fi
     printf '| %s | `%s` | %s | %s | %s | %s |\n' \
-        "${SCRIPT_ID[$base]:-OQ-A?}" "$base" "$t" "$p" "$fl" "$res" >> "$OUT"
+        "$id" "$base" "$t" "$p" "$fl" "$res" >> "$OUT"
     TOTAL=$((TOTAL+t)); TOTAL_PASS=$((TOTAL_PASS+p)); TOTAL_FAIL=$((TOTAL_FAIL+fl))
 done
 
@@ -84,6 +114,16 @@ done
         echo "OQ-A **FAILED** — $TOTAL_FAIL of $TOTAL automated checks failed. Raise a deviation."
     fi
     echo
+    if [ -n "$UNREGISTERED" ]; then
+        echo "> ⚠️ **Protocol drift.** These test files have no OQ script id in"
+        echo "> \`scripts/run-oq.sh\`, so they are not listed in the OQ-A table of"
+        echo "> IQ_OQ_PQ.md and the traceability matrix does not credit them:"
+        echo ">"
+        for u in $UNREGISTERED; do echo "> - \`$u\`"; done
+        echo ">"
+        echo "> Register each one, or record why it is excluded."
+        echo
+    fi
     echo "> This record covers the automated portion of the OQ only. Scripts"
     echo "> OQ-B through OQ-H and the IQ/PQ protocols require a deployed"
     echo "> instance, a database, and named human testers — they are not"

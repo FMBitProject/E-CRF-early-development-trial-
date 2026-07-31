@@ -9,7 +9,7 @@ Status legend: **✅ Met** (implemented + covered by URS/test) · **◐ Procedur
 
 | Clause | Requirement | Status | Evidence / Notes |
 |--------|-------------|--------|------------------|
-| 11.10(a) | Validation of systems | ⚠ | **Open.** The CSV package is written and the automated OQ-A is executed (370/370 — [evidence/OQ-A_RUN.md](evidence/OQ-A_RUN.md)), but IQ, OQ-B…OQ-H and PQ are not executed. 5 of 18 High-risk URS items are fully verified. |
+| 11.10(a) | Validation of systems | ⚠ | **Open.** The CSV package is written and the automated OQ-A is executed (380/380 — [evidence/OQ-A_RUN.md](evidence/OQ-A_RUN.md)), but IQ, OQ-B…OQ-H and PQ are not executed. 5 of 18 High-risk URS items are fully verified. |
 | 11.10(b) | Records in human-readable & electronic form | ✅ | UI views + CSV/ODM export (EXP-01/02). |
 | 11.10(c) | Protection of records over retention period | ◐ | DB backup/retention is an infrastructure SOP — see [../DEPLOYMENT_OPERATIONS.md]. |
 | 11.10(d) | Limiting access to authorized individuals | ✅ | SEC-01/02/07/08; auth + RBAC + study/site scoping; `tests/rbac-matrix.test.js`. |

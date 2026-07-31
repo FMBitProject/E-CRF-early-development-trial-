@@ -111,13 +111,14 @@ function renderFormList(container) {
 }
 
 // ── Form Builder Modal ────────────────────────────────────────────────────────
-// `restore` carries unsaved work back from the preview so nothing typed is lost.
-function openBuilderModal(form = null, restore = null) {
+// `meta` carries the header inputs back from the preview so nothing typed is
+// lost. The question list is not passed back — `_fields` is module state that
+// the preview never replaced, so it is already current.
+function openBuilderModal(form = null, meta = null) {
     _editForm = form;
-    _fields   = restore
-        ? restore.fields
-        : (form ? JSON.parse(JSON.stringify(form.schemaJson?.fields ?? [])) : []);
-    const meta = restore?.meta ?? null;
+    if (!meta) {
+        _fields = form ? JSON.parse(JSON.stringify(form.schemaJson?.fields ?? [])) : [];
+    }
 
     showModal({
         title: form ? 'Edit CRF Form' : 'New CRF Form',
@@ -540,7 +541,7 @@ window.fbPreviewDraft = () => {
 };
 
 window.fbBackToBuilder = () => {
-    openBuilderModal(_editForm, { fields: _fields, meta: _draftMeta });
+    openBuilderModal(_editForm, _draftMeta);
 };
 
 // Preview a saved form from the list.

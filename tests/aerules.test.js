@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import {
     expeditedWindowDays, calcExpeditedDeadline, requiresExpeditedReport,
     canCreateAe, canEditAe, resolveSeriousness, resolveReportStatus,
-    isOverdue, computeAeStats, URGENT_CRITERIA, SERIOUS_CRITERIA,
+    canReportAe, isOverdue, computeAeStats, URGENT_CRITERIA, SERIOUS_CRITERIA,
 } from '../src/backend/lib/aerules.js';
 
 const T0 = new Date('2026-07-01T00:00:00.000Z');
@@ -161,14 +161,26 @@ test('a report call with neither flag leaves the status untouched', () => {
     assert.equal(resolveReportStatus({ reportStatus: 'Reported', reportedToSponsorAt: T0, reportedToIrbAt: T0 }, {}), 'Reported');
 });
 
-test('resolveReportStatus is not the guard that protects a Closed AE', () => {
-    // With both channels already complete the rule resolves to 'Reported' even
-    // for a Closed AE. Freezing a closed record is canEditAe's job; this test
-    // pins the division of responsibility so neither guard is removed as
-    // redundant.
+test('a closed AE cannot be dragged back to Reported', () => {
+    // resolveReportStatus is a pure status calculation and, seeing both channels
+    // complete, would answer 'Reported' even for a closed record. canReportAe is
+    // the guard that stops the route ever asking. Both are asserted here so
+    // neither is later removed as redundant.
     const closed = { reportStatus: 'Closed', reportedToSponsorAt: T0, reportedToIrbAt: T0 };
-    assert.equal(resolveReportStatus(closed, {}), 'Reported');
+    assert.equal(canReportAe(closed).ok, false);
+    assert.equal(canReportAe(closed).status, 409);
+    assert.match(canReportAe(closed).error, /closed adverse event/i);
     assert.equal(canEditAe(closed, { reason: 'x' }).status, 409);
+});
+
+test('an open AE may still record a report', () => {
+    for (const reportStatus of ['Draft', 'Reported']) {
+        assert.equal(canReportAe({ reportStatus }).ok, true, `${reportStatus} must be reportable`);
+    }
+});
+
+test('reporting against a missing AE is a 404', () => {
+    assert.equal(canReportAe(null).status, 404);
 });
 
 // ── Overdue detection ────────────────────────────────────────────────────────
@@ -233,4 +245,21 @@ test('computeAeStats counts total, serious, draft and overdue independently', ()
 
 test('computeAeStats on an empty study returns all zeros', () => {
     assert.deepEqual(computeAeStats([], T0), { total: 0, serious: 0, draft: 0, overdue: 0 });
+});
+
+// ── Defensive contract (added after the self-review) ─────────────────────────
+
+test('a non-array seriousCriteria yields the 15-day window instead of throwing', () => {
+    // The route normalises via resolveSeriousness, but the function is exported
+    // and an SAE must always come out with a deadline — a TypeError here would
+    // lose the report entirely.
+    for (const bad of ['death', 42, {}, true]) {
+        assert.doesNotThrow(() => expeditedWindowDays(true, bad), `criteria ${JSON.stringify(bad)}`);
+        assert.equal(expeditedWindowDays(true, bad), 15);
+    }
+});
+
+test('calcExpeditedDeadline is equally defensive', () => {
+    assert.doesNotThrow(() => calcExpeditedDeadline(true, 'death', T0));
+    assert.equal(daysBetween(T0, calcExpeditedDeadline(true, 'death', T0)), 15);
 });

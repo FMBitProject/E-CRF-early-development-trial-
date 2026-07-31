@@ -147,7 +147,9 @@ export function applyFieldValidation(inputEl, errorEl, result) {
     } else if (result.level === 'soft') {
         inputEl.classList.add('border-amber-400', 'focus:border-amber-400', 'focus:ring-amber-400');
         if (errorEl) errorEl.classList.add('text-amber-600');
-    } else if (result.message === '' && inputEl.value !== '') {
+    } else if (result.message === '' && (inputEl.value ?? '') !== '') {
+        // `value` is undefined on a radio/checkbox group container — coalesce so
+        // a group is not painted "valid" simply for having no value property.
         inputEl.classList.add('border-emerald-400');
     }
 }

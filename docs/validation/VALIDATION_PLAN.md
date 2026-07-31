@@ -32,7 +32,7 @@ statistical analysis tools consuming exports.
    ROLE_MATRIX.md, PANDUAN.md) is the design specification; peer review is
    evidenced by the repository audit reports and remediation commits.
 3. **Automated verification** — `./scripts/run-oq.sh` executes the OQ-A script
-   set (370 checks) and writes a machine-generated evidence record with the
+   set (380 checks) and writes a machine-generated evidence record with the
    commit hash and environment. Covers the entry state machine, query
    lifecycle, SAE reporting windows, randomization and blinding, the pre-lock
    checklist, the audit-trail writer, both export serialisers, the RBAC matrix,
@@ -60,8 +60,8 @@ statistical analysis tools consuming exports.
 | # | Criterion | Status |
 |---|-----------|--------|
 | 1 | 100% of High-risk URS items verified with objective evidence | ❌ **Not met** — 5 of 18 fully verified, 7 partial ([TRACEABILITY_MATRIX.md](TRACEABILITY_MATRIX.md)) |
-| 2 | No open Critical/Major deviations; Minor dispositioned with CAPA | ❌ **Not met** — DEV-002 (Major) corrected but awaiting human verification ([DEVIATION_LOG.md](DEVIATION_LOG.md)) |
-| 3 | Automated suite green on the frozen release tag | ◐ **Partial** — 370/370 pass, but on an untagged working tree, not a frozen release |
+| 2 | No open Critical/Major deviations; Minor dispositioned with CAPA | ❌ **Not met** — DEV-002 and DEV-003 (Major) corrected but awaiting human verification ([DEVIATION_LOG.md](DEVIATION_LOG.md)) |
+| 3 | Automated suite green on the frozen release tag | ◐ **Partial** — 380/380 pass, but on an untagged working tree, not a frozen release |
 | 4 | Part 11 assessment shows no unmitigated "gap" line items | ◐ **Partial** — see [PART11_ASSESSMENT.md](PART11_ASSESSMENT.md) |
 
 **The system is not released for use in a regulated trial until all four read
@@ -79,7 +79,7 @@ statistical analysis tools consuming exports.
 | OQ-B…OQ-H execution + evidence | ⬜ Not executed |
 | PQ execution + evidence | ⬜ Not executed |
 | [TRACEABILITY_MATRIX.md](TRACEABILITY_MATRIX.md) | ✅ Complete, with executed-status column |
-| [DEVIATION_LOG.md](DEVIATION_LOG.md) | ✅ Open — 2 deviations, 3 observations |
+| [DEVIATION_LOG.md](DEVIATION_LOG.md) | ✅ Open — 6 deviations (3 Major), 3 observations |
 | Validation Summary Report | ⬜ Cannot be written until the above are executed |
 
 ### 5.1 What remains, concretely
@@ -90,8 +90,8 @@ statistical analysis tools consuming exports.
    credentials — testers must not share logins, or ESG-01 evidence is void.
 3. Execute IQ-01…IQ-07 and record actual results.
 4. Execute OQ-B through OQ-H (58 steps) with screenshot/audit-extract evidence
-   per step. **OQ-D5, OQ-D6 and OQ-G8 are the regression steps for DEV-001 and
-   DEV-002 and must pass.**
+   per step. **OQ-D5, OQ-D6, OQ-G8 and OQ-F1/OQ-F2 are the regression steps for
+   DEV-001, DEV-002 and DEV-003 and must pass.**
 5. Execute PQ-01…PQ-05 as end-to-end business processes under the SOPs.
 6. Disposition every deviation raised, then write and sign the Validation
    Summary Report.

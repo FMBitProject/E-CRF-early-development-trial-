@@ -26,15 +26,35 @@ export function maskTreatmentArms(rows, role) {
     return rows.map(r => maskTreatmentArm(r, role));
 }
 
-/** Validate an uploaded randomization list before any row is written. */
+/** Trim to the string that will actually be stored — '' if there is nothing. */
+const trimmed = (v) => (v === null || v === undefined ? '' : String(v).trim());
+
+/**
+ * Validate an uploaded randomization list before any row is written.
+ * Checks the value *after* trimming: a whitespace-only code is truthy, so a
+ * plain falsy test let it through and it was then stored as an empty
+ * allocation code.
+ */
 export function validateRandList(entries) {
     if (!Array.isArray(entries) || entries.length === 0) {
         return deny(400, 'entries array is required');
     }
+    const seen = new Set();
     for (const e of entries) {
-        if (!e.randCode || !e.treatmentArm) {
+        if (!e || typeof e !== 'object') {
+            return deny(400, 'Each entry must be an object with randCode and treatmentArm');
+        }
+        const code = trimmed(e.randCode).toUpperCase();
+        if (!code || !trimmed(e.treatmentArm)) {
             return deny(400, 'Each entry needs randCode and treatmentArm');
         }
+        // A repeated code inside one upload would hand two subjects the same
+        // allocation slot; the per-row insert is onConflictDoNothing, so the
+        // second would vanish silently instead of being reported.
+        if (seen.has(code)) {
+            return deny(400, `Duplicate randCode "${code}" in the uploaded list`);
+        }
+        seen.add(code);
     }
     return allow();
 }
@@ -42,9 +62,11 @@ export function validateRandList(entries) {
 /** Codes are stored upper-cased and trimmed so lookups can never miss on case. */
 export function normalizeRandEntry(entry) {
     return {
-        randCode:     String(entry.randCode).trim().toUpperCase(),
-        treatmentArm: entry.treatmentArm,
-        stratum:      entry.stratum ?? null,
+        randCode:     trimmed(entry.randCode).toUpperCase(),
+        treatmentArm: trimmed(entry.treatmentArm),
+        stratum:      entry.stratum === null || entry.stratum === undefined
+            ? null
+            : (trimmed(entry.stratum) || null),
         isUsed:       false,
     };
 }
