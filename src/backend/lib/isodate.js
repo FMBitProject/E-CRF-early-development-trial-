@@ -50,10 +50,13 @@ function usableZone(name) {
         new Intl.DateTimeFormat('en-CA', { timeZone: name });
         resolved = name;
     } catch {
-        // Warn once per name even if the cache is full, or a caller passing
-        // varying bad names would flood the log — the flood the cache exists
-        // to prevent. The name set is small; the warn set is bounded with it.
-        if (!warnedZones.has(name) && warnedZones.size < 64) {
+        // Warn once per name even if the zone cache is full. Capping the warn
+        // set as well would have reinstated the silent fallback this replaced,
+        // just past a threshold — so once the set is full the name is dropped
+        // from it rather than the warning being suppressed. Repeated warnings
+        // are noisy; a wrong date with no warning at all is the actual bug.
+        if (!warnedZones.has(name)) {
+            if (warnedZones.size >= 64) warnedZones.clear();
             warnedZones.add(name);
             console.warn(`[isodate] "${name}" is not a valid IANA timezone; export dates fall back to UTC.`);
         }

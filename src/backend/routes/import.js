@@ -122,133 +122,171 @@ router.post('/visit', licenseGuardCreate, requireRole(...IMPORT_ROLES), async (r
             }
 
             // ── Commit path (per-row) ──────────────────────────────────────
+            // One transaction per row. Without it, a row that failed partway
+            // left everything before the failure committed: a merged CRF that
+            // would break validation threw *after* the subject and the visit
+            // had been written and counted, so the summary reported the row as
+            // an error while half of it had actually landed. The audit trail
+            // has to roll back with the data too — an audit entry for something
+            // that did not happen is worse than none.
+            //
+            // The transaction also closes the read-modify-write race on the CRF
+            // merge below: two concurrent imports touching the same entry both
+            // read the same dataJson and the later write silently dropped the
+            // earlier one's columns. The row is locked for update before the
+            // merge is computed.
+            //
+            // JS-side effects (summary counters, the byCode cache) are staged
+            // and applied only after the transaction commits, or a rolled-back
+            // row would still be counted.
+            const staged = {
+                subjectsCreated: 0, visitsCreated: 0, visitsUpdated: 0,
+                entriesCreated: 0, entriesUpdated: 0,
+                aeCreated: 0, vitalsCreated: 0, labsCreated: 0,
+            };
+            let cachedSubject = null;
             try {
-                // 1. Subject upsert
-                let subj = existing;
-                if (!subj) {
-                    if (Array.isArray(req.siteScope) && !req.siteScope.includes(effSiteId)) {
-                        throw new Error('site not in your scope');
-                    }
-                    const [ins] = await db.insert(subjects).values({
-                        studyId: req.studyId, subjectCode: plan.subjectCode, siteId: effSiteId,
-                        initials: plan.subject.initials ?? null, sex: plan.subject.sex ?? null,
-                        genderIdentity: plan.subject.genderIdentity ?? null,
-                        enrolledAt: plan.visitDate ? new Date(plan.visitDate) : new Date(),
-                        enrolledBy: req.user.id,
-                    }).returning();
-                    subj = { id: ins.id, code: ins.subjectCode, siteId: ins.siteId };
-                    byCode.set(subj.code, subj);
-                    summary.subjectsCreated++;
-                    await writeAudit(db, { tableName: 'subjects', recordId: subj.id, action: 'INSERT', newValue: subj.code, reason: 'Subject created via import', user: req.user, ipAddress: req.ip });
-                }
-
-                // 2. Visit upsert (by name within subject)
-                const vmatches = await db.select().from(visits).where(and(eq(visits.subjectId, subj.id), eq(visits.visitName, visitName)));
-                if (vmatches.length > 1) throw new Error(`ambiguous: subject has ${vmatches.length} visits named "${visitName}"`);
-                let visit = vmatches[0];
-                if (!visit) {
-                    const [iv] = await db.insert(visits).values({
-                        subjectId: subj.id, visitName, visitType: 'Scheduled',
-                        actualDate: plan.visitDate ?? null, status: plan.visitDate ? 'Completed' : 'Scheduled',
-                        createdByName: req.user.name,
-                    }).returning();
-                    visit = iv; summary.visitsCreated++;
-                    await writeAudit(db, { tableName: 'visits', recordId: visit.id, action: 'INSERT', newValue: `${visitName}${plan.visitDate ? ' @' + plan.visitDate : ''}`, reason: 'Visit created via import', user: req.user, ipAddress: req.ip });
-                } else if (plan.visitDate && plan.visitDate !== visit.actualDate) {
-                    const wc = windowCompliance(visit.plannedDate, plan.visitDate, visit.windowDays);
-                    await db.update(visits).set({ actualDate: plan.visitDate, windowCompliance: wc, status: 'Completed', updatedAt: new Date() }).where(eq(visits.id, visit.id));
-                    summary.visitsUpdated++;
-                    await writeAudit(db, { tableName: 'visits', recordId: visit.id, action: 'UPDATE', fieldName: 'actual_date', oldValue: visit.actualDate, newValue: plan.visitDate, reason: reasonText, user: req.user, ipAddress: req.ip });
-                }
-
-                // 3. CRF entry upsert
-                if (Object.keys(plan.crf).length) {
-                    const [existEntry] = await db.select().from(crfDataEntries)
-                        .where(and(eq(crfDataEntries.subjectId, subj.id), eq(crfDataEntries.visitId, visit.id), eq(crfDataEntries.formId, parseInt(formId))));
-                    if (existEntry) {
-                        if (existEntry.status === 'Locked') throw new Error('CRF entry is locked');
-                        // Merge, never replace. plan.crf holds only the columns
-                        // this file mapped and left non-empty (importengine.js),
-                        // so assigning it wholesale deleted every answer the CSV
-                        // did not happen to contain: re-importing a two-column
-                        // correction against a ten-question form silently
-                        // destroyed the other eight. An import can add or
-                        // overwrite an answer; it must not erase one it never
-                        // mentioned.
-                        // plan.validation covers the mapped columns only, so the
-                        // merged result — the thing actually stored — has to be
-                        // re-checked. A cross-field rule can only fail once both
-                        // sides are present, which is after the merge.
-                        const { merged: mergedData, introduced } = mergeEntryData(existEntry.dataJson, plan.crf, formFields);
-                        if (introduced.length) {
-                            throw new Error(`merging into the existing entry would break: ${introduced.join('; ')}`);
+                await db.transaction(async (tx) => {
+                    for (const k of Object.keys(staged)) staged[k] = 0;
+                    cachedSubject = null;
+                    // 1. Subject upsert
+                    let subj = existing;
+                    if (!subj) {
+                        if (Array.isArray(req.siteScope) && !req.siteScope.includes(effSiteId)) {
+                            throw new Error('site not in your scope');
                         }
-                        await db.update(crfDataEntries).set({ dataJson: mergedData, status: 'Saved', updatedAt: new Date(), updatedBy: req.user.id }).where(eq(crfDataEntries.id, existEntry.id));
-                        summary.entriesUpdated++;
-                        await writeFieldDiffAudit(db, { tableName: 'crf_data_entries', recordId: existEntry.id, oldData: existEntry.dataJson, newData: mergedData, reason: reasonText, user: req.user, ipAddress: req.ip });
-                        await createAutoQueries(db, req, plan.validation.softViolations, existEntry.id, subj.id, visit.id, formId);
-                    } else {
-                        const [ie] = await db.insert(crfDataEntries).values({
-                            subjectId: subj.id, visitId: visit.id, formId: parseInt(formId),
-                            dataJson: plan.crf, status: 'Saved', createdBy: req.user.id,
+                        const [ins] = await tx.insert(subjects).values({
+                            studyId: req.studyId, subjectCode: plan.subjectCode, siteId: effSiteId,
+                            initials: plan.subject.initials ?? null, sex: plan.subject.sex ?? null,
+                            genderIdentity: plan.subject.genderIdentity ?? null,
+                            enrolledAt: plan.visitDate ? new Date(plan.visitDate) : new Date(),
+                            enrolledBy: req.user.id,
                         }).returning();
-                        summary.entriesCreated++;
-                        await writeAudit(db, { tableName: 'crf_data_entries', recordId: ie.id, action: 'INSERT', newValue: `${Object.keys(plan.crf).length} fields via import`, reason: 'CRF entry created via import', user: req.user, ipAddress: req.ip });
-                        await createAutoQueries(db, req, plan.validation.softViolations, ie.id, subj.id, visit.id, formId);
+                        subj = { id: ins.id, code: ins.subjectCode, siteId: ins.siteId };
+                        cachedSubject = subj;
+                        staged.subjectsCreated++;
+                        await writeAudit(tx, { tableName: 'subjects', recordId: subj.id, action: 'INSERT', newValue: subj.code, reason: 'Subject created via import', user: req.user, ipAddress: req.ip });
                     }
-                }
 
-                // 4. Adverse event (deduped by subject + term so re-imports don't duplicate)
-                if (plan.ae && plan.ae.term) {
-                  const [dupAe] = await db.select({ id: adverseEvents.id }).from(adverseEvents)
-                    .where(and(eq(adverseEvents.subjectId, subj.id), eq(adverseEvents.aeTerm, plan.ae.term)));
-                  if (!dupAe) {
-                    const [ae] = await db.insert(adverseEvents).values({
-                        studyId: req.studyId, subjectId: subj.id,
-                        aeTerm: plan.ae.term, severity: 'Unknown', codingStatus: 'Uncoded',
-                        isSerious: !!plan.ae.serious, seriousCriteria: [],
-                        onsetDate: plan.ae.onsetDate ?? null, narrative: plan.ae.narrative ?? null,
-                        reportStatus: 'Draft', requiresExpeditedReport: !!plan.ae.serious,
-                        createdBy: req.user.id, createdByName: req.user.name,
-                    }).returning();
-                    summary.aeCreated++;
-                    await writeAudit(db, { tableName: 'adverse_events', recordId: ae.id, action: 'INSERT', newValue: `${plan.ae.term} (import, needs coding/severity)`, reason: 'AE recorded via import', user: req.user, ipAddress: req.ip });
-                  }
-                }
+                    // 2. Visit upsert (by name within subject)
+                    const vmatches = await tx.select().from(visits).where(and(eq(visits.subjectId, subj.id), eq(visits.visitName, visitName)));
+                    if (vmatches.length > 1) throw new Error(`ambiguous: subject has ${vmatches.length} visits named "${visitName}"`);
+                    let visit = vmatches[0];
+                    if (!visit) {
+                        const [iv] = await tx.insert(visits).values({
+                            subjectId: subj.id, visitName, visitType: 'Scheduled',
+                            actualDate: plan.visitDate ?? null, status: plan.visitDate ? 'Completed' : 'Scheduled',
+                            createdByName: req.user.name,
+                        }).returning();
+                        visit = iv; staged.visitsCreated++;
+                        await writeAudit(tx, { tableName: 'visits', recordId: visit.id, action: 'INSERT', newValue: `${visitName}${plan.visitDate ? ' @' + plan.visitDate : ''}`, reason: 'Visit created via import', user: req.user, ipAddress: req.ip });
+                    } else if (plan.visitDate && plan.visitDate !== visit.actualDate) {
+                        const wc = windowCompliance(visit.plannedDate, plan.visitDate, visit.windowDays);
+                        await tx.update(visits).set({ actualDate: plan.visitDate, windowCompliance: wc, status: 'Completed', updatedAt: new Date() }).where(eq(visits.id, visit.id));
+                        staged.visitsUpdated++;
+                        await writeAudit(tx, { tableName: 'visits', recordId: visit.id, action: 'UPDATE', fieldName: 'actual_date', oldValue: visit.actualDate, newValue: plan.visitDate, reason: reasonText, user: req.user, ipAddress: req.ip });
+                    }
 
-                // 5. Vital signs (dedicated module) — one record per subject+visit
-                if (plan.vital) {
-                    const [dupV] = await db.select({ id: vitalSigns.id }).from(vitalSigns)
-                        .where(and(eq(vitalSigns.subjectId, subj.id), eq(vitalSigns.visitId, visit.id)));
-                    if (!dupV) {
-                        const [vs] = await db.insert(vitalSigns).values({
+                    // 3. CRF entry upsert
+                    if (Object.keys(plan.crf).length) {
+                        // FOR UPDATE: the merge below is a read-modify-write. Two
+                        // imports touching the same entry concurrently both read the
+                        // same dataJson, and the later write dropped the earlier
+                        // one's columns without a trace. Replacing had the same race
+                        // but at least behaved as advertised; merging looks safe and
+                        // is not, unless the row is held for the whole transaction.
+                        const [existEntry] = await tx.select().from(crfDataEntries)
+                            .where(and(eq(crfDataEntries.subjectId, subj.id), eq(crfDataEntries.visitId, visit.id), eq(crfDataEntries.formId, parseInt(formId))))
+                            .for('update');
+                        if (existEntry) {
+                            if (existEntry.status === 'Locked') throw new Error('CRF entry is locked');
+                            // Merge, never replace. plan.crf holds only the columns
+                            // this file mapped and left non-empty (importengine.js),
+                            // so assigning it wholesale deleted every answer the CSV
+                            // did not happen to contain: re-importing a two-column
+                            // correction against a ten-question form silently
+                            // destroyed the other eight. An import can add or
+                            // overwrite an answer; it must not erase one it never
+                            // mentioned.
+                            // plan.validation covers the mapped columns only, so the
+                            // merged result — the thing actually stored — has to be
+                            // re-checked. A cross-field rule can only fail once both
+                            // sides are present, which is after the merge.
+                            const { merged: mergedData, introduced } = mergeEntryData(existEntry.dataJson, plan.crf, formFields);
+                            if (introduced.length) {
+                                throw new Error(`merging into the existing entry would break: ${introduced.join('; ')}`);
+                            }
+                            await tx.update(crfDataEntries).set({ dataJson: mergedData, status: 'Saved', updatedAt: new Date(), updatedBy: req.user.id }).where(eq(crfDataEntries.id, existEntry.id));
+                            staged.entriesUpdated++;
+                            await writeFieldDiffAudit(tx, { tableName: 'crf_data_entries', recordId: existEntry.id, oldData: existEntry.dataJson, newData: mergedData, reason: reasonText, user: req.user, ipAddress: req.ip });
+                            await createAutoQueries(tx, req, plan.validation.softViolations, existEntry.id, subj.id, visit.id, formId);
+                        } else {
+                            const [ie] = await tx.insert(crfDataEntries).values({
+                                subjectId: subj.id, visitId: visit.id, formId: parseInt(formId),
+                                dataJson: plan.crf, status: 'Saved', createdBy: req.user.id,
+                            }).returning();
+                            staged.entriesCreated++;
+                            await writeAudit(tx, { tableName: 'crf_data_entries', recordId: ie.id, action: 'INSERT', newValue: `${Object.keys(plan.crf).length} fields via import`, reason: 'CRF entry created via import', user: req.user, ipAddress: req.ip });
+                            await createAutoQueries(tx, req, plan.validation.softViolations, ie.id, subj.id, visit.id, formId);
+                        }
+                    }
+
+                    // 4. Adverse event (deduped by subject + term so re-imports don't duplicate)
+                    if (plan.ae && plan.ae.term) {
+                      const [dupAe] = await tx.select({ id: adverseEvents.id }).from(adverseEvents)
+                        .where(and(eq(adverseEvents.subjectId, subj.id), eq(adverseEvents.aeTerm, plan.ae.term)));
+                      if (!dupAe) {
+                        const [ae] = await tx.insert(adverseEvents).values({
+                            studyId: req.studyId, subjectId: subj.id,
+                            aeTerm: plan.ae.term, severity: 'Unknown', codingStatus: 'Uncoded',
+                            isSerious: !!plan.ae.serious, seriousCriteria: [],
+                            onsetDate: plan.ae.onsetDate ?? null, narrative: plan.ae.narrative ?? null,
+                            reportStatus: 'Draft', requiresExpeditedReport: !!plan.ae.serious,
+                            createdBy: req.user.id, createdByName: req.user.name,
+                        }).returning();
+                        staged.aeCreated++;
+                        await writeAudit(tx, { tableName: 'adverse_events', recordId: ae.id, action: 'INSERT', newValue: `${plan.ae.term} (import, needs coding/severity)`, reason: 'AE recorded via import', user: req.user, ipAddress: req.ip });
+                      }
+                    }
+
+                    // 5. Vital signs (dedicated module) — one record per subject+visit
+                    if (plan.vital) {
+                        const [dupV] = await tx.select({ id: vitalSigns.id }).from(vitalSigns)
+                            .where(and(eq(vitalSigns.subjectId, subj.id), eq(vitalSigns.visitId, visit.id)));
+                        if (!dupV) {
+                            const [vs] = await tx.insert(vitalSigns).values({
+                                studyId: req.studyId, subjectId: subj.id, visitId: visit.id,
+                                assessmentDate: plan.visitDate || new Date().toISOString().slice(0, 10),
+                                ...plan.vital, createdBy: req.user.id, createdByName: req.user.name,
+                            }).returning();
+                            staged.vitalsCreated++;
+                            await writeAudit(tx, { tableName: 'vital_signs', recordId: vs.id, action: 'INSERT', newValue: 'Vitals via import', reason: 'Vital signs recorded via import', user: req.user, ipAddress: req.ip });
+                        }
+                    }
+
+                    // 6. Laboratory (dedicated module) — one row per test, deduped
+                    for (const l of plan.labs) {
+                        const [dupL] = await tx.select({ id: labResults.id }).from(labResults)
+                            .where(and(eq(labResults.subjectId, subj.id), eq(labResults.visitId, visit.id), eq(labResults.testName, l.testName)));
+                        if (dupL) continue;
+                        const [lr] = await tx.insert(labResults).values({
                             studyId: req.studyId, subjectId: subj.id, visitId: visit.id,
-                            assessmentDate: plan.visitDate || new Date().toISOString().slice(0, 10),
-                            ...plan.vital, createdBy: req.user.id, createdByName: req.user.name,
+                            testName: l.testName, unit: l.unit ?? null,
+                            valueNumeric: /^-?\d*\.?\d+$/.test(l.value) ? l.value : null,
+                            valueText: /^-?\d*\.?\d+$/.test(l.value) ? null : l.value,
+                            refRangeText: l.refRangeText ?? null,
+                            labName: l.labName ?? null, specimenCollectedAt: l.date ?? null, assessmentDate: l.date ?? null,
+                            createdBy: req.user.id, createdByName: req.user.name,
                         }).returning();
-                        summary.vitalsCreated++;
-                        await writeAudit(db, { tableName: 'vital_signs', recordId: vs.id, action: 'INSERT', newValue: 'Vitals via import', reason: 'Vital signs recorded via import', user: req.user, ipAddress: req.ip });
+                        staged.labsCreated++;
+                        await writeAudit(tx, { tableName: 'lab_results', recordId: lr.id, action: 'INSERT', newValue: `${l.testName}=${l.value}${l.unit ? ' ' + l.unit : ''} (import)`, reason: 'Lab result recorded via import', user: req.user, ipAddress: req.ip });
                     }
-                }
 
-                // 6. Laboratory (dedicated module) — one row per test, deduped
-                for (const l of plan.labs) {
-                    const [dupL] = await db.select({ id: labResults.id }).from(labResults)
-                        .where(and(eq(labResults.subjectId, subj.id), eq(labResults.visitId, visit.id), eq(labResults.testName, l.testName)));
-                    if (dupL) continue;
-                    const [lr] = await db.insert(labResults).values({
-                        studyId: req.studyId, subjectId: subj.id, visitId: visit.id,
-                        testName: l.testName, unit: l.unit ?? null,
-                        valueNumeric: /^-?\d*\.?\d+$/.test(l.value) ? l.value : null,
-                        valueText: /^-?\d*\.?\d+$/.test(l.value) ? null : l.value,
-                        refRangeText: l.refRangeText ?? null,
-                        labName: l.labName ?? null, specimenCollectedAt: l.date ?? null, assessmentDate: l.date ?? null,
-                        createdBy: req.user.id, createdByName: req.user.name,
-                    }).returning();
-                    summary.labsCreated++;
-                    await writeAudit(db, { tableName: 'lab_results', recordId: lr.id, action: 'INSERT', newValue: `${l.testName}=${l.value}${l.unit ? ' ' + l.unit : ''} (import)`, reason: 'Lab result recorded via import', user: req.user, ipAddress: req.ip });
-                }
+                });
 
+                // Committed — only now do the JS-side effects become true.
+                for (const [k, n] of Object.entries(staged)) summary[k] += n;
+                if (cachedSubject) byCode.set(cachedSubject.code, cachedSubject);
                 rr.status = 'ok';
                 results.push(rr);
             } catch (rowErr) {

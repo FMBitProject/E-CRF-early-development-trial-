@@ -145,3 +145,44 @@ test('an invalid regex in the schema is ignored rather than blocking data entry'
     const fields = [{ key: 'code', label: 'Code', type: 'text', pattern: '([unclosed' }];
     assert.equal(run({ code: 'anything' }, fields).valid, true);
 });
+
+// ── Field attribution ───────────────────────────────────────────────────────
+// errorFields carries the same messages tagged with the field they belong to.
+// importengine's merge guard needs it: several messages embed the offending
+// value, so comparing two validation runs by message string treats one field
+// failing one rule twice as two different problems.
+
+test('every error is tagged with the field it came from', () => {
+    const fields = [
+        { key: 'ldl', label: 'LDL', type: 'number', min: 10 },
+        { key: 'name', label: 'Name', type: 'text', required: true },
+    ];
+    const { errors, errorFields } = validateCRFData({ ldl: '3' }, fields);
+    assert.equal(errorFields.length, errors.length, 'the two views must not drift');
+    assert.deepEqual(errorFields.map(e => e.message), errors);
+    assert.deepEqual(errorFields.map(e => e.key).sort(), ['ldl', 'name']);
+});
+
+test('a cross-field error is tagged with a null key, not a field it half-belongs to', () => {
+    const fields = [
+        { key: 'systolic_bp', label: 'SBP', type: 'number' },
+        { key: 'diastolic_bp', label: 'DBP', type: 'number' },
+    ];
+    const { errorFields } = validateCRFData({ systolic_bp: '90', diastolic_bp: '120' }, fields);
+    assert.equal(errorFields.length, 1);
+    assert.equal(errorFields[0].key, null);
+    assert.match(errorFields[0].message, /Diastolic BP must be less than Systolic BP/);
+});
+
+test('the same field failing the same rule at two values keeps one stable key', () => {
+    // The property the merge guard actually depends on.
+    const fields = [{ key: 'ldl', label: 'LDL', type: 'number', min: 10 }];
+    const a = validateCRFData({ ldl: '5' }, fields).errorFields;
+    const b = validateCRFData({ ldl: '3' }, fields).errorFields;
+    assert.notEqual(a[0].message, b[0].message, 'messages differ — that was the trap');
+    assert.equal(a[0].key, b[0].key, 'keys do not');
+});
+
+test('a clean record reports no errorFields', () => {
+    assert.deepEqual(validateCRFData({ ldl: '50' }, [{ key: 'ldl', label: 'LDL', type: 'number', min: 10 }]).errorFields, []);
+});

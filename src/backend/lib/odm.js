@@ -209,9 +209,18 @@ export function buildOdmXml(data, { now = new Date() } = {}) {
     const visitMap     = new Map(visits.map(v => [v.id, v]));
     // formId → (fieldKey → type), so a captured value can be rendered in the
     // representation its declared DataType requires.
-    const typesByForm  = new Map(forms.map(f => [
-        f.id, new Map((f.schemaJson?.fields ?? []).map(fd => [fd.key, fd.type])),
-    ]));
+    // First definition wins per key, matching the dedup in formSpecs below. A
+    // Map built by .map() keeps the LAST duplicate, so a legacy schema with a
+    // repeated key had its ItemDef declared from the first field while the
+    // boolean conversion in ClinicalData used the last one's type — a value
+    // rendered as "true" under DataType="text".
+    const typesByForm = new Map(forms.map((f) => {
+        const types = new Map();
+        for (const fd of f.schemaJson?.fields ?? []) {
+            if (fd?.key !== undefined && !types.has(fd.key)) types.set(fd.key, fd.type);
+        }
+        return [f.id, types];
+    }));
     const aeBySubj     = groupBy(adverseEvents, 'subjectId');
     const consentBySubj = groupBy(consents, 'subjectId');
     const entriesBySubj = groupBy(entries, 'subjectId');
@@ -273,8 +282,12 @@ export function buildOdmXml(data, { now = new Date() } = {}) {
             // hold them, and two ItemDefs sharing an OID make the reference
             // ambiguous — the defect this whole section exists to prevent.
             const seen = new Set();
-            const declared = (form?.schemaJson?.fields ?? [])
-                .filter(f => f?.key && !seen.has(f.key) && seen.add(f.key));
+            const declared = [];
+            for (const f of form?.schemaJson?.fields ?? []) {
+                if (!f?.key || seen.has(f.key)) continue;
+                seen.add(f.key);
+                declared.push(f);
+            }
             const extra = [...(extraByForm.get(id) ?? [])]
                 .filter(key => !seen.has(key))
                 .map(key => ({ key, label: key, type: 'text', undeclared: true }));

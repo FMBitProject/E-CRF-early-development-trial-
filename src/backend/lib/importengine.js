@@ -244,7 +244,23 @@ export function planRow(row, columnMap, formFields = []) {
 export function mergeEntryData(existingData, incoming, formFields = []) {
     const before = { ...(existingData ?? {}) };
     const merged = { ...before, ...(incoming ?? {}) };
-    const already = new Set(validateCRFData(before, formFields).errors);
-    const introduced = validateCRFData(merged, formFields).errors.filter(e => !already.has(e));
+
+    // Compare by field, not by message. Several validation messages embed the
+    // offending value ("LDL (5) is below the allowed minimum"), so a string
+    // comparison read a legacy value of 5 and an imported value of 3 as two
+    // different problems and rejected the row — blocking exactly the correction
+    // of a long-broken record that this guard is documented as allowing.
+    // A field already failing stays failing; what matters is whether this
+    // import broke something that was previously fine.
+    const beforeErrors = validateCRFData(before, formFields).errorFields;
+    const wasBad = new Set(beforeErrors.filter(e => e.key !== null).map(e => e.key));
+    // Cross-field rules belong to no single field, so those are still matched
+    // by message — and those messages do not embed values, so they are stable.
+    const wasBadCross = new Set(beforeErrors.filter(e => e.key === null).map(e => e.message));
+
+    const introduced = validateCRFData(merged, formFields).errorFields
+        .filter(e => (e.key === null ? !wasBadCross.has(e.message) : !wasBad.has(e.key)))
+        .map(e => e.message);
+
     return { merged, introduced };
 }

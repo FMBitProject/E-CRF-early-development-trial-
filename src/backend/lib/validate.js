@@ -1,6 +1,8 @@
 /**
  * Server-side clinical edit checks mirroring the frontend validation logic.
- * Returns { valid: boolean, errors: string[], warnings: string[], softViolations: array }
+ * Returns { valid, errors: string[], errorFields: [{key, message}], warnings, softViolations }
+ * where errorFields carries the same messages tagged with the field they belong
+ * to — null for cross-field rules, which belong to no single field.
  *
  * Field schema properties consumed:
  *   required, type, min, max, softMin, softMax, unit
@@ -14,8 +16,18 @@ export function validateCRFData(formData, schemaFields) {
     const errors         = [];
     const warnings       = [];
     const softViolations = [];
+    // Same errors, tagged with the field they belong to (null for cross-field
+    // rules). `errors` alone is not enough to reason about: several messages
+    // embed the offending value, so comparing two validation runs by message
+    // treats "LDL (5) too low" and "LDL (3) too low" as different problems when
+    // they are the same field failing the same rule. importengine's merge guard
+    // needs to tell "this field was already broken" from "this import broke it".
+    const errorFields    = [];
+    let currentKey = null;
+    const push = (msg) => { errors.push(msg); errorFields.push({ key: currentKey, message: msg }); };
 
     for (const field of schemaFields) {
+        currentKey = field.key ?? null;
         const value = formData[field.key];
         // A multi-select with nothing ticked arrives as [], which is not '' —
         // without this it would satisfy a "required" field.
@@ -28,14 +40,14 @@ export function validateCRFData(formData, schemaFields) {
             const otherVal = String(formData[cr.ifField] ?? '');
             const isCondMet = otherVal === String(cr.ifValue);
             if (isCondMet && isEmpty) {
-                errors.push(`${field.label} is required when ${cr.ifField} is "${cr.ifValue}".`);
+                push(`${field.label} is required when ${cr.ifField} is "${cr.ifValue}".`);
                 continue;
             }
         }
 
         // ── Standard required ───────────────────────────────────────────────
         if (field.required && isEmpty) {
-            errors.push(`${field.label} is required.`);
+            push(`${field.label} is required.`);
             continue;
         }
 
@@ -45,7 +57,7 @@ export function validateCRFData(formData, schemaFields) {
         if (field.type === 'number') {
             const num     = parseFloat(value);
             if (isNaN(num)) {
-                errors.push(`${field.label} must be a valid number.`);
+                push(`${field.label} must be a valid number.`);
                 continue;
             }
 
@@ -56,9 +68,9 @@ export function validateCRFData(formData, schemaFields) {
             const softMax = field.softMax     ?? field.validation?.softMax;
 
             if (hardMin !== undefined && hardMin !== null && num < hardMin) {
-                errors.push(`${field.label} (${num}) is below the allowed minimum (${hardMin}${field.unit ? ' ' + field.unit : ''}).`);
+                push(`${field.label} (${num}) is below the allowed minimum (${hardMin}${field.unit ? ' ' + field.unit : ''}).`);
             } else if (hardMax !== undefined && hardMax !== null && num > hardMax) {
-                errors.push(`${field.label} (${num}) exceeds the allowed maximum (${hardMax}${field.unit ? ' ' + field.unit : ''}).`);
+                push(`${field.label} (${num}) exceeds the allowed maximum (${hardMax}${field.unit ? ' ' + field.unit : ''}).`);
             } else {
                 if (softMin !== undefined && softMin !== null && num < softMin) {
                     const msg = `${field.label} (${num}) is unusually low (expected ≥ ${softMin}). Please verify.`;
@@ -82,7 +94,7 @@ export function validateCRFData(formData, schemaFields) {
             const vals = Array.isArray(value) ? value : [value];
             const invalid = vals.filter(v => !allowed.includes(v));
             if (invalid.length > 0) {
-                errors.push(`${field.label}: "${invalid.join('", "')}" is not a valid codelist value.`);
+                push(`${field.label}: "${invalid.join('", "')}" is not a valid codelist value.`);
             }
         }
 
@@ -91,7 +103,7 @@ export function validateCRFData(formData, schemaFields) {
             try {
                 const rx = new RegExp(field.pattern);
                 if (!rx.test(value)) {
-                    errors.push(field.patternMessage || `${field.label} does not match the required format.`);
+                    push(field.patternMessage || `${field.label} does not match the required format.`);
                 }
             } catch {
                 // invalid regex in schema — skip silently
@@ -103,8 +115,9 @@ export function validateCRFData(formData, schemaFields) {
     const sbp = parseFloat(formData.systolic_bp);
     const dbp = parseFloat(formData.diastolic_bp);
     if (!isNaN(sbp) && !isNaN(dbp) && dbp >= sbp) {
-        errors.push('Diastolic BP must be less than Systolic BP.');
+        currentKey = null;
+        push('Diastolic BP must be less than Systolic BP.');
     }
 
-    return { valid: errors.length === 0, errors, warnings, softViolations };
+    return { valid: errors.length === 0, errors, errorFields, warnings, softViolations };
 }

@@ -235,3 +235,35 @@ test('null and undefined sides are handled', () => {
     assert.deepEqual(mergeEntryData(undefined, undefined, []).merged, {});
     assert.doesNotThrow(() => mergeEntryData({ a: '1' }, { b: '2' }));
 });
+
+test('re-importing a still-invalid value for an already-invalid field is not "introduced"', () => {
+    // The comparison used to be by error string, and range messages embed the
+    // value: "LDL (5) is below..." vs "LDL (3) is below..." looked like a new
+    // problem, so a correction that improved a legacy value but did not fully
+    // fix it was rejected. The field was already failing either way.
+    const f = [{ key: 'ldl', label: 'LDL', type: 'number', min: 10 }];
+    assert.deepEqual(mergeEntryData({ ldl: '5' }, { ldl: '3' }, f).introduced, []);
+    assert.deepEqual(mergeEntryData({ ldl: '5' }, { ldl: '7' }, f).introduced, []);
+    assert.deepEqual(mergeEntryData({ ldl: '5' }, { ldl: '50' }, f).introduced, [], 'fixing it is fine too');
+});
+
+test('breaking a field that was previously valid IS introduced', () => {
+    const f = [{ key: 'ldl', label: 'LDL', type: 'number', min: 10 }];
+    const { introduced } = mergeEntryData({ ldl: '50' }, { ldl: '3' }, f);
+    assert.equal(introduced.length, 1);
+    assert.match(introduced[0], /LDL/);
+});
+
+test('a cross-field rule newly broken by the merge is still introduced', () => {
+    // Regression guard: moving to key-based comparison must not lose the case
+    // the field-key attribution cannot see, since a cross-field error belongs
+    // to no single field.
+    const { introduced } = mergeEntryData({ systolic_bp: '90' }, { diastolic_bp: '120' }, BP_FIELDS);
+    assert.equal(introduced.length, 1);
+    assert.match(introduced[0], /Diastolic BP must be less than Systolic BP/);
+});
+
+test('a cross-field rule already broken stays un-introduced', () => {
+    const broken = { systolic_bp: '90', diastolic_bp: '120' };
+    assert.deepEqual(mergeEntryData(broken, { systolic_bp: '95' }, BP_FIELDS).introduced, []);
+});
