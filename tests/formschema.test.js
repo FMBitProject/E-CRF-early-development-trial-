@@ -11,6 +11,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     validateFormSchema, VALID_FIELD_TYPES, CHOICE_FIELD_TYPES, FIELD_KEY_RE,
+    schemasEqual, describeSchemaChange,
 } from '../src/backend/lib/formschema.js';
 
 const field = (over = {}) => ({ key: 'ldl', label: 'LDL', type: 'number', ...over });
@@ -147,4 +148,61 @@ test('all problems are reported at once, not just the first', () => {
         field({ key: 'ldl', label: 'A', type: 'select' }),
     ));
     assert.ok(errs.length >= 3, `expected several errors, got ${errs.length}`);
+});
+
+// ── Change detection ─────────────────────────────────────────────────────────
+// PUT /api/forms/:id refuses to rewrite a schema once entries reference it.
+// That guard is only useful if it fires on real changes and stays quiet
+// otherwise — a false positive blocks an edit the admin is entitled to make.
+
+test('property order is not a schema change', () => {
+    // The builder spreads each field on edit, so a property ticked and unticked
+    // comes back at the end of the object. JSON.stringify saw that as a change.
+    const a = schema({ key: 'ldl', label: 'LDL', type: 'number', required: true });
+    const b = schema({ required: true, type: 'number', label: 'LDL', key: 'ldl' });
+    assert.ok(schemasEqual(a, b));
+});
+
+test('an explicit undefined is not a schema change', () => {
+    const a = schema({ key: 'ldl', label: 'LDL', type: 'number' });
+    const b = schema({ key: 'ldl', label: 'LDL', type: 'number', unit: undefined });
+    assert.ok(schemasEqual(a, b), 'JSON drops it anyway, so it cannot mean anything');
+});
+
+test('field order is a schema change — it is the order sites see', () => {
+    const a = schema(field({ key: 'a' }), field({ key: 'b' }));
+    const b = schema(field({ key: 'b' }), field({ key: 'a' }));
+    assert.ok(!schemasEqual(a, b));
+});
+
+test('real edits are still detected', () => {
+    const base = schema(field());
+    assert.ok(!schemasEqual(base, schema(field({ type: 'text' }))),   'type');
+    assert.ok(!schemasEqual(base, schema(field({ required: true }))), 'added property');
+    assert.ok(!schemasEqual(base, schema(field(), field({ key: 'x' }))), 'added question');
+    assert.ok(!schemasEqual(base, schema()),                          'removed question');
+    assert.ok(!schemasEqual(base, { fields: [field()], extra: 1 }),   'top-level property');
+});
+
+test('nested option lists are compared by value, not by reference', () => {
+    const a = schema(field({ type: 'select', options: ['A', 'B'] }));
+    assert.ok(schemasEqual(a, schema(field({ type: 'select', options: ['A', 'B'] }))));
+    assert.ok(!schemasEqual(a, schema(field({ type: 'select', options: ['A', 'C'] }))));
+    assert.ok(!schemasEqual(a, schema(field({ type: 'select', options: ['A'] }))));
+});
+
+test('a blocked change explains itself in terms of questions, not diffs', () => {
+    const before = schema(field({ key: 'ldl', label: 'LDL' }), field({ key: 'hdl', label: 'HDL' }));
+    const after  = schema(field({ key: 'ldl', label: 'LDL', type: 'text' }), field({ key: 'trig', label: 'Triglycerides' }));
+    const out = describeSchemaChange(after, before);
+    assert.ok(out.some(c => c.includes('ldl') && c.includes('answer type')), out.join(' | '));
+    assert.ok(out.some(c => c.includes('trig') && c.includes('added')), out.join(' | '));
+    assert.ok(out.some(c => c.includes('hdl') && c.includes('orphaned')), out.join(' | '));
+});
+
+test('describing a change never throws on a malformed schema', () => {
+    for (const bad of [null, undefined, {}, { fields: 'x' }, { fields: [null, {}] }]) {
+        assert.doesNotThrow(() => describeSchemaChange(bad, schema(field())));
+        assert.doesNotThrow(() => describeSchemaChange(schema(field()), bad));
+    }
 });

@@ -5,7 +5,7 @@ import { crfForms, crfDataEntries } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 import { orgCondition, sameOrg, effectiveOrgId } from '../lib/tenantscope.js';
-import { validateFormSchema } from '../lib/formschema.js';
+import { validateFormSchema, schemasEqual, describeSchemaChange } from '../lib/formschema.js';
 
 const router = Router();
 
@@ -94,12 +94,18 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
         // rewriting it in place silently changes the meaning of existing entries
         // (fields can vanish or change type). Block once any entry references
         // this form; create a new form version instead.
-        if (JSON.stringify(schemaJson) !== JSON.stringify(existing.schemaJson)) {
+        if (!schemasEqual(schemaJson, existing.schemaJson)) {
             const [{ inUse }] = await db.select({ inUse: count() }).from(crfDataEntries)
                 .where(eq(crfDataEntries.formId, id));
             if (Number(inUse) > 0) {
+                // Saying only that the schema differs left the admin guessing
+                // which edit tripped the guard, on a screen with a dozen inputs.
+                const changes = describeSchemaChange(schemaJson, existing.schemaJson);
                 return res.status(409).json({
-                    error: `Schema cannot be modified: ${inUse} data entr${Number(inUse) === 1 ? 'y' : 'ies'} reference this form. Create a new form version instead.`,
+                    // No trailing period: the builder renders this as
+                    // "<error>: <details>", so it has to read as a lead-in.
+                    error: `Schema cannot be modified: ${inUse} data entr${Number(inUse) === 1 ? 'y' : 'ies'} reference this form. Create a new form version instead`,
+                    details: changes.length ? changes : ['the question list or its validation rules changed'],
                 });
             }
         }

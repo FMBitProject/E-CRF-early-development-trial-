@@ -182,8 +182,20 @@ function renderFieldList() {
         return;
     }
 
+    // Replacing innerHTML resets the scroll box to the top and snaps every
+    // Advanced panel shut. Changing the answer type on question 8 therefore
+    // threw the designer back to question 1 with their export codes hidden.
+    // Carry both across the rebuild. After a move or a delete the open panels
+    // are matched by position rather than by question, which is close enough
+    // to be unnoticeable and never wrong in a way that loses data.
+    const scrollTop = el.scrollTop;
+    const wasOpen = new Set();
+    [...el.querySelectorAll('.fb-field-row')].forEach((row, i) => {
+        if (row.querySelector('details')?.open) wasOpen.add(i);
+    });
+
     el.innerHTML = _fields.map((f, i) => `
-    <div class="fb-field-row border border-slate-200 rounded-lg bg-slate-50 p-3 space-y-2">
+    <div class="fb-field-row border border-slate-200 rounded-lg bg-slate-50 p-3 space-y-2" data-index="${i}">
       <div class="flex items-center gap-2">
         <div class="flex flex-col gap-0.5">
           <button onclick="window.fbMoveField(${i},-1)" class="text-slate-300 hover:text-slate-600 leading-none" ${i === 0 ? 'disabled' : ''}>
@@ -266,7 +278,7 @@ function renderFieldList() {
         </label>
       </div>` : ''}
       <div class="pl-6">
-        <details class="group">
+        <details class="group" ${wasOpen.has(i) ? 'open' : ''}>
           <summary class="text-xs text-slate-400 cursor-pointer hover:text-slate-600 select-none list-none flex items-center gap-1">
             <i data-lucide="chevron-right" class="w-3 h-3 transition-transform group-open:rotate-90"></i>
             Advanced <span class="text-slate-300">(optional — export codes &amp; conditional rules)</span>
@@ -277,7 +289,7 @@ function renderFieldList() {
             <div class="flex items-center gap-2 flex-wrap">
               <div class="flex items-center gap-1" title="Internal field ID used in exports & queries. Auto-generated from the label.">
                 <span class="text-xs text-slate-400 whitespace-nowrap">Field ID:</span>
-                <input class="ph-input text-xs w-40 font-mono" value="${esc(f.key)}"
+                <input class="fb-key-input ph-input text-xs w-40 font-mono" value="${esc(f.key)}"
                        onchange="window.fbUpdateField(${i},'key',this.value)" placeholder="auto-generated">
               </div>
               <div class="flex items-center gap-1">
@@ -332,6 +344,7 @@ function renderFieldList() {
         </details>
       </div>
     </div>`).join('');
+    el.scrollTop = scrollTop;
     lucide.createIcons();
 }
 
@@ -368,12 +381,20 @@ window.fbMoveField = (i, dir) => {
 // `excludeIndex` is the question being renamed — its own key must not count as
 // taken, or every keystroke would bump the suffix.
 function slugifyKey(label, excludeIndex = -1) {
-    const base = String(label ?? '')
+    // An empty label has no key yet; fbSave stops the designer there anyway.
+    if (!String(label ?? '').trim()) return '';
+
+    const base = String(label)
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '_')
         .replace(/^_+|_+$/g, '');
-    if (!base) return '';
-    const seed  = /^[a-z_]/.test(base) ? base : `f_${base}`;
+    // A label written in a non-Latin script ("血压", "давление") strips to
+    // nothing, and returning '' put the form in a state that could not be
+    // saved while blaming a Field ID the designer never typed. Fall back to a
+    // positional key: still valid, still unique, and editable under Advanced.
+    const seed = base
+        ? (/^[a-z_]/.test(base) ? base : `f_${base}`)
+        : 'field';
     const taken = new Set(_fields.filter((_, n) => n !== excludeIndex).map(f => f.key).filter(Boolean));
     if (!taken.has(seed)) return seed;
     for (let n = 2; ; n++) {
@@ -389,7 +410,13 @@ window.fbUpdateField = (i, key, value) => {
     // deriveFieldKey suffixes the second (serum_creatinine_2).
     if (key === 'label' && (!prev.key || prev.key === slugifyKey(prev.label, i))) {
         _fields[i].key = slugifyKey(value, i);
-        renderFieldList();
+        // Only the Field ID box shows the key, so only the Field ID box needs
+        // updating. Rebuilding the whole list here was actively harmful:
+        // onchange fires on blur, so clicking from the label into any other
+        // control destroyed that control before the click reached it — the
+        // dropdown simply refused to open the first time.
+        const box = document.querySelector(`#fb-fields .fb-field-row[data-index="${i}"] .fb-key-input`);
+        if (box) box.value = _fields[i].key;
     }
     if (key === 'type') renderFieldList(); // re-render for type-specific inputs
 };
@@ -445,7 +472,12 @@ window.fbSave = async () => {
 
     if (_editForm && !reason) return showToast('Reason for change is required', 'error');
 
-    const schemaJson = { fields: _fields };
+    // The builder only edits `fields`, but it is not the only thing that may
+    // ever live in a schema. Rebuilding the object from scratch silently
+    // dropped every other top-level property on save, so anything a future
+    // version (or a hand-written schema) put there was destroyed by an admin
+    // opening the form and clicking Save.
+    const schemaJson = { ...(_editForm?.schemaJson ?? {}), fields: _fields };
 
     // The schema endpoints answer 422 with { error: 'Invalid schema', details: [...] },
     // where `details` is the part that says which question is wrong. Showing
