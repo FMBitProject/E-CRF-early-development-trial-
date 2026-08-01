@@ -1,8 +1,10 @@
 /**
  * Server-side clinical edit checks mirroring the frontend validation logic.
- * Returns { valid, errors: string[], errorFields: [{key, message}], warnings, softViolations }
+ * Returns { valid, errors: string[], errorFields: [{key, rule, message}], warnings, softViolations }
  * where errorFields carries the same messages tagged with the field they belong
- * to — null for cross-field rules, which belong to no single field.
+ * to (null for cross-field rules) and the rule that produced them. The rule
+ * matters because several messages embed the offending value, so callers that
+ * compare two validation runs cannot use the message as an identity.
  *
  * Field schema properties consumed:
  *   required, type, min, max, softMin, softMax, unit
@@ -31,8 +33,11 @@ export function validateCRFData(formData, schemaFields) {
 
     // A caller that hands over a non-array (a schema stored as an object, a
     // null from a form with no schema) must get "nothing to check", not a
-    // TypeError from for...of half-way through an import.
+    // TypeError from for...of half-way through an import. Same for the record
+    // itself: an absent formData is an empty record whose required fields are
+    // all missing, which is a validation result, not a crash.
     const fields = Array.isArray(schemaFields) ? schemaFields : [];
+    const data   = (formData && typeof formData === 'object') ? formData : {};
 
     for (const field of fields) {
         // A null or non-object entry threw on field.conditionalRequired below.
@@ -41,7 +46,7 @@ export function validateCRFData(formData, schemaFields) {
         // that aborts the whole row with a TypeError rather than a result.
         if (!field || typeof field !== 'object') continue;
         const key = field.key ?? null;
-        const value = formData[key];
+        const value = data[key];
         // A multi-select with nothing ticked arrives as [], which is not '' —
         // without this it would satisfy a "required" field.
         const isEmpty = value === undefined || value === null || value === ''
@@ -50,7 +55,7 @@ export function validateCRFData(formData, schemaFields) {
         // ── Conditional required ────────────────────────────────────────────
         const cr = field.conditionalRequired;
         if (cr?.ifField && cr?.ifValue != null) {
-            const otherVal = String(formData[cr.ifField] ?? '');
+            const otherVal = String(data[cr.ifField] ?? '');
             const isCondMet = otherVal === String(cr.ifValue);
             if (isCondMet && isEmpty) {
                 push(key, 'conditional-required', `${field.label} is required when ${cr.ifField} is "${cr.ifValue}".`);
@@ -125,8 +130,8 @@ export function validateCRFData(formData, schemaFields) {
     }
 
     // ── Hardcoded cross-field: diastolic < systolic ─────────────────────────
-    const sbp = parseFloat(formData.systolic_bp);
-    const dbp = parseFloat(formData.diastolic_bp);
+    const sbp = parseFloat(data.systolic_bp);
+    const dbp = parseFloat(data.diastolic_bp);
     // Cross-field rules belong to no single field, so they carry key null and a
     // rule id of their own. The id is what distinguishes them from each other —
     // matching cross-field errors by message would break the moment a rule

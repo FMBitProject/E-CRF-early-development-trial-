@@ -6,7 +6,7 @@ import { requireRole } from '../middleware/rbac.js';
 import { writeAudit, writeFieldDiffAudit } from '../lib/audit.js';
 import { validateCRFData } from '../lib/validate.js';
 import { siteCondition, subjectInSiteScope } from '../lib/sitescope.js';
-import { isUniqueViolation, uniqueConstraintName } from '../lib/dberrors.js';
+import { isUniqueViolation } from '../lib/dberrors.js';
 import {
     canUpdateEntry, canLockEntry, canUnlockEntry,
     checkEntryScope, statusAfterUpdate, statusForNewEntry,
@@ -130,14 +130,34 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
             return res.json({ entry: updated, warnings });
         }
 
-        // Create new
-        const [created] = await db.insert(crfDataEntries).values({
-            subjectId, visitId, formId,
-            dataJson: dataJson ?? {},
-            status: statusForNewEntry(body.status),
-            createdBy: req.user.id,
-            updatedBy: req.user.id,
-        }).returning();
+        // Create new.
+        // The select-then-insert above cannot be made atomic on its own — there
+        // is no row to lock before the first insert — so idx_crf_entry_unique
+        // settles it. Losing that race means someone else saved this form for
+        // this visit while the page was open.
+        //
+        // Only this statement is wrapped: crf_data_entries has exactly one
+        // unique index, so a violation here needs no constraint-name check and
+        // has no fallback hole if the driver omits the name. Catching around
+        // the whole handler would have mapped a unique violation raised by the
+        // audit or auto-query writes below onto this message.
+        let created;
+        try {
+            [created] = await db.insert(crfDataEntries).values({
+                subjectId, visitId, formId,
+                dataJson: dataJson ?? {},
+                status: statusForNewEntry(body.status),
+                createdBy: req.user.id,
+                updatedBy: req.user.id,
+            }).returning();
+        } catch (insertErr) {
+            if (isUniqueViolation(insertErr)) {
+                return res.status(409).json({
+                    error: 'This form was saved for this visit by someone else while you were editing. Reload to see their entry before saving again.',
+                });
+            }
+            throw insertErr;
+        }
 
         await writeAudit(db, {
             tableName: 'crf_data_entries', recordId: created.id, action: 'INSERT',
@@ -148,17 +168,6 @@ router.post('/', requireRole('investigator', 'pi', 'admin', 'crc'), async (req, 
         await createAutoQueries(db, req, softViolations, created.id, subjectId, visitId, formId);
         res.status(201).json({ entry: created, warnings });
     } catch (err) {
-        // The select-then-insert above cannot be made atomic on its own — there
-        // is no row to lock before the first insert — so idx_crf_entry_unique
-        // settles it. Losing that race means someone else saved this form for
-        // this visit while the page was open; reloading picks their entry up
-        // and turns this into the ordinary edit path. A 500 with raw SQL was
-        // the alternative.
-        if (isUniqueViolation(err) && uniqueConstraintName(err).includes('crf_entry')) {
-            return res.status(409).json({
-                error: 'This form was saved for this visit by someone else while you were editing. Reload to see their entry before saving again.',
-            });
-        }
         res.status(500).json({ error: err.message });
     }
 });

@@ -24,10 +24,17 @@ export function isUniqueViolation(err) {
  * did not name one.
  */
 export function uniqueConstraintName(err) {
+    let fallback = '';
     for (let e = err, depth = 0; e && depth < 5; e = e.cause, depth++) {
-        // postgres-js exposes constraint_name; node-postgres uses constraint.
+        // postgres-js exposes constraint_name (it maps the PG error field 'n');
+        // node-postgres calls it constraint.
         const name = e.constraint_name ?? e.constraint;
-        if (name) return String(name);
+        if (!name) continue;
+        // Prefer the frame that actually carries the unique violation. A
+        // wrapper further out can carry a name from an unrelated error, and
+        // the caller picks a user-facing message from whatever comes back.
+        if (e.code === '23505') return String(name);
+        if (!fallback) fallback = String(name);
     }
-    return '';
+    return fallback;
 }

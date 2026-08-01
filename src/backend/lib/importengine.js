@@ -245,13 +245,6 @@ export function mergeEntryData(existingData, incoming, formFields = []) {
     const before = { ...(existingData ?? {}) };
     const merged = { ...before, ...(incoming ?? {}) };
 
-    // Compare by field, not by message. Several validation messages embed the
-    // offending value ("LDL (5) is below the allowed minimum"), so a string
-    // comparison read a legacy value of 5 and an imported value of 3 as two
-    // different problems and rejected the row — blocking exactly the correction
-    // of a long-broken record that this guard is documented as allowing.
-    // A field already failing stays failing; what matters is whether this
-    // import broke something that was previously fine.
     // Identity is (field, rule) — not the message, and not the field alone.
     // The message embeds the offending value, so it changed whenever the value
     // did. The field alone was too coarse in the other direction: once a field

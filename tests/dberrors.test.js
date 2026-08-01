@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 
 process.env.DATABASE_URL ??= 'postgres://test:test@localhost:5432/test';
 
-const { isUniqueViolation } = await import('../src/backend/lib/dberrors.js');
+const { isUniqueViolation, uniqueConstraintName } = await import('../src/backend/lib/dberrors.js');
 
 test('detects a bare postgres unique violation (code 23505)', () => {
     const err = Object.assign(new Error('duplicate key value violates unique constraint "x"'), { code: '23505' });
@@ -36,4 +36,36 @@ test('survives cyclic cause chains', () => {
     const a = new Error('a'); const b = new Error('b');
     a.cause = b; b.cause = a;   // cycle — depth cap must stop the walk
     assert.equal(isUniqueViolation(a), false);
+});
+
+// ── Which constraint fired ──────────────────────────────────────────────────
+// A route with more than one unique constraint in play cannot phrase a useful
+// message without this. postgres-js names the field constraint_name (it maps
+// the PG error field 'n'); node-postgres calls it constraint.
+
+test('the constraint name is read from either driver spelling', () => {
+    assert.equal(uniqueConstraintName({ code: '23505', constraint_name: 'idx_crf_entry_unique' }), 'idx_crf_entry_unique');
+    assert.equal(uniqueConstraintName({ code: '23505', constraint: 'subjects_subject_code_unique' }), 'subjects_subject_code_unique');
+});
+
+test('the name is found through the drizzle wrapper', () => {
+    const wrapped = new Error('Failed query: insert into ...');
+    wrapped.cause = { code: '23505', constraint_name: 'idx_crf_entry_unique' };
+    assert.equal(uniqueConstraintName(wrapped), 'idx_crf_entry_unique');
+});
+
+test('the 23505 frame wins over an unrelated constraint name higher in the chain', () => {
+    // Returning the first name in the chain could name a constraint from a
+    // different error entirely, and the caller uses it to pick a message.
+    const outer = new Error('wrapper');
+    outer.constraint_name = 'some_other_constraint';
+    outer.cause = { code: '23505', constraint_name: 'idx_crf_entry_unique' };
+    assert.equal(uniqueConstraintName(outer), 'idx_crf_entry_unique');
+});
+
+test('an unnamed or absent constraint yields an empty string, never undefined', () => {
+    assert.equal(uniqueConstraintName({ code: '23505' }), '');
+    assert.equal(uniqueConstraintName(new Error('nope')), '');
+    assert.equal(uniqueConstraintName(null), '');
+    assert.equal(uniqueConstraintName(undefined), '');
 });

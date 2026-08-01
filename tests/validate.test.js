@@ -226,3 +226,13 @@ test('a malformed entry inside schemaFields is skipped, not fatal', () => {
     assert.equal(errorFields.length, 1);
     assert.equal(errorFields[0].key, 'ldl');
 });
+
+test('a missing formData is treated as an empty record, not a crash', () => {
+    // schemaFields was hardened against null in the same commit and formData
+    // was not — the identical failure one argument along.
+    const f = [{ key: 'ldl', label: 'LDL', type: 'number', min: 10, required: true }];
+    for (const bad of [null, undefined]) {
+        assert.doesNotThrow(() => validateCRFData(bad, f), `formData=${JSON.stringify(bad)}`);
+        assert.equal(validateCRFData(bad, f).valid, false, 'a required field is still reported missing');
+    }
+});
