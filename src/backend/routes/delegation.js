@@ -7,6 +7,20 @@ import { db } from '../db/connection.js';
 import { delegationLog, trainingRecords, user } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
+import { isoDay } from '../lib/isodate.js';
+import { dbErrorMessage } from '../lib/dberrors.js';
+
+/**
+ * A failed statement used to be answered with `err.message`, which for a
+ * drizzle error is "Failed query: insert into … params: …" — the SQL and every
+ * bound value, delivered to the browser, with no word about what actually went
+ * wrong. Log the whole thing where an operator can read it; send back only the
+ * reason postgres gave.
+ */
+function failed(res, err, context) {
+    console.error(`[delegation] ${context}:`, err);
+    res.status(500).json({ error: dbErrorMessage(err) });
+}
 
 const router = Router();
 
@@ -41,7 +55,7 @@ router.get('/', async (req, res) => {
         res.json(rows);
     } catch (err) {
         if (isMissingTable(err)) return res.json([]);
-        res.status(500).json({ error: err.message });
+        failed(res, err, 'list delegation');
     }
 });
 
@@ -64,7 +78,7 @@ router.get('/training/records', requireRole('admin', 'cra', 'pi', 'data_manager'
         res.json(rows);
     } catch (err) {
         if (isMissingTable(err)) return res.json([]);
-        res.status(500).json({ error: err.message });
+        failed(res, err, 'list training records');
     }
 });
 
@@ -80,12 +94,21 @@ router.post('/training/records', requireRole('admin', 'pi'), async (req, res) =>
         const [targetUser] = await db.select({ name: user.name }).from(user).where(eq(user.id, traineeId));
         if (!targetUser) return res.status(404).json({ error: 'User not found' });
 
+        // training_date and expiry_date are TEXT "YYYY-MM-DD", same as the
+        // delegation dates below — a Date object binds as timestamptz and the
+        // column refuses it.
+        const tDate = isoDay(trainingDate);
+        const xDate = expiryDate ? isoDay(expiryDate) : null;
+        if (!tDate) return res.status(400).json({ error: 'trainingDate is not a valid date (expected YYYY-MM-DD)' });
+        if (expiryDate && !xDate) return res.status(400).json({ error: 'expiryDate is not a valid date (expected YYYY-MM-DD)' });
+        if (xDate && xDate < tDate) return res.status(400).json({ error: 'expiryDate cannot be before trainingDate' });
+
         const [record] = await db.insert(trainingRecords).values({
             userId:          traineeId,
             userName:        targetUser.name,
             trainingType,
-            trainingDate:    new Date(trainingDate),
-            expiryDate:      expiryDate ? new Date(expiryDate) : null,
+            trainingDate:    tDate,
+            expiryDate:      xDate,
             certificateRef:  certificateRef ?? null,
             notes:           notes ?? null,
             recordedBy:      req.user.id,
@@ -101,25 +124,32 @@ router.post('/training/records', requireRole('admin', 'pi'), async (req, res) =>
 
         res.status(201).json(record);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        failed(res, err, 'create training record');
     }
 });
 
 // GET /api/delegation/training/expiring — training expiring within N days (default 30)
 router.get('/training/expiring', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
-        const days = parseInt(req.query.days ?? '30');
-        const now = new Date();
+        const days = Number.parseInt(req.query.days ?? '30', 10);
+        const window = Number.isFinite(days) && days >= 0 ? days : 30;
         const future = new Date();
-        future.setDate(future.getDate() + days);
+        future.setDate(future.getDate() + window);
+
+        // expiry_date is TEXT "YYYY-MM-DD". Comparing it against a Date bound
+        // the parameter as a timestamp, which the column will not compare
+        // against — the endpoint returned an error rather than a list. ISO date
+        // strings order lexicographically, so a plain text BETWEEN is correct.
+        const from = isoDay(new Date());
+        const to   = isoDay(future);
 
         const rows = await db.select().from(trainingRecords)
-            .where(and(gte(trainingRecords.expiryDate, now), lte(trainingRecords.expiryDate, future)))
+            .where(and(gte(trainingRecords.expiryDate, from), lte(trainingRecords.expiryDate, to)))
             .orderBy(trainingRecords.expiryDate);
         res.json(rows);
     } catch (err) {
         if (isMissingTable(err)) return res.json([]);
-        res.status(500).json({ error: err.message });
+        failed(res, err, 'list expiring training');
     }
 });
 
@@ -141,7 +171,7 @@ router.delete('/training/records/:id', requireRole('admin', 'pi'), async (req, r
 
         res.json({ ok: true });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        failed(res, err, 'delete training record');
     }
 });
 
@@ -162,7 +192,7 @@ router.get('/:id', async (req, res) => {
         }
         res.json(row);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        failed(res, err, 'get delegation');
     }
 });
 
@@ -178,6 +208,20 @@ router.post('/', requireRole('admin', 'pi'), async (req, res) => {
             return res.status(400).json({ error: 'userId, delegatedTasks, and delegationStart are required' });
         }
 
+        // delegation_start/end are TEXT columns holding "YYYY-MM-DD", and
+        // consentrules.day() compares them by slicing the first ten characters.
+        // Wrapping the value in `new Date()` made postgres-js bind the
+        // parameter as a timestamptz, which the text column rejects outright —
+        // and had it been accepted it would have stored "Sat Aug 01 2026 …",
+        // whose first ten characters are "Sat Aug 01". Every delegation-window
+        // check would then have failed, which is the check that decides who may
+        // take informed consent (ICH E6(R3) §4.1.5).
+        const start = isoDay(delegationStart);
+        const end   = delegationEnd ? isoDay(delegationEnd) : null;
+        if (!start)  return res.status(400).json({ error: 'delegationStart is not a valid date (expected YYYY-MM-DD)' });
+        if (delegationEnd && !end) return res.status(400).json({ error: 'delegationEnd is not a valid date (expected YYYY-MM-DD)' });
+        if (end && end < start)    return res.status(400).json({ error: 'delegationEnd cannot be before delegationStart' });
+
         // Fetch the delegated user's name and role
         const [targetUser] = await db.select({ name: user.name, role: user.role })
             .from(user).where(eq(user.id, delegatedUserId));
@@ -188,10 +232,12 @@ router.post('/', requireRole('admin', 'pi'), async (req, res) => {
             userId:          delegatedUserId,
             userName:        targetUser.name,
             userRole:        targetUser.role,
-            siteId:          siteId ?? null,
+            // An unselected <select> posts "", which is not null and which an
+            // integer column will not take.
+            siteId:          siteId === '' || siteId == null ? null : parseInt(siteId, 10),
             delegatedTasks,
-            delegationStart: new Date(delegationStart),
-            delegationEnd:   delegationEnd ? new Date(delegationEnd) : null,
+            delegationStart: start,
+            delegationEnd:   end,
             status:          'Active',
             notes:           notes ?? null,
             createdBy:       req.user.id,
@@ -207,7 +253,7 @@ router.post('/', requireRole('admin', 'pi'), async (req, res) => {
 
         res.status(201).json(entry);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        failed(res, err, 'create delegation');
     }
 });
 
@@ -222,8 +268,26 @@ router.patch('/:id', requireRole('admin', 'pi'), async (req, res) => {
 
         const updates = { updatedAt: new Date() };
         if (delegatedTasks !== undefined) updates.delegatedTasks = delegatedTasks;
-        if (delegationStart !== undefined) updates.delegationStart = new Date(delegationStart);
-        if (delegationEnd !== undefined) updates.delegationEnd = delegationEnd ? new Date(delegationEnd) : null;
+        // Same TEXT "YYYY-MM-DD" contract as the create path above.
+        if (delegationStart !== undefined) {
+            const s = isoDay(delegationStart);
+            if (!s) return res.status(400).json({ error: 'delegationStart is not a valid date (expected YYYY-MM-DD)' });
+            updates.delegationStart = s;
+        }
+        if (delegationEnd !== undefined) {
+            if (delegationEnd) {
+                const e = isoDay(delegationEnd);
+                if (!e) return res.status(400).json({ error: 'delegationEnd is not a valid date (expected YYYY-MM-DD)' });
+                updates.delegationEnd = e;
+            } else {
+                updates.delegationEnd = null;
+            }
+        }
+        const effStart = updates.delegationStart ?? existing.delegationStart;
+        const effEnd   = updates.delegationEnd   ?? existing.delegationEnd;
+        if (effStart && effEnd && effEnd < effStart) {
+            return res.status(400).json({ error: 'delegationEnd cannot be before delegationStart' });
+        }
         if (status !== undefined) updates.status = status;
         if (notes !== undefined) updates.notes = notes;
 
@@ -239,7 +303,7 @@ router.patch('/:id', requireRole('admin', 'pi'), async (req, res) => {
 
         res.json(updated);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        failed(res, err, 'update delegation');
     }
 });
 
@@ -269,7 +333,7 @@ router.post('/:id/sign', async (req, res) => {
 
         res.json(updated);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        failed(res, err, 'sign delegation');
     }
 });
 

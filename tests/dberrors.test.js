@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 
 process.env.DATABASE_URL ??= 'postgres://test:test@localhost:5432/test';
 
-const { isUniqueViolation, uniqueConstraintName } = await import('../src/backend/lib/dberrors.js');
+const { isUniqueViolation, uniqueConstraintName, dbErrorMessage } = await import('../src/backend/lib/dberrors.js');
 
 test('detects a bare postgres unique violation (code 23505)', () => {
     const err = Object.assign(new Error('duplicate key value violates unique constraint "x"'), { code: '23505' });
@@ -84,4 +84,46 @@ test('a unique violation identified only by message still yields its name', () =
     const err = new Error('duplicate key value violates unique constraint "idx_crf_entry_unique"');
     err.constraint_name = 'idx_crf_entry_unique';
     assert.equal(uniqueConstraintName(err), 'idx_crf_entry_unique');
+});
+
+// ── Surfacing the real cause ────────────────────────────────────────────────
+// DrizzleQueryError.message is only "Failed query: insert into … params: …".
+// Routes that answer res.status(500).json({ error: err.message }) therefore
+// ship the SQL and every bound parameter to the browser while withholding the
+// one thing anybody needs — why postgres refused. A delegation entry failing in
+// production showed the operator a wall of SQL and no reason at all.
+
+test('the postgres reason is extracted from under the drizzle wrapper', () => {
+    const wrapped = new Error('Failed query: insert into "delegation_log" ... params: 2,abc');
+    wrapped.cause = Object.assign(new Error('column "delegation_start" is of type text but expression is of type timestamp with time zone'), { code: '42804' });
+    const msg = dbErrorMessage(wrapped);
+    assert.match(msg, /is of type text but expression is of type/);
+    assert.ok(!msg.includes('Failed query'), 'the query text must not come along');
+    assert.ok(!msg.includes('params:'), 'bound parameters must never reach a client');
+});
+
+test('a bare postgres error is returned as-is', () => {
+    const err = Object.assign(new Error('duplicate key value violates unique constraint "x"'), { code: '23505' });
+    assert.equal(dbErrorMessage(err), 'duplicate key value violates unique constraint "x"');
+});
+
+test('the deepest cause wins over an intermediate wrapper', () => {
+    const outer = new Error('Failed query: select 1');
+    outer.cause = new Error('Failed query: select 2');
+    outer.cause.cause = Object.assign(new Error('relation "nope" does not exist'), { code: '42P01' });
+    assert.equal(dbErrorMessage(outer), 'relation "nope" does not exist');
+});
+
+test('an error with no usable cause falls back to a generic line, never to SQL', () => {
+    const onlyQuery = new Error('Failed query: insert into "x" ... params: secret');
+    const msg = dbErrorMessage(onlyQuery);
+    assert.ok(!msg.includes('secret'));
+    assert.ok(!msg.includes('Failed query'));
+    assert.ok(msg.length > 0);
+});
+
+test('a non-error input does not throw', () => {
+    for (const bad of [null, undefined, 'x', 42, {}]) {
+        assert.doesNotThrow(() => dbErrorMessage(bad), JSON.stringify(bad));
+    }
 });

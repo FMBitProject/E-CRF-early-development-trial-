@@ -15,6 +15,29 @@ export function isUniqueViolation(err) {
 }
 
 /**
+ * The reason postgres refused, with the drizzle wrapper stripped off.
+ *
+ * DrizzleQueryError.message is only "Failed query: insert into … params: …" —
+ * the SQL and every bound parameter, and not one word about what went wrong.
+ * A route answering `res.status(500).json({ error: err.message })` therefore
+ * ships the schema and the parameter values (patient data among them) to the
+ * browser while withholding the only useful part, which sits on err.cause.
+ *
+ * Returns a generic line rather than the query text when no cause is present:
+ * the query is never something a client should see.
+ */
+export function dbErrorMessage(err) {
+    const isQueryText = (m) => typeof m === 'string' && /^Failed query:/i.test(m);
+    let best = '';
+    for (let e = err, depth = 0; e && typeof e === 'object' && depth < 5; e = e.cause, depth++) {
+        const m = typeof e.message === 'string' ? e.message.trim() : '';
+        if (!m || isQueryText(m)) continue;
+        best = m;   // keep walking: the deepest non-wrapper message is the real one
+    }
+    return best || 'Database rejected the request. Check the server log for the full error.';
+}
+
+/**
  * Which constraint was violated, walking the same cause chain.
  *
  * A route with more than one unique constraint in play cannot phrase a useful
