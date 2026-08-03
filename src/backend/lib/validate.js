@@ -37,7 +37,10 @@ export function validateCRFData(formData, schemaFields) {
     // itself: an absent formData is an empty record whose required fields are
     // all missing, which is a validation result, not a crash.
     const fields = Array.isArray(schemaFields) ? schemaFields : [];
-    const data   = (formData && typeof formData === 'object') ? formData : {};
+    // Array.isArray is part of the test: typeof [] is 'object', and an array is
+    // not a record of answers however willing property access is to pretend.
+    const data   = (formData && typeof formData === 'object' && !Array.isArray(formData))
+        ? formData : {};
 
     for (const field of fields) {
         // A null or non-object entry threw on field.conditionalRequired below.

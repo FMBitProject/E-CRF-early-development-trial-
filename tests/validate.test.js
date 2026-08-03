@@ -236,3 +236,10 @@ test('a missing formData is treated as an empty record, not a crash', () => {
         assert.equal(validateCRFData(bad, f).valid, false, 'a required field is still reported missing');
     }
 });
+
+test('an array is not a record — the object guard must not let one through', () => {
+    const f = [{ key: 'ldl', label: 'LDL', type: 'number', required: true }];
+    assert.doesNotThrow(() => validateCRFData([], f));
+    assert.equal(validateCRFData([], f).valid, false);
+    assert.equal(validateCRFData(['a', 'b'], f).valid, false);
+});

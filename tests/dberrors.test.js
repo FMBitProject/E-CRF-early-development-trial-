@@ -69,3 +69,19 @@ test('an unnamed or absent constraint yields an empty string, never undefined', 
     assert.equal(uniqueConstraintName(null), '');
     assert.equal(uniqueConstraintName(undefined), '');
 });
+
+test('a name is not taken from a frame that is not a unique violation', () => {
+    // The fallback existed for a 23505 frame that carries no constraint name.
+    // It must not reach into an unrelated frame — the caller turns whatever
+    // comes back into a user-facing message about the wrong thing.
+    const err = new Error('some other failure');
+    err.code = '23503';                       // foreign key violation
+    err.constraint_name = 'subjects_site_id_fkey';
+    assert.equal(uniqueConstraintName(err), '');
+});
+
+test('a unique violation identified only by message still yields its name', () => {
+    const err = new Error('duplicate key value violates unique constraint "idx_crf_entry_unique"');
+    err.constraint_name = 'idx_crf_entry_unique';
+    assert.equal(uniqueConstraintName(err), 'idx_crf_entry_unique');
+});

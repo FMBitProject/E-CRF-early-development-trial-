@@ -30,11 +30,15 @@ export function uniqueConstraintName(err) {
         // node-postgres calls it constraint.
         const name = e.constraint_name ?? e.constraint;
         if (!name) continue;
-        // Prefer the frame that actually carries the unique violation. A
-        // wrapper further out can carry a name from an unrelated error, and
-        // the caller picks a user-facing message from whatever comes back.
+        // Only frames that are themselves unique violations may name a
+        // constraint. A foreign-key failure wrapped in the same chain carries
+        // a constraint name too, and the caller turns whatever comes back into
+        // a user-facing message — naming the wrong one sends the operator
+        // looking in entirely the wrong place.
         if (e.code === '23505') return String(name);
-        if (!fallback) fallback = String(name);
+        const looksUnique = e.code === undefined
+            && typeof e.message === 'string' && /unique|duplicate/i.test(e.message);
+        if (looksUnique && !fallback) fallback = String(name);
     }
     return fallback;
 }

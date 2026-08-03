@@ -401,9 +401,9 @@ export const crfDataEntries = pgTable('crf_data_entries', {
 // lock, which nothing but the database can settle.
 //
 // It is created by the guarded migration in server.js, not declared here, and
-// deliberately so. Every one of this schema's 48 indexes lives in that list and
-// none is declared in this file; declaring only this one would put it in both
-// places at once. That matters because the two paths are not equivalent — the
+// deliberately so. Every index in this schema lives in that list and none is
+// declared in this file; declaring only this one would put it in both places
+// at once. That matters because the two paths are not equivalent — the
 // server.js version refuses to create the index on a database that already
 // holds duplicates and prints how to find them, whereas a drizzle-kit
 // migration generated from a declaration here would fail hard with a raw

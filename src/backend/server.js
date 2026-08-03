@@ -951,8 +951,15 @@ async function runMigrations() {
          BEGIN
              -- Nothing to do once the index exists, and this runs on every
              -- boot: without the guard it is a full scan of crf_data_entries
-             -- at every restart, forever.
-             IF to_regclass('idx_crf_entry_unique') IS NOT NULL THEN
+             -- at every restart, forever. Checked against current_schema()
+             -- rather than to_regclass, which resolves through search_path and
+             -- would answer "absent" for an index sitting in a schema that is
+             -- simply not on the path — then try to create a second one.
+             IF EXISTS (
+                 SELECT 1 FROM pg_indexes
+                 WHERE indexname = 'idx_crf_entry_unique'
+                   AND schemaname = current_schema()
+             ) THEN
                  RETURN;
              END IF;
              SELECT count(*) INTO dupes FROM (
