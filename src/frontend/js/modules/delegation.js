@@ -21,6 +21,13 @@ const TRAINING_TYPES = [
     'Informed Consent Training', 'Local Regulatory Training',
 ];
 
+// Mirrors STUDY_SPECIFIC_TYPES in backend/lib/trainingrules.js, which is the
+// authority — this only pre-ticks the box so the common case needs no thought.
+// The operator can always override, and the server re-decides from what it is
+// sent. A type with no protocol behind it means nothing; everything else is a
+// qualification of the person and follows them across studies.
+const STUDY_SPECIFIC_TRAINING = ['Protocol Training', 'Informed Consent Training'];
+
 export async function renderDelegation(container) {
     container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;padding:3rem;">
         <span style="color:#6b7280;">Loading delegation log…</span></div>`;
@@ -368,6 +375,20 @@ function renderTrainingModal(users) {
                     </div>
                 </div>
 
+                <div style="margin-bottom:0.85rem;padding:0.6rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+                    <label style="display:flex;align-items:flex-start;gap:0.5rem;font-size:0.9rem;cursor:pointer;">
+                        <input id="tr-study-specific" type="checkbox" style="margin-top:0.15rem;">
+                        <span>
+                            <span style="font-weight:500;">Berlaku untuk studi ini saja</span><br>
+                            <span style="color:#6b7280;font-size:0.8rem;">
+                                Centang untuk training protokol. Biarkan kosong untuk kualifikasi yang
+                                mengikuti orangnya (GCP, CDISC, regulasi) — itu akan muncul di semua studi
+                                tanpa perlu dicatat ulang.
+                            </span>
+                        </span>
+                    </label>
+                </div>
+
                 <div style="margin-bottom:0.85rem;">
                     <label style="display:block;margin-bottom:0.3rem;font-size:0.9rem;font-weight:500;">Certificate Reference</label>
                     <input id="tr-cert" type="text"
@@ -444,6 +465,13 @@ function attachDelegationEvents(container) {
     document.getElementById('btn-add-training')?.addEventListener('click', () => {
         document.getElementById('training-modal').style.display = 'flex';
     });
+    // Pre-tick the scope box from the chosen type, so the common case needs no
+    // thought. Still overridable — a site may run protocol training once across
+    // a programme, or file a GCP refresher against the study that paid for it.
+    document.getElementById('tr-type')?.addEventListener('change', (e) => {
+        const box = document.getElementById('tr-study-specific');
+        if (box) box.checked = STUDY_SPECIFIC_TRAINING.includes(e.target.value);
+    });
     document.getElementById('tr-cancel')?.addEventListener('click', () => {
         document.getElementById('training-modal').style.display = 'none';
     });
@@ -463,7 +491,8 @@ function attachDelegationEvents(container) {
             return;
         }
         try {
-            await api.createTrainingRecord({ userId, trainingType, trainingDate, expiryDate: expiryDate || null, certificateRef: certificateRef || null, notes: notes || null });
+            const studySpecific = document.getElementById('tr-study-specific')?.checked ?? null;
+            await api.createTrainingRecord({ userId, trainingType, trainingDate, expiryDate: expiryDate || null, certificateRef: certificateRef || null, notes: notes || null, studySpecific });
             showToast('Training record saved', 'success');
             document.getElementById('training-modal').style.display = 'none';
             renderDelegation(container);

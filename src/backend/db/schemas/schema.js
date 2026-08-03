@@ -661,6 +661,11 @@ export const delegationLog = pgTable('delegation_log', {
 
 export const trainingRecords = pgTable('training_records', {
     id:             integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    organizationId: integer('organization_id').references(() => organizations.id),
+    // NULL = a qualification of the person, valid across every study they work
+    // on (a GCP certificate); set = training on that study's protocol. See
+    // lib/trainingrules.js — a study's file shows its own records plus every
+    // person-level one, which keeps each TMF complete without duplication.
     studyId:        integer('study_id').references(() => studies.id),
     userId:         text('user_id').notNull().references(() => user.id),
     userName:       text('user_name').notNull(),

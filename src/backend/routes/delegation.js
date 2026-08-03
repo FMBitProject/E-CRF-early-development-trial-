@@ -2,13 +2,15 @@
 // Site staff delegation with task assignment, sign-off, and training tracking
 
 import { Router } from 'express';
-import { eq, and, desc, gte, lte } from 'drizzle-orm';
+import { eq, and, or, desc, gte, lte, isNull } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { delegationLog, trainingRecords, user } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 import { isoDay } from '../lib/isodate.js';
 import { dbErrorMessage } from '../lib/dberrors.js';
+import { orgCondition, effectiveOrgId, sameOrg } from '../lib/tenantscope.js';
+import { resolveTrainingScope } from '../lib/trainingrules.js';
 
 /**
  * A failed statement used to be answered with `err.message`, which for a
@@ -20,6 +22,28 @@ import { dbErrorMessage } from '../lib/dberrors.js';
 function failed(res, err, context) {
     console.error(`[delegation] ${context}:`, err);
     res.status(500).json({ error: dbErrorMessage(err) });
+}
+
+/**
+ * Conditions every training-record read must carry.
+ *
+ * The tenant filter is the important half: this table had no organization_id
+ * and no filter at all, so one hospital's admin could list another hospital's
+ * staff qualifications.
+ *
+ * The study half implements lib/trainingrules.js — a study's file shows its own
+ * protocol training plus every person-level qualification, so each TMF is
+ * complete without the same GCP certificate being copied into every study.
+ * Kept in sync with visibleInStudy(), which asserts the same rule in tests.
+ */
+function trainingScope(req) {
+    const conditions = [];
+    const org = orgCondition(req, trainingRecords.organizationId);
+    if (org) conditions.push(org);
+    conditions.push(req.studyId
+        ? or(isNull(trainingRecords.studyId), eq(trainingRecords.studyId, req.studyId))
+        : isNull(trainingRecords.studyId));
+    return conditions;
 }
 
 const router = Router();
@@ -68,12 +92,10 @@ router.get('/training/records', requireRole('admin', 'cra', 'pi', 'data_manager'
     try {
         const { userId, trainingType } = req.query;
         const rows = await db.select().from(trainingRecords)
-            .where(
-                userId && trainingType ? and(eq(trainingRecords.userId, userId), eq(trainingRecords.trainingType, trainingType))
-                : userId ? eq(trainingRecords.userId, userId)
-                : trainingType ? eq(trainingRecords.trainingType, trainingType)
-                : undefined
-            )
+            .where(and(...trainingScope(req), ...[
+                userId       ? eq(trainingRecords.userId, userId)             : undefined,
+                trainingType ? eq(trainingRecords.trainingType, trainingType) : undefined,
+            ].filter(Boolean)))
             .orderBy(desc(trainingRecords.trainingDate));
         res.json(rows);
     } catch (err) {
@@ -85,7 +107,7 @@ router.get('/training/records', requireRole('admin', 'cra', 'pi', 'data_manager'
 // POST /api/delegation/training/records — add training record (admin only)
 router.post('/training/records', requireRole('admin', 'pi'), async (req, res) => {
     try {
-        const { userId: traineeId, trainingType, trainingDate, expiryDate, certificateRef, notes } = req.body;
+        const { userId: traineeId, trainingType, trainingDate, expiryDate, certificateRef, notes, studySpecific } = req.body;
 
         if (!traineeId || !trainingType || !trainingDate) {
             return res.status(400).json({ error: 'userId, trainingType, and trainingDate are required' });
@@ -104,6 +126,10 @@ router.post('/training/records', requireRole('admin', 'pi'), async (req, res) =>
         if (xDate && xDate < tDate) return res.status(400).json({ error: 'expiryDate cannot be before trainingDate' });
 
         const [record] = await db.insert(trainingRecords).values({
+            organizationId:  effectiveOrgId(req),
+            // null for a transferable qualification, the active study for
+            // protocol training — see lib/trainingrules.js.
+            studyId:         resolveTrainingScope({ trainingType, studySpecific, studyId: req.studyId }),
             userId:          traineeId,
             userName:        targetUser.name,
             trainingType,
@@ -144,7 +170,11 @@ router.get('/training/expiring', requireRole('admin', 'cra', 'pi', 'data_manager
         const to   = isoDay(future);
 
         const rows = await db.select().from(trainingRecords)
-            .where(and(gte(trainingRecords.expiryDate, from), lte(trainingRecords.expiryDate, to)))
+            .where(and(
+                ...trainingScope(req),
+                gte(trainingRecords.expiryDate, from),
+                lte(trainingRecords.expiryDate, to),
+            ))
             .orderBy(trainingRecords.expiryDate);
         res.json(rows);
     } catch (err) {
@@ -158,7 +188,11 @@ router.delete('/training/records/:id', requireRole('admin', 'pi'), async (req, r
     try {
         const id = parseInt(req.params.id);
         const [existing] = await db.select().from(trainingRecords).where(eq(trainingRecords.id, id));
-        if (!existing) return res.status(404).json({ error: 'Training record not found' });
+        // 404 rather than 403 for another tenant's record, matching the rest of
+        // the codebase: one tenant must not be able to probe what another has.
+        if (!existing || !sameOrg(req, existing.organizationId)) {
+            return res.status(404).json({ error: 'Training record not found' });
+        }
 
         await db.delete(trainingRecords).where(eq(trainingRecords.id, id));
 

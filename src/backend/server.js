@@ -270,8 +270,8 @@ async function runMigrations() {
             user_role        TEXT,
             site_id          INTEGER,
             delegated_tasks  JSONB NOT NULL DEFAULT '[]',
-            delegation_start TIMESTAMP NOT NULL,
-            delegation_end   TIMESTAMP,
+            delegation_start TEXT NOT NULL,          -- "YYYY-MM-DD"; see note in server migrations
+            delegation_end   TEXT,
             status           TEXT NOT NULL DEFAULT 'Active',
             signed_at        TIMESTAMP,
             signed_by_name   TEXT,
@@ -288,8 +288,8 @@ async function runMigrations() {
             user_id          TEXT NOT NULL REFERENCES "user"(id),
             user_name        TEXT NOT NULL,
             training_type    TEXT NOT NULL,
-            training_date    TIMESTAMP NOT NULL,
-            expiry_date      TIMESTAMP,
+            training_date    TEXT NOT NULL,          -- "YYYY-MM-DD"
+            expiry_date      TEXT,
             certificate_ref  TEXT,
             notes            TEXT,
             recorded_by      TEXT REFERENCES "user"(id),
@@ -931,6 +931,57 @@ async function runMigrations() {
         `ALTER TABLE visits ADD COLUMN IF NOT EXISTS investigator_unsigned_by_name TEXT`,
         `ALTER TABLE visits ADD COLUMN IF NOT EXISTS investigator_unsign_reason TEXT`,
         `ALTER TABLE visits DROP COLUMN IF EXISTS notes`,
+
+        // ── Delegation & training dates: TEXT "YYYY-MM-DD" ──────────────────
+        // These columns were defined twice with different types: as text by the
+        // drizzle-kit migration (0001, which matches schemas/schema.js) and as
+        // TIMESTAMP by the CREATE TABLE above. Both are CREATE TABLE IF NOT
+        // EXISTS, so whichever ran first won and the column type depended on
+        // install order.
+        //
+        // Text is the correct one. consentrules.day() compares these by slicing
+        // the first ten characters, so a timestamp read back as a Date yields
+        // "Sat Aug 01" — and "Sat Aug 01" <= "2026-08-15" is false. Every
+        // delegation-window check would silently deny everyone, and that check
+        // decides who may take informed consent (ICH E6(R3) §4.1.5).
+        //
+        // Converts in place, keeping the calendar day. Nothing is dropped.
+        `DO $$
+         DECLARE
+             r RECORD;
+         BEGIN
+             FOR r IN
+                 SELECT table_name, column_name
+                 FROM information_schema.columns
+                 WHERE table_schema = current_schema()
+                   AND data_type LIKE 'timestamp%'
+                   AND (table_name, column_name) IN (
+                       ('delegation_log',   'delegation_start'),
+                       ('delegation_log',   'delegation_end'),
+                       ('training_records', 'training_date'),
+                       ('training_records', 'expiry_date')
+                   )
+             LOOP
+                 EXECUTE format(
+                     'ALTER TABLE %I ALTER COLUMN %I TYPE TEXT USING to_char(%I, ''YYYY-MM-DD'')',
+                     r.table_name, r.column_name, r.column_name
+                 );
+                 RAISE WARNING 'converted %.% from timestamp to text (YYYY-MM-DD)', r.table_name, r.column_name;
+             END LOOP;
+         END $$`,
+
+        // ── Training records are tenant data ────────────────────────────────
+        // The table had neither an organization_id nor any filter on read, so
+        // one tenant's admin could list another tenant's staff qualifications.
+        // Backfilled from the person the record belongs to.
+        `ALTER TABLE training_records ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id)`,
+        `ALTER TABLE training_records ADD COLUMN IF NOT EXISTS study_id        INTEGER REFERENCES studies(id)`,
+        `UPDATE training_records t
+            SET organization_id = u.organization_id
+            FROM "user" u
+            WHERE u.id = t.user_id AND t.organization_id IS NULL`,
+        `CREATE INDEX IF NOT EXISTS idx_training_org ON training_records (organization_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_training_study ON training_records (study_id)`,
 
         // One CRF entry per (subject, visit, form). Both the import route and
         // the data-entry route do "select, then insert if absent" with no lock,
