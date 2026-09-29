@@ -1,3 +1,5 @@
+import { request } from './http.js';
+import { removeStored } from './storage.js';
 // 21 CFR Part 11 §11.10(d) — Session timeout with inactivity detection
 // ICH GCP E6(R3) Appendix C.4.3 — 30-minute session inactivity limit
 
@@ -78,13 +80,13 @@ function showWarningModal(secondsLeft) {
 async function logoutAndRedirect() {
     clearTimers();
     removeWarningModal();
-    // Call the Better Auth sign-out endpoint
+    let signoutConfirmed = true;
     try {
-        await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'include' });
-    } catch {
-        // ignore — still redirect
-    }
-    window.location.href = '/login.html?reason=timeout';
+        await request('/api/auth/sign-out', { method: 'POST' });
+    } catch { signoutConfirmed = false; }
+    // Remove stale display context even if the server cannot confirm sign-out.
+    for (const key of ['ecrf_session', 'ecrf_study_id', 'ecrf_study_meta', 'ecrf_site_context_id', 'ecrf_site_context_meta']) removeStored(key);
+    window.location.href = signoutConfirmed ? '/login.html?reason=timeout' : '/login.html?reason=timeout&signout=unconfirmed';
 }
 
 function resetInactivityTimer() {

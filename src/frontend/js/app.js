@@ -1,3 +1,4 @@
+import { escHtml } from './modules/utils.js';
 // ============================================================
 // E-CRF Main App — Router, Sidebar, Breadcrumb
 // ============================================================
@@ -529,7 +530,7 @@ async function navigate(hash) {
         <div class="p-6">
             <div class="ph-card p-5 border-red-200">
                 <p class="text-sm font-semibold text-red-800 mb-1">Error loading page</p>
-                <p class="text-sm text-red-700">${err.message}</p>
+                <p class="text-sm text-red-700">${escHtml(err.message)}</p>
             </div>
         </div>`;
     }

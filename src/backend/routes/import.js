@@ -18,6 +18,8 @@ import { isUniqueViolation, uniqueConstraintName } from '../lib/dberrors.js';
 import { createAutoQueries } from './entries.js';
 import { deriveForm, planRow, mergeEntryData } from '../lib/importengine.js';
 
+class ImportValidationError extends Error {}
+
 const router = Router();
 const IMPORT_ROLES = ['admin', 'crc', 'data_manager', 'investigator', 'pi'];
 
@@ -39,7 +41,7 @@ router.post('/derive-form', requireRole('admin'), async (req, res) => {
     try {
         const { name, headers, rows, skip } = req.body;
         if (!name || !Array.isArray(headers) || headers.length === 0) {
-            return res.status(400).json({ error: 'name and headers[] are required' });
+            return res.status(400).json({ error: 'Enter a form name and select at least one column to import.' });
         }
         const schemaJson = deriveForm({ headers, rows: rows || [], skip: skip || [] });
         if (!schemaJson.fields.length) {
@@ -153,7 +155,7 @@ router.post('/visit', licenseGuardCreate, requireRole(...IMPORT_ROLES), async (r
                     let subj = existing;
                     if (!subj) {
                         if (Array.isArray(req.siteScope) && !req.siteScope.includes(effSiteId)) {
-                            throw new Error('site not in your scope');
+                            throw new ImportValidationError('You do not have access to this site. Select an assigned site or contact your study administrator.');
                         }
                         const [ins] = await tx.insert(subjects).values({
                             studyId: req.studyId, subjectCode: plan.subjectCode, siteId: effSiteId,
@@ -170,7 +172,7 @@ router.post('/visit', licenseGuardCreate, requireRole(...IMPORT_ROLES), async (r
 
                     // 2. Visit upsert (by name within subject)
                     const vmatches = await tx.select().from(visits).where(and(eq(visits.subjectId, subj.id), eq(visits.visitName, visitName)));
-                    if (vmatches.length > 1) throw new Error(`ambiguous: subject has ${vmatches.length} visits named "${visitName}"`);
+                    if (vmatches.length > 1) throw new ImportValidationError(`This subject has ${vmatches.length} visits named "${visitName}". Ask your study administrator to resolve the duplicate visits before importing.`);
                     let visit = vmatches[0];
                     if (!visit) {
                         const [iv] = await tx.insert(visits).values({
@@ -199,7 +201,7 @@ router.post('/visit', licenseGuardCreate, requireRole(...IMPORT_ROLES), async (r
                             .where(and(eq(crfDataEntries.subjectId, subj.id), eq(crfDataEntries.visitId, visit.id), eq(crfDataEntries.formId, parseInt(formId))))
                             .for('update');
                         if (existEntry) {
-                            if (existEntry.status === 'Locked') throw new Error('CRF entry is locked');
+                            if (existEntry.status === 'Locked') throw new ImportValidationError('This form is locked. Contact your study administrator before importing changes.');
                             // Merge, never replace. plan.crf holds only the columns
                             // this file mapped and left non-empty (importengine.js),
                             // so assigning it wholesale deleted every answer the CSV
@@ -214,7 +216,7 @@ router.post('/visit', licenseGuardCreate, requireRole(...IMPORT_ROLES), async (r
                             // sides are present, which is after the merge.
                             const { merged: mergedData, introduced } = mergeEntryData(existEntry.dataJson, plan.crf, formFields);
                             if (introduced.length) {
-                                throw new Error(`merging into the existing entry would break: ${introduced.join('; ')}`);
+                                throw new ImportValidationError(`These changes conflict with the saved form. Correct the following items: ${introduced.join('; ')}`);
                             }
                             await tx.update(crfDataEntries).set({ dataJson: mergedData, status: 'Saved', updatedAt: new Date(), updatedBy: req.user.id }).where(eq(crfDataEntries.id, existEntry.id));
                             staged.entriesUpdated++;
@@ -297,7 +299,7 @@ router.post('/visit', licenseGuardCreate, requireRole(...IMPORT_ROLES), async (r
                     rr.messages = [uniqueConstraintName(rowErr).includes('crf_entry')
                         ? 'Another import or data entry created this CRF entry at the same moment — re-run this row'
                         : 'Subject code already exists'];
-                } else rr.messages = [rowErr.message];
+                } else rr.messages = [rowErr instanceof ImportValidationError ? rowErr.message : 'This row could not be imported. Contact your study administrator before retrying.'];
                 rr.status = 'error'; summary.errors++;
                 results.push(rr);
             }

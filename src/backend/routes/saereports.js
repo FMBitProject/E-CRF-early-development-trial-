@@ -69,7 +69,7 @@ router.get('/', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, r
 
         res.json(rows);
     } catch (err) {
-        if (isMissingTable(err)) return res.json([]);
+        if (isMissingTable(err)) return res.status(503).json({ error: 'This information is temporarily unavailable. Contact your study administrator.' });
         res.status(500).json({ error: err.message });
     }
 });
@@ -98,7 +98,7 @@ router.get('/overdue', requireRole('admin', 'cra', 'pi', 'data_manager'), async 
 
         res.json(rows);
     } catch (err) {
-        if (isMissingTable(err)) return res.json([]);
+        if (isMissingTable(err)) return res.status(503).json({ error: 'This information is temporarily unavailable. Contact your study administrator.' });
         res.status(500).json({ error: err.message });
     }
 });

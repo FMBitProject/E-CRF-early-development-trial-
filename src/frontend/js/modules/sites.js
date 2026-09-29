@@ -1,3 +1,4 @@
+import { showLoadError } from './load-error.js';
 // Site Management — ICH GCP E6(R3) §4.1.1
 // Sites must be formally registered before subject enrollment begins
 
@@ -9,7 +10,12 @@ export async function renderSites(container) {
     container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;padding:3rem;">
         <span style="color:#6b7280;">Loading sites…</span></div>`;
 
-    const sites = await api.getSites().catch(() => []);
+    let sites;
+    try { sites = await api.getSites(); }
+    catch {
+        showLoadError(container, 'Sites could not be loaded. Site availability is unknown.', () => renderSites(container));
+        return;
+    }
     container.innerHTML = renderSitesPage(sites);
     attachSiteEvents(container);
 }

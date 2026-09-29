@@ -1,3 +1,4 @@
+import { showLoadError } from './load-error.js';
 // Monitoring Visit Reports & SDV — ICH GCP E6(R3) §5.18
 
 import { api } from './api.js';
@@ -21,10 +22,12 @@ export async function renderMonitoring(container) {
     const user = api.getCurrentUser();
     const role = user?.role ?? '';
 
-    const [visits, sites] = await Promise.all([
-        api.getMonitoringVisits().catch(() => []),
-        api.getSites().catch(() => []),
-    ]);
+    let visits, sites;
+    try { [visits, sites] = await Promise.all([api.getMonitoringVisits(), api.getSites()]); }
+    catch {
+        showLoadError(container, 'Monitoring visits and site information could not be loaded.', () => renderMonitoring(container));
+        return;
+    }
 
     container.innerHTML = renderMonitoringPage(visits, sites, role);
     attachMonitoringEvents(container, role, sites);
@@ -365,7 +368,7 @@ async function loadMVRDetail(visitId, canWrite) {
             sdvEntry.style.display = 'none';
         }
     } catch (err) {
-        bodyEl.innerHTML = `<p style="color:#dc2626;padding:1rem;">Failed to load: ${err.message}</p>`;
+        bodyEl.innerHTML = `<p style="color:#dc2626;padding:1rem;">Failed to load: ${esc(err.message)}</p>`;
     }
 }
 

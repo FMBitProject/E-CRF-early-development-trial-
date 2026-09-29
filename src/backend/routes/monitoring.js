@@ -32,7 +32,7 @@ router.get('/', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, r
 
         res.json(rows);
     } catch (err) {
-        if (isMissingTable(err)) return res.json([]);
+        if (isMissingTable(err)) return res.status(503).json({ error: 'This information is temporarily unavailable. Contact your study administrator.' });
         res.status(500).json({ error: err.message });
     }
 });
@@ -78,7 +78,7 @@ router.get('/sdv-summary', requireRole('admin', 'cra', 'pi', 'data_manager'), as
             verifiedPct: s.total > 0 ? Math.round((s.verified / s.total) * 100) : 0,
         })));
     } catch (err) {
-        if (isMissingTable(err)) return res.json([]);
+        if (isMissingTable(err)) return res.status(503).json({ error: 'This information is temporarily unavailable. Contact your study administrator.' });
         res.status(500).json({ error: err.message });
     }
 });
@@ -97,7 +97,7 @@ router.get('/:id', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
 
         res.json({ ...visit, sdvRecords: sdv });
     } catch (err) {
-        if (isMissingTable(err)) return res.status(404).json({ error: 'Monitoring visit not found' });
+        if (isMissingTable(err)) return res.status(503).json({ error: 'This information is temporarily unavailable. Contact your study administrator.' });
         res.status(500).json({ error: err.message });
     }
 });
@@ -258,7 +258,7 @@ router.get('/:id/sdv', requireRole('admin', 'cra', 'pi', 'data_manager'), async 
             .orderBy(sdvRecords.subjectCode, sdvRecords.visitName);
         res.json(rows);
     } catch (err) {
-        if (isMissingTable(err)) return res.json([]);
+        if (isMissingTable(err)) return res.status(503).json({ error: 'This information is temporarily unavailable. Contact your study administrator.' });
         res.status(500).json({ error: err.message });
     }
 });
@@ -361,7 +361,7 @@ router.get('/:id/report', requireRole('admin', 'cra', 'pi', 'data_manager'), asy
             generatedAt: new Date().toISOString(),
         });
     } catch (err) {
-        if (isMissingTable(err)) return res.status(404).json({ error: 'Not found' });
+        if (isMissingTable(err)) return res.status(503).json({ error: 'This information is temporarily unavailable. Contact your study administrator.' });
         res.status(500).json({ error: err.message });
     }
 });

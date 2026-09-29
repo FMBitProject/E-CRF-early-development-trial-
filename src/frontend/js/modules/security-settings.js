@@ -1,3 +1,4 @@
+import { escHtml } from './utils.js';
 import { api } from './api.js';
 
 // ── Render Security Settings modal ──────────────────────────────────────────
@@ -172,7 +173,7 @@ function renderStatusView(status) {
                 btn.innerHTML = `<i data-lucide="smartphone" class="w-4 h-4"></i> Set Up Authenticator App`;
                 lucide.createIcons();
                 body.insertAdjacentHTML('afterbegin', `
-                    <div class="mb-3 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">${err.message}</div>`);
+                    <div class="mb-3 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">${escHtml(err.message)}</div>`);
             }
         });
     }

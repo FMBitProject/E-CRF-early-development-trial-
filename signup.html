@@ -68,15 +68,24 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
+        import { authRequest } from './src/frontend/js/modules/auth-http.js';
+        import { ApiError } from './src/frontend/js/modules/http.js';
+        import { readObject, writeStored } from './src/frontend/js/modules/storage.js';
+
+        function readableError(error) {
+            return error instanceof ApiError || error?.code === 'STORAGE_UNAVAILABLE'
+                ? error.message : 'The request could not be completed. Reload the page and try again.';
+        }
         const $ = (id) => document.getElementById(id);
 
         (async function init() {
             try {
-                const cfg = await (await fetch('/api/signup/config')).json();
+                const cfg = await authRequest('/api/signup/config');
                 if (cfg.enabled) $('signup-form').classList.remove('hidden');
                 else $('disabled-panel').classList.remove('hidden');
             } catch {
+                $('disabled-panel').textContent = 'Registration availability could not be checked. Check your connection and reload this page.';
                 $('disabled-panel').classList.remove('hidden');
             }
         })();
@@ -87,9 +96,9 @@
             const password = $('password').value;
             if (password !== $('confirm').value) { err.textContent = 'Passwords do not match.'; return; }
             if (!$('acceptTos').checked) { err.textContent = 'You must accept the Terms of Service and DPA.'; return; }
-            const btn = $('submit-btn'); btn.disabled = true; btn.textContent = 'Creating…';
+            const btn = $('submit-btn'); if (btn.disabled) return; btn.disabled = true; btn.textContent = 'Creating…';
             try {
-                const res = await fetch('/api/signup', {
+                const data = await authRequest('/api/signup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -100,19 +109,13 @@
                         acceptTos:  true,
                     }),
                 });
-                const data = await res.json();
-                if (!res.ok) {
-                    err.innerHTML = (data.details && data.details.length)
-                        ? data.details.map(d => `<p>• ${String(d).replace(/</g,'&lt;')}</p>`).join('')
-                        : `<p>${String(data.message || 'Signup failed.').replace(/</g,'&lt;')}</p>`;
-                    btn.disabled = false; btn.textContent = 'Create organization';
-                    return;
-                }
                 $('signup-form').classList.add('hidden');
                 $('success-msg').textContent = data.message || 'Check your email to verify your address.';
                 $('success-panel').classList.remove('hidden');
             } catch (ex) {
-                err.textContent = ex.message; btn.disabled = false; btn.textContent = 'Create organization';
+                err.textContent = readableError(ex);
+                if (Array.isArray(ex.details)) err.textContent += ' ' + ex.details.filter(d => typeof d === 'string').join(' ');
+                btn.disabled = false; btn.textContent = 'Create organization';
             }
         });
     </script>

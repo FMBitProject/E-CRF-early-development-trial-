@@ -208,7 +208,15 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
+        import { authRequest } from './src/frontend/js/modules/auth-http.js';
+        import { ApiError } from './src/frontend/js/modules/http.js';
+        import { readObject, writeStored } from './src/frontend/js/modules/storage.js';
+
+        function readableError(error) {
+            return error instanceof ApiError || error?.code === 'STORAGE_UNAVAILABLE'
+                ? error.message : 'The request could not be completed. Reload the page and try again.';
+        }
         lucide.createIcons();
 
         // ── First-run setup detection ───────────────────────────
@@ -217,9 +225,7 @@
         let isBootstrap = false;
         (async function loadRegisterConfig() {
             try {
-                const res = await fetch('/api/register/config', { credentials: 'include' });
-                if (!res.ok) return;
-                const cfg = await res.json();
+                const cfg = await authRequest('/api/register/config');
                 isBootstrap = !!cfg.bootstrapNeeded;
                 if (isBootstrap) {
                     document.getElementById('license-block').classList.remove('hidden');
@@ -322,36 +328,28 @@
                 return;
             }
 
+            if (btn.disabled) return;
             btn.disabled = true;
             btnText.textContent = 'Creating account…';
             btnIcon.setAttribute('data-lucide', 'loader-2');
             lucide.createIcons();
 
             try {
-                const res  = await fetch('/api/register', {
+                const data = await authRequest('/api/register', {
                     method:      'POST',
                     headers:     { 'Content-Type': 'application/json' },
                     credentials: 'include',
                     body:        JSON.stringify({ email, password, name, role, acceptedLicense }),
                 });
-                const data = await res.json();
 
-                if (!res.ok) {
-                    errMsg.textContent = data.message || 'Registration failed. Please try again.';
-                    errDiv.classList.remove('hidden');
-                    btn.disabled = false;
-                    btnText.textContent = 'Create Account';
-                    btnIcon.setAttribute('data-lucide', 'user-plus');
-                    lucide.createIcons();
-                    return;
-                }
 
                 document.getElementById('reg-success').classList.remove('hidden');
                 document.getElementById('reg-form').classList.add('opacity-50', 'pointer-events-none');
                 setTimeout(() => { window.location.href = 'login.html'; }, 1800);
 
             } catch (err) {
-                errMsg.textContent = 'Could not connect to server. Make sure the backend is running.';
+                errMsg.textContent = readableError(err);
+                if (Array.isArray(err.details)) errMsg.textContent += ' ' + err.details.filter(d => typeof d === 'string').join(' ');
                 errDiv.classList.remove('hidden');
                 btn.disabled = false;
                 btnText.textContent = 'Create Account';
@@ -361,7 +359,7 @@
         });
 
         // Redirect if already logged in
-        if (localStorage.getItem('ecrf_session')) {
+        if (readObject('ecrf_session', value => typeof value.id === 'string' && typeof value.role === 'string')) {
             window.location.href = 'index.html';
         }
     </script>

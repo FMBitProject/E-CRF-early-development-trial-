@@ -16,10 +16,13 @@ export async function renderSAEReports(container) {
     const user = api.getCurrentUser();
     const role = user?.role ?? '';
 
-    const [reports, overdue] = await Promise.all([
-        api.getSAEReports().catch(() => []),
-        api.getOverdueSAEReports().catch(() => []),
-    ]);
+    let reports, overdue;
+    try {
+        [reports, overdue] = await Promise.all([api.getSAEReports(), api.getOverdueSAEReports()]);
+    } catch {
+        container.innerHTML = '<div role="alert" class="p-6 text-red-700">SAE reports could not be loaded. Overdue report status is unavailable. Check your connection and reload the page.</div>';
+        return;
+    }
 
     container.innerHTML = renderSAEPage(reports, overdue, role);
     attachSAEEvents(container, role);

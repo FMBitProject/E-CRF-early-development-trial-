@@ -377,7 +377,7 @@ router.post('/:id/ie-assessment', requireRole('investigator', 'pi', 'admin'), as
         const subjectId = parseInt(req.params.id);
         const { criteriaJson, passed } = req.body;
         if (!Array.isArray(criteriaJson) || typeof passed !== 'boolean') {
-            return res.status(400).json({ error: 'criteriaJson (array) and passed (boolean) are required' });
+            return res.status(400).json({ error: 'Complete the inclusion/exclusion assessment and select its outcome before saving.' });
         }
 
         const [subject] = await db.select().from(subjects)

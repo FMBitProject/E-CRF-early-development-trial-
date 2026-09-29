@@ -1,84 +1,37 @@
+import { readObject, readContext, writeContext, removeStored } from './storage.js';
+import { request } from './http.js';
 // ============================================================
 // E-CRF API Module — calls real backend, no localStorage
 // ============================================================
 
 // ── Study context (localStorage) ───────────────────────────
 function getStudyId() {
-    return localStorage.getItem('ecrf_study_id') || null;
+    return readContext('ecrf_study')?.id || null;
 }
 
 // ── HTTP helper ────────────────────────────────────────────
 async function apiFetch(path, options = {}) {
     const studyId = getStudyId();
-    const studyHeader = studyId ? { 'X-Study-ID': studyId } : {};
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30000);
-    let res;
-    try {
-        res = await fetch(path, {
-            ...options,
-            credentials: 'include',
-            signal: controller.signal,
-            headers: { 'Content-Type': 'application/json', ...studyHeader, ...(options.headers || {}) },
-        });
-    } catch (fetchErr) {
-        if (fetchErr.name === 'AbortError') throw new Error('Request timed out. The server may be starting up — please try again.');
-        throw fetchErr;
-    } finally {
-        clearTimeout(timer);
-    }
-    if (res.status === 401) {
-        const sessionStr = localStorage.getItem('ecrf_session');
-        if (sessionStr) {
-            try {
-                const s = JSON.parse(sessionStr);
-                const ageMs = Date.now() - new Date(s.loginAt || 0).getTime();
-                if (ageMs > 60000) {
-                    localStorage.removeItem('ecrf_session');
-                    window.location.href = 'login.html';
-                    throw new Error('Session expired. Please log in again.');
-                }
-            } catch (e) {
-                if (e.message === 'Session expired. Please log in again.') throw e;
-            }
-        }
-        const err = await res.json().catch(() => ({ error: 'Unauthorized' }));
-        const e401 = new Error(err.error || 'Unauthorized');
-        e401.data = err; e401.details = err.details;
-        throw e401;
-    }
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
-        // Keep the full payload so callers can react to flags
-        // (e.g. mustChangePassword) and show policy details.
-        const e = new Error(err.error || 'Request failed');
-        e.data = err; e.details = err.details;
-        throw e;
-    }
-    return res.json();
+    return request(path, {
+        ...options,
+        headers: { 'Content-Type': 'application/json', ...(studyId ? { 'X-Study-ID': studyId } : {}), ...(options.headers || {}) },
+    });
 }
 
 async function apiDownload(path, filename, mimeType) {
     const studyId = getStudyId();
-    const studyHeader = studyId ? { 'X-Study-ID': studyId } : {};
-    const res = await fetch(path, {
-        credentials: 'include',
-        headers: { ...studyHeader },
-    });
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err.error || 'Export failed');
+    const blob = await request(path, { headers: studyId ? { 'X-Study-ID': studyId } : {} }, { responseType: 'blob' });
+    const url = URL.createObjectURL(new Blob([blob], { type: mimeType }));
+    try {
+        const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+    } finally {
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(new Blob([await blob.arrayBuffer()], { type: mimeType }));
-    const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
-    URL.revokeObjectURL(url);
 }
 
 // ── Session (localStorage only for user info, auth via cookie) ──
 function currentUser() {
-    const s = localStorage.getItem('ecrf_session');
-    return s ? JSON.parse(s) : null;
+    return readObject('ecrf_session', value => typeof value.id === 'string' && value.id.length > 0 && typeof value.role === 'string');
 }
 
 // ── Field-name mappers (backend camelCase → frontend snake_case) ──
@@ -227,19 +180,11 @@ export const api = {
 
     // ── Study context ──────────────────────────────────────
     getCurrentStudy() {
-        const id  = localStorage.getItem('ecrf_study_id');
-        const raw = localStorage.getItem('ecrf_study_meta');
-        return id ? { id: parseInt(id), ...(raw ? JSON.parse(raw) : {}) } : null;
+        return readContext('ecrf_study');
     },
 
     setCurrentStudy(study) {
-        if (!study) {
-            localStorage.removeItem('ecrf_study_id');
-            localStorage.removeItem('ecrf_study_meta');
-        } else {
-            localStorage.setItem('ecrf_study_id', String(study.id));
-            localStorage.setItem('ecrf_study_meta', JSON.stringify({ title: study.title, protocolNo: study.protocolNo, status: study.status }));
-        }
+        writeContext('ecrf_study', study, study ? { title: study.title, protocolNo: study.protocolNo, status: study.status } : null);
     },
 
     // ── Study Management ───────────────────────────────────
@@ -274,15 +219,16 @@ export const api = {
     },
 
     async logout() {
-        localStorage.removeItem('ecrf_session');
-        localStorage.removeItem('ecrf_study_id');
-        localStorage.removeItem('ecrf_study_meta');
-        localStorage.removeItem('ecrf_site_context_id');
-        localStorage.removeItem('ecrf_site_context_meta');
-        // ICH E6(R3) C.4.3 — /api/mfa/logout writes LOGOUT to audit trail before sign-out
-        try { await fetch('/api/mfa/logout', { method: 'POST', credentials: 'include' }); } catch {
-            try { await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'include' }); } catch {}
+        try {
+            await request('/api/mfa/logout', { method: 'POST' });
+        } catch {
+            try { await request('/api/auth/sign-out', { method: 'POST' }); }
+            catch {
+                window.showToast?.('Sign-out could not be confirmed. Check your connection and try signing out again.', 'error');
+                return;
+            }
         }
+        for (const key of ['ecrf_session', 'ecrf_study_id', 'ecrf_study_meta', 'ecrf_site_context_id', 'ecrf_site_context_meta']) removeStored(key);
         window.location.href = 'login.html';
     },
 

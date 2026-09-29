@@ -131,7 +131,7 @@ router.get('/verify', async (req, res) => {
         await db.delete(verification).where(eq(verification.id, row.id));
         res.redirect('/login.html?verified=1');
     } catch (err) {
-        res.status(500).send('Verification failed: ' + err.message);
+        res.status(500).json({ error: 'Email verification could not be completed. Try the verification link again later.' });
     }
 });
 

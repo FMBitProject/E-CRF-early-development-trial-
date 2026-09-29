@@ -78,14 +78,16 @@ export async function renderDashboard() {
         <div class="w-7 h-7 rounded-full border-2 border-blue-700 border-t-transparent animate-spin"></div>
     </div>`;
 
-    const [stats, aeStats, devStats, consentStats, dblockStatus, pwStatus] = await Promise.all([
-        api.getDashboardStats().catch(() => ({ activeSubjects: 0, totalSubjects: 0, pendingForms: 0, openQueries: 0, totalVisits: 0, recentAudit: [] })),
-        api.getAEStats().catch(() => ({ total: 0, serious: 0, draft: 0, overdue: 0 })),
-        api.getDeviationStats().catch(() => ({ total: 0, open: 0, major: 0, pending: 0 })),
-        api.getConsentStats().catch(() => ({ totalActive: 0, consented: 0, unconsented: 0 })),
-        api.getDblockStatus().catch(() => ({ isLocked: false, current: null })),
-        api.getPasswordStatus().catch(() => null),
-    ]);
+    let stats, aeStats, devStats, consentStats, dblockStatus, pwStatus;
+    try {
+        [stats, aeStats, devStats, consentStats, dblockStatus, pwStatus] = await Promise.all([
+            api.getDashboardStats(), api.getAEStats(), api.getDeviationStats(),
+            api.getConsentStats(), api.getDblockStatus(), api.getPasswordStatus(),
+        ]);
+    } catch {
+        content.innerHTML = '<div role="alert" class="p-6 text-red-700">Dashboard information could not be loaded. Counts and lock status are unavailable. Check your connection and reload the page.</div>';
+        return;
+    }
     const user  = api.getCurrentUser();
     const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 

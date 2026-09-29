@@ -1,3 +1,4 @@
+import { showLoadError } from './load-error.js';
 // ============================================================
 // Informed Consent View — UU PDP No. 27/2022 + ICH GCP §4.8
 // ============================================================
@@ -243,7 +244,7 @@ window.openConsentForm = async function(prefillSubjectId = null) {
         body: `<div id="ic-form-body" class="py-10 text-center text-slate-400 text-sm">Loading subjects…</div>`,
         footer: `
         <button onclick="closeModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition">Cancel</button>
-        <button onclick="submitConsentForm()" class="px-4 py-2 text-sm font-semibold bg-blue-700 hover:bg-blue-800 text-white rounded-md transition flex items-center gap-2">
+        <button id="ic-submit" disabled onclick="submitConsentForm()" class="px-4 py-2 text-sm font-semibold bg-blue-700 hover:bg-blue-800 text-white rounded-md transition flex items-center gap-2">
             <i data-lucide="file-check" class="w-4 h-4"></i> Record Consent
         </button>`,
     });
@@ -253,10 +254,16 @@ window.openConsentForm = async function(prefillSubjectId = null) {
     try {
         [allSubjects, amendments, delegateInfo] = await Promise.all([
             api.getSubjects({ status: 'Active' }),
-            api.request('/api/amendments').catch(() => []),
-            api.getConsentDelegates().catch(() => ({ delegates: [], delegationLogEmpty: true })),
+            api.request('/api/amendments'),
+            api.getConsentDelegates(),
         ]);
-    } catch { /* proceed with empty list */ }
+    } catch {
+        const body = document.getElementById('ic-form-body');
+        if (body) showLoadError(body, 'Consent information could not be loaded. Delegation and amendment status must be available before recording consent.', () => window.openConsentForm(prefillSubjectId));
+        return;
+    }
+    const submitButton = document.getElementById('ic-submit');
+    if (submitButton) submitButton.disabled = false;
 
     // Filter to active site; fall back to all study subjects if site_id not set on enrolled subjects
     const siteFiltered = (siteCtx && siteCtx.id)
@@ -465,6 +472,7 @@ window.icfVersionChanged = function() {
 };
 
 window.submitConsentForm = async function() {
+    if (document.getElementById('ic-submit')?.disabled) return;
     const subjectId = parseInt(document.getElementById('ic-subject').value);
     const date      = document.getElementById('ic-date').value;
 

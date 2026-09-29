@@ -162,17 +162,25 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
+        import { authRequest } from './src/frontend/js/modules/auth-http.js';
+        import { ApiError } from './src/frontend/js/modules/http.js';
+        import { readObject, writeStored } from './src/frontend/js/modules/storage.js';
+
+        function readableError(error) {
+            return error instanceof ApiError || error?.code === 'STORAGE_UNAVAILABLE'
+                ? error.message : 'The request could not be completed. Reload the page and try again.';
+        }
         lucide.createIcons();
 
         // Reveal the "start a free trial" link only when self-service signup is open.
-        fetch('/api/signup/config').then(r => r.json()).then(c => {
+        authRequest('/api/signup/config').then(c => {
             if (c.enabled) document.getElementById('signup-link')?.classList.remove('hidden');
         }).catch(() => {});
 
         // Reveal the "Register" link when registration is open OR on a fresh
         // install that still needs its first administrator (on-prem bootstrap).
-        fetch('/api/register/config').then(r => r.json()).then(c => {
+        authRequest('/api/register/config').then(c => {
             if (!c.selfRegistration && !c.bootstrapNeeded) return;
             if (c.bootstrapNeeded) {
                 document.getElementById('register-lead').textContent = 'First-time setup?';
@@ -208,7 +216,7 @@
         }
 
         function completeLogin(data) {
-            localStorage.setItem('ecrf_session', JSON.stringify({
+            writeStored('ecrf_session', JSON.stringify({
                 id:          data.user.id,
                 email:       document.getElementById('email').value.trim().toLowerCase(),
                 name:        data.user.name,
@@ -226,6 +234,7 @@
         // ── Step 1: Submit password ────────────────────────────
         document.getElementById('login-form').addEventListener('submit', async function (e) {
             e.preventDefault();
+            if (this.querySelector('button[type=submit]')?.disabled) return;
             hideError();
 
             const btn     = document.getElementById('login-btn');
@@ -242,22 +251,13 @@
             lucide.createIcons();
 
             try {
-                const res  = await fetch('/api/mfa/initiate', {
+                const data = await authRequest('/api/mfa/initiate', {
                     method:      'POST',
                     headers:     { 'Content-Type': 'application/json' },
                     credentials: 'include',
                     body:        JSON.stringify({ email, password }),
                 });
-                const data = await res.json();
 
-                if (!res.ok) {
-                    showError(data.error || 'Invalid email or password.');
-                    btn.disabled = false;
-                    btnText.textContent = 'Sign In';
-                    btnIcon.setAttribute('data-lucide', 'log-in');
-                    lucide.createIcons();
-                    return;
-                }
 
                 if (data.status === 'totp_required') {
                     _tempToken = data.tempToken;
@@ -274,7 +274,7 @@
                 completeLogin(data);
 
             } catch (err) {
-                showError('Could not connect to server. Make sure the backend is running.');
+                showError(readableError(err));
                 btn.disabled = false;
                 btnText.textContent = 'Sign In';
                 btnIcon.setAttribute('data-lucide', 'log-in');
@@ -300,29 +300,18 @@
             lucide.createIcons();
 
             try {
-                const res  = await fetch('/api/mfa/totp-verify', {
+                const data = await authRequest('/api/mfa/totp-verify', {
                     method:      'POST',
                     headers:     { 'Content-Type': 'application/json' },
                     credentials: 'include',
                     body:        JSON.stringify({ tempToken: _tempToken, totpCode: code }),
                 });
-                const data = await res.json();
 
-                if (!res.ok) {
-                    showError(data.error || 'Invalid code. Please try again.');
-                    btn.disabled = false;
-                    btnText.textContent = 'Verify';
-                    btnIcon.setAttribute('data-lucide', 'shield-check');
-                    document.getElementById('totp-code').value = '';
-                    document.getElementById('totp-code').focus();
-                    lucide.createIcons();
-                    return;
-                }
 
                 completeLogin(data);
 
             } catch (err) {
-                showError('Could not connect to server.');
+                showError(readableError(err));
                 btn.disabled = false;
                 btnText.textContent = 'Verify';
                 btnIcon.setAttribute('data-lucide', 'shield-check');
@@ -343,8 +332,12 @@
             showStep('password');
         });
 
+        if (new URLSearchParams(window.location.search).get('signout') === 'unconfirmed') {
+            showError('Your local session has ended, but server sign-out could not be confirmed. Reconnect and sign in again; close this browser if using a shared computer.');
+        }
+
         // Redirect if already logged in
-        if (localStorage.getItem('ecrf_session')) {
+        if (readObject('ecrf_session', value => typeof value.id === 'string' && typeof value.role === 'string')) {
             window.location.href = 'select.html';
         }
     </script>

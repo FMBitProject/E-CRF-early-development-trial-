@@ -18,6 +18,7 @@ export function showToast(message, type = 'success', duration = 4000) {
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const toast = document.createElement('div');
     toast.id = id;
+    // TODO: MINOR — Add alert/status semantics and a labeled dismiss button for notifications.
     toast.className = `pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-md border shadow-lg max-w-sm w-full transition-all duration-300 transform translate-y-2 opacity-0 ${colors[type] || colors.info}`;
     toast.innerHTML = `
         <i data-lucide="${icons[type] || 'info'}" class="w-4 h-4 flex-shrink-0 mt-0.5 ${iconColors[type] || iconColors.info}"></i>
@@ -35,6 +36,7 @@ export function showToast(message, type = 'success', duration = 4000) {
         });
     });
 
+    // TODO: MINOR — Review the default notification duration; allow users time to read errors.
     if (duration > 0) {
         setTimeout(() => {
             toast.classList.add('opacity-0', 'translate-y-2');

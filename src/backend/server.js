@@ -1,3 +1,4 @@
+import { safeErrorResponses, apiErrorHandler } from './middleware/errors.js';
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -1035,6 +1036,7 @@ async function runMigrations() {
     }
 }
 const app = express();
+app.use(safeErrorResponses);
 
 // Behind Vercel/reverse proxy: trust the first hop so req.ip is the real
 // client address (rate limiting and login_attempts would otherwise key on the
@@ -1179,6 +1181,9 @@ app.use('/api/agreements',               requireAuth,  agreementsRouter);
 app.use('/api/monitoring-plan',          ...studyAuth, monitoringPlanRouter);
 app.use('/api/reports',                  ...studyAuth, reportRouter);
 app.use('/api/access-review',            ...studyAuth, accessReviewRouter);
+
+app.use('/api', (_req, res) => res.status(404).json({ error: 'This service could not be found. Refresh the page and try again.' }));
+app.use(apiErrorHandler);
 
 // Serve ONLY the frontend assets — never the repo root, which would expose
 // source code, docs with test credentials, and the .git directory.

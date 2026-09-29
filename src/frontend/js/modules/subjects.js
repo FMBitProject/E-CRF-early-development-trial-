@@ -1,3 +1,4 @@
+import { saveEnrollment } from './enrollment-save.js';
 // ============================================================
 // Subjects View — List, Detail, GCP-compliant Study Visits
 // ============================================================
@@ -98,7 +99,7 @@ export async function renderSubjects({ showNewForm = false } = {}) {
                 <h2 class="text-xl font-bold text-slate-900">Study Subjects</h2>
                 <p class="text-xs text-slate-500 mt-0.5">${subjects.length} subject${subjects.length !== 1 ? 's' : ''} enrolled across all sites</p>
             </div>
-            ${['investigator', 'pi', 'admin', 'crc'].includes(user.role) ? `
+            ${['investigator', 'pi', 'admin', 'crc'].includes(user?.role) ? `
             <button onclick="openNewSubjectModal()"
                 class="flex items-center gap-2 btn-primary px-4 py-2 text-sm rounded-md">
                 <i data-lucide="user-plus" class="w-4 h-4"></i> Enroll Subject
@@ -197,8 +198,12 @@ function renderSubjectRows(subjects) {
 // Resolved per study when the modal opens; falls back to the app default set
 // (ICH E6 R3 compliant) when the study has none configured.
 let _activeIeCriteria = DEFAULT_IE_CRITERIA;
+let enrollmentSaving = false;
+let enrollmentNeedsReview = false;
 
 window.openNewSubjectModal = async function () {
+    if (enrollmentSaving) return;
+    enrollmentNeedsReview = false;
     const user = api.getCurrentUser();
     if (!['admin', 'investigator', 'pi', 'crc'].includes(user.role)) {
         showToast('You do not have permission to enroll subjects.', 'error');
@@ -208,11 +213,12 @@ window.openNewSubjectModal = async function () {
     window._consentData = null;   // fresh enrollment — no carried-over consent
     _activeIeCriteria = DEFAULT_IE_CRITERIA;
     const cur = api.getCurrentStudy();
+    if (!cur?.id) { showToast('Select your study again before enrolling a subject.', 'error'); return; }
     if (cur?.id) {
         try {
             const study = await api.getStudy(cur.id);
             if (hasCriteria(study?.ieCriteria)) _activeIeCriteria = study.ieCriteria;
-        } catch { /* offline / not found → default set is already in place */ }
+        } catch { showToast('Study criteria could not be loaded. Check your connection before enrolling a subject.', 'error'); return; }
     }
     openIECriteriaModal();
 };
@@ -394,7 +400,7 @@ window.openConsentModal = function openConsentModal() {
         <button onclick="openIECriteriaModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition flex items-center gap-1.5">
             <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Back
         </button>
-        <button onclick="proceedFromConsent()" class="flex items-center gap-2 px-4 py-2 text-sm btn-primary rounded-md">
+        <button id="cs-next" disabled onclick="proceedFromConsent()" class="flex items-center gap-2 px-4 py-2 text-sm btn-primary rounded-md">
             Next: Demographics <i data-lucide="arrow-right" class="w-4 h-4"></i>
         </button>`,
     });
@@ -404,6 +410,8 @@ window.openConsentModal = function openConsentModal() {
     // fallback so an empty Delegation Log does not block enrolment.
     api.getConsentDelegates().then(info => {
         const slot = document.getElementById('cs-obtained-slot');
+        const nextButton = document.getElementById('cs-next');
+        if (nextButton) nextButton.disabled = false;
         const delegates = info?.delegates ?? [];
         if (!slot || !delegates.length) return;
         const me = api.getCurrentUser();
@@ -416,10 +424,17 @@ window.openConsentModal = function openConsentModal() {
                 ).join('')}
             </select>
             <p class="text-xs text-slate-400 mt-1">Only staff delegated for "Informed Consent Process".</p>`;
-    }).catch(() => { /* keep the free-text fallback */ });
+    }).catch(() => {
+        const error = document.getElementById('cs-error');
+        if (error) {
+            error.textContent = 'Consent delegation could not be loaded. Go back and reopen this step to try again.';
+            error.classList.remove('hidden');
+        }
+    });
 };
 
 window.proceedFromConsent = function () {
+    if (document.getElementById('cs-next')?.disabled) return;
     const iePasses = window._iePasses !== false;
     const errEl = document.getElementById('cs-error');
     errEl.classList.add('hidden');
@@ -564,11 +579,12 @@ async function openSubjectDemographicsModal(iePasses) {
         <button onclick="openConsentModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition flex items-center gap-1.5">
             <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Back
         </button>
-        <button onclick="submitNewSubject()" class="px-4 py-2 text-sm btn-primary rounded-md">${iePasses ? 'Enroll Subject' : 'Record Screen Failure'}</button>`,
+        <button id="ns-submit" onclick="submitNewSubject()" class="px-4 py-2 text-sm btn-primary rounded-md">${iePasses ? 'Enroll Subject' : 'Record Screen Failure'}</button>`,
     });
 }
 
 window.submitNewSubject = async function () {
+    if (enrollmentSaving || enrollmentNeedsReview) return;
     const codeRaw         = document.getElementById('ns-code').value.trim();
     const initial         = document.getElementById('ns-initial').value.trim();
     const sex             = document.getElementById('ns-sex').value;
@@ -587,39 +603,42 @@ window.submitNewSubject = async function () {
     const subject_code = codeRaw.startsWith('S-') ? codeRaw : `S-${codeRaw}`;
     const iePasses = window._iePasses !== false;
 
+    enrollmentSaving = true;
+    const submitButton = document.getElementById('ns-submit');
+    if (submitButton) submitButton.disabled = true;
     try {
-        const created = await api.createSubject({ subject_code, initial, sex, gender_identity, dob, enrollment_date: enroll, site_id });
-
-        // Record I/E assessment if criteria were collected (non-fatal if it fails)
-        if (window._ieCriteriaResults?.length) {
-            await api.submitIEAssessment(created.id, window._ieCriteriaResults, iePasses)
-                .catch(e => console.warn('IE assessment save failed:', e.message));
+        const { subject: created, unconfirmed } = await saveEnrollment(api,
+            { subject_code, initial, sex, gender_identity, dob, enrollment_date: enroll, site_id },
+            { criteria: window._ieCriteriaResults, passed: iePasses, consent: window._consentData });
+        enrollmentNeedsReview = true; // creation succeeded; never repeat it from this form
+        if (unconfirmed.length) {
+            showModal({
+                title: 'Subject saved — follow-up records need review',
+                body: `<div role="alert" class="space-y-3">
+                    <p>Subject <strong>${esc(subject_code)}</strong> was created. Saving the ${esc(unconfirmed.join(' and '))} could not be confirmed.</p>
+                    <p>Do not enroll this subject again. Review the existing subject and consent records with your study administrator before adding missing information.</p>
+                    <p>The assessment answers remain in this tab until you start another enrollment or reload.</p>
+                </div>`,
+                footer: `<a href="#subjects/${encodeURIComponent(created.id)}" onclick="closeModal()" class="px-4 py-2 btn-primary rounded-md">Review saved subject</a>
+                    <a href="#consents" onclick="closeModal()" class="px-4 py-2 border rounded-md">Review consent records</a>`,
+            });
+            return;
         }
-
-        // Record the informed consent captured in Step 2 (Initial consent).
-        let consentWarn = false;
-        if (window._consentData) {
-            try {
-                await api.createConsent({ subjectId: created.id, consentType: 'Initial', ...window._consentData });
-            } catch (e) {
-                console.warn('Consent save failed:', e.message);
-                consentWarn = true;   // subject exists; prompt to add consent via the Consent tab
-            }
-        }
-
         closeModal();
         window._ieCriteriaResults = null;
         window._iePasses = null;
         window._consentData = null;
-        const msg = iePasses
-            ? `Subject ${subject_code} enrolled successfully.`
-            : `Subject ${subject_code} recorded as Screen Failed.`;
-        showToast(msg, iePasses ? 'success' : 'warning');
-        if (consentWarn) showToast('Subject saved, but the consent record failed — add it from the Consent tab.', 'warning');
-        await renderSubjects();
+        showToast(iePasses ? `Subject ${subject_code} enrolled successfully.` : `Subject ${subject_code} recorded as Screen Failed.`, iePasses ? 'success' : 'warning');
+        try { await renderSubjects(); }
+        catch { showToast('Subject saved, but the list could not be refreshed. Reload the list before making more changes.', 'error'); }
     } catch (err) {
-        errEl.textContent = err.message;
+        // A disconnected or failed server response does not prove creation failed.
+        enrollmentNeedsReview = !err.status || err.status >= 500 || err.code === 'INVALID_RESPONSE';
+        errEl.textContent = err.message + (enrollmentNeedsReview ? ' Review the subject list before starting another enrollment.' : '');
         errEl.classList.remove('hidden');
+    } finally {
+        enrollmentSaving = false;
+        if (submitButton) submitButton.disabled = enrollmentNeedsReview;
     }
 };
 

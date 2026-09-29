@@ -20,6 +20,7 @@ import { resolveTrainingScope } from '../lib/trainingrules.js';
  * reason postgres gave.
  */
 function failed(res, err, context) {
+    // TODO: MINOR — Replace raw exception logging with sanitized diagnostics linked to the request ID.
     console.error(`[delegation] ${context}:`, err);
     res.status(500).json({ error: dbErrorMessage(err) });
 }
@@ -78,7 +79,7 @@ router.get('/', async (req, res) => {
             .orderBy(desc(delegationLog.createdAt));
         res.json(rows);
     } catch (err) {
-        if (isMissingTable(err)) return res.json([]);
+        if (isMissingTable(err)) return res.status(503).json({ error: 'This information is temporarily unavailable. Contact your study administrator.' });
         failed(res, err, 'list delegation');
     }
 });
@@ -99,7 +100,7 @@ router.get('/training/records', requireRole('admin', 'cra', 'pi', 'data_manager'
             .orderBy(desc(trainingRecords.trainingDate));
         res.json(rows);
     } catch (err) {
-        if (isMissingTable(err)) return res.json([]);
+        if (isMissingTable(err)) return res.status(503).json({ error: 'This information is temporarily unavailable. Contact your study administrator.' });
         failed(res, err, 'list training records');
     }
 });
@@ -178,7 +179,7 @@ router.get('/training/expiring', requireRole('admin', 'cra', 'pi', 'data_manager
             .orderBy(trainingRecords.expiryDate);
         res.json(rows);
     } catch (err) {
-        if (isMissingTable(err)) return res.json([]);
+        if (isMissingTable(err)) return res.status(503).json({ error: 'This information is temporarily unavailable. Contact your study administrator.' });
         failed(res, err, 'list expiring training');
     }
 });

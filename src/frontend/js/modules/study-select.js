@@ -1,3 +1,4 @@
+import { readContext, writeContext } from './storage.js';
 // Study + Site Onboarding — shown when no context is selected after login
 // Flow: select study → select site → navigate to dashboard
 
@@ -6,23 +7,15 @@ import { api } from './api.js';
 // ── Context helpers ─────────────────────────────────────────────────────────
 
 export function getSiteContext() {
-    const id  = localStorage.getItem('ecrf_site_context_id');
-    const raw = localStorage.getItem('ecrf_site_context_meta');
-    return id ? { id: parseInt(id), ...(raw ? JSON.parse(raw) : {}) } : null;
+    return readContext('ecrf_site_context');
 }
 
 export function setSiteContext(site) {
-    if (!site) {
-        localStorage.removeItem('ecrf_site_context_id');
-        localStorage.removeItem('ecrf_site_context_meta');
-    } else {
-        localStorage.setItem('ecrf_site_context_id', String(site.id));
-        localStorage.setItem('ecrf_site_context_meta', JSON.stringify({
-            siteCode: site.site_code ?? site.code ?? '',
-            siteName: site.site_name ?? site.name ?? '',
-            status:   site.status ?? 'Active',
-        }));
-    }
+    writeContext('ecrf_site_context', site, site ? {
+        siteCode: site.site_code ?? site.code ?? '',
+        siteName: site.site_name ?? site.name ?? '',
+        status: site.status ?? 'Active',
+    } : null);
 }
 
 // ── Main entry point ────────────────────────────────────────────────────────
