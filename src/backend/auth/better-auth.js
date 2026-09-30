@@ -1,3 +1,4 @@
+import { trustedOrigins } from '../lib/http-security.js';
 import 'dotenv/config';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
@@ -19,6 +20,7 @@ export const auth = betterAuth({
              (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'),
     emailAndPassword: {
         enabled: true,
+        autoSignIn: false,
     },
     user: {
         additionalFields: {
@@ -38,10 +40,5 @@ export const auth = betterAuth({
             },
         },
     },
-    trustedOrigins: [
-        process.env.BETTER_AUTH_URL || 'http://localhost:3000',
-        process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
-        // allow all *.vercel.app subdomains
-        'https://*.vercel.app',
-    ].filter(Boolean),
+    trustedOrigins: [...trustedOrigins()],
 });

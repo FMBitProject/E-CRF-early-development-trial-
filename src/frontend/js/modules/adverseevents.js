@@ -1,3 +1,4 @@
+import { actionAttributes } from './visit-actions.js';
 // ============================================================
 // Adverse Events / SAE View — ICH E2A / GCP pharmacovigilance
 // ============================================================
@@ -254,7 +255,7 @@ function renderAERows(aes, user) {
             <td>${statusBadge(ae.reportStatus)}</td>
             <td class="text-right">
                 <div class="flex items-center justify-end gap-1.5">
-                    ${canQuery ? `<button onclick="openRowInlineQuery(${ae.subjectId}, null, 'adverse_event', 'AE: ${esc(ae.aeTerm || '')}')"
+                    ${canQuery ? `<button ${actionAttributes('query', [ae.subjectId, null, 'adverse_event', 'AE: ' + (ae.aeTerm || '')])}
                         class="p-1.5 text-slate-400 hover:text-orange-500 hover:bg-orange-50 rounded transition" title="Raise Query">
                         <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
                     </button>` : ''}

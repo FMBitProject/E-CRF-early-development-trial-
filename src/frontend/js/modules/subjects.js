@@ -1,3 +1,4 @@
+import { actionAttributes, visitActionAttributes } from './visit-actions.js';
 import { saveEnrollment } from './enrollment-save.js';
 // ============================================================
 // Subjects View — List, Detail, GCP-compliant Study Visits
@@ -940,7 +941,7 @@ function renderVisitRow(v, forms, allEntries, canManageVisit) {
 
     return `
     <tr class="visit-row cursor-pointer hover:bg-slate-50 transition" data-visit-id="${v.id}"
-        onclick="selectVisit(${v.id}, '${esc(v.visit_name)}')">
+        ${visitActionAttributes('select', v.id, v.visit_name)}>
         <td class="text-xs text-slate-400 font-mono text-center">${orderStr}</td>
         <td>
             <p class="text-sm font-semibold text-slate-800">${esc(v.visit_name)}</p>
@@ -965,12 +966,12 @@ function renderVisitRow(v, forms, allEntries, canManageVisit) {
                 ? `<span class="badge bg-emerald-50 text-emerald-700 inline-flex items-center gap-1"><i data-lucide="check-circle-2" class="w-3 h-3"></i> Signed</span>`
                 : `<span class="badge bg-slate-100 text-slate-500">Unsigned</span>`}
             ${v.investigator_signed && isAdmin ? `
-            <button onclick="openUnsignVisitModal(${v.id}, '${esc(v.visit_name)}')"
+            <button ${visitActionAttributes('unsign', v.id, v.visit_name)}
                 class="ml-1.5 text-xs font-medium text-amber-600 hover:text-amber-700 underline">Unsign</button>` : ''}
         </td>
         <td class="text-right" onclick="event.stopPropagation()">
             <div class="flex items-center justify-end gap-1.5">
-                <button onclick="selectVisit(${v.id}, '${esc(v.visit_name)}')"
+                <button ${visitActionAttributes('select', v.id, v.visit_name)}
                     class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition border border-blue-100">
                     <i data-lucide="clipboard-list" class="w-3 h-3"></i> CRFs
                 </button>
@@ -979,7 +980,7 @@ function renderVisitRow(v, forms, allEntries, canManageVisit) {
                     class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition">
                     <i data-lucide="edit-2" class="w-3 h-3"></i>
                 </button>
-                <button onclick="openDeleteVisitModal(${v.id}, '${esc(v.visit_name)}')"
+                <button ${visitActionAttributes('delete', v.id, v.visit_name)}
                     class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition border border-red-100">
                     <i data-lucide="trash-2" class="w-3 h-3"></i>
                 </button>` : ''}
@@ -1224,7 +1225,7 @@ window.openEditVisitModal = function (visitId) {
     window._inlineQueryCtx = { subjectId: subject.id, visitId, entryId: null, formId: null };
 
     const qBtn = (key, label) => `<button type="button"
-        onclick="openInlineQueryModal('${key}', '${label.replace(/'/g, '&#39;')}')"
+        ${actionAttributes('inlineQuery', [key, label])}
         title="Raise a query on this field"
         class="inline-flex items-center justify-center w-4 h-4 rounded-full text-slate-300 hover:text-orange-500 hover:bg-orange-50 transition ml-1 border border-transparent hover:border-orange-200 flex-shrink-0">
         <i data-lucide="message-circle" class="w-3 h-3"></i>

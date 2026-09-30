@@ -19,8 +19,8 @@ export async function requireStudy(req, res, next) {
     const raw = req.headers['x-study-id'];
     if (!raw) return res.status(400).json({ error: 'X-Study-ID header is required' });
 
-    const id = parseInt(raw);
-    if (isNaN(id)) return res.status(400).json({ error: 'Invalid study ID' });
+    const id = Number(raw);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid study ID' });
 
     try {
         const [study] = await db.select({ id: studies.id, status: studies.status, organizationId: studies.organizationId })
@@ -80,15 +80,6 @@ export async function requireStudy(req, res, next) {
 
         next();
     } catch (err) {
-        // Table may not exist yet on first cold start — let admin through
-        const missing = err?.code === '42P01' || err?.cause?.code === '42P01' ||
-                        (err?.message || '').includes('does not exist') ||
-                        (err?.cause?.message || '').includes('does not exist');
-        if (missing && req.user?.role === 'admin') {
-            req.studyId     = id;
-            req.studyStatus = 'Active';
-            return next();
-        }
         res.status(500).json({ error: err.message });
     }
 }

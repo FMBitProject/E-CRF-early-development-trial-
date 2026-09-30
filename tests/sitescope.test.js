@@ -16,7 +16,8 @@ test('site-bound roles are exactly pi, investigator, crc', () => {
 
 test('siteCondition returns undefined when the request is unscoped', () => {
     assert.equal(siteCondition({ siteScope: null }), undefined);
-    assert.equal(siteCondition({}), undefined);
+    assert.ok(siteCondition({}), 'missing scope must fail closed');
+    assert.ok(siteCondition({ siteScope: [] }));
 });
 
 test('siteCondition returns a SQL condition when scoped', () => {
@@ -26,7 +27,8 @@ test('siteCondition returns a SQL condition when scoped', () => {
 
 test('subjectInSiteScope allows everything when unscoped', async () => {
     assert.equal(await subjectInSiteScope({ siteScope: null }, 123), true);
-    assert.equal(await subjectInSiteScope({}, 123), true);
+    assert.equal(await subjectInSiteScope({}, 123), false);
+    assert.equal(await subjectInSiteScope({ siteScope: [] }, 123), false);
 });
 
 test('subjectInSiteScope allows study-level records (no subject)', async () => {

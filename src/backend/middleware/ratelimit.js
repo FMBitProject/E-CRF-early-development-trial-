@@ -1,66 +1,50 @@
-// ICH GCP E6(R3) Appendix C.4.3 — Rate limiting on authentication endpoints
+import { client } from '../db/connection.js';
+import { tokenDigest } from '../lib/security-crypto.js';
 
-const store = new Map(); // key → { count, resetAt }
-
-const WINDOW_MS    = 15 * 60 * 1000; // 15-minute window
-const MAX_ATTEMPTS = 10;              // 10 requests per window per IP
-
-export function rateLimitAuth(req, res, next) {
-    const key = req.ip || 'unknown';
-    const now = Date.now();
-    const rec = store.get(key);
-
-    if (rec && rec.resetAt > now) {
-        if (rec.count >= MAX_ATTEMPTS) {
-            return res.status(429).json({
-                error: 'Too many authentication attempts. Please try again in 15 minutes.',
-                retryAfter: Math.ceil((rec.resetAt - now) / 1000),
-            });
-        }
-        rec.count++;
-    } else {
-        store.set(key, { count: 1, resetAt: now + WINDOW_MS });
+// PostgreSQL-backed atomic buckets are shared by all instances. Raw addresses and
+// challenge values never become stored keys. Failure to check a limit fails closed.
+async function consume(key, limit, windowMs) {
+    const hashedKey = tokenDigest(key);
+    const [bucket] = await client`
+        INSERT INTO security_rate_limits (key, count, reset_at)
+        VALUES (${hashedKey}, 1, ${new Date(Date.now() + windowMs).toISOString()})
+        ON CONFLICT (key) DO UPDATE SET
+            count = CASE WHEN security_rate_limits.reset_at <= NOW() THEN 1 ELSE security_rate_limits.count + 1 END,
+            reset_at = CASE WHEN security_rate_limits.reset_at <= NOW() THEN EXCLUDED.reset_at ELSE security_rate_limits.reset_at END
+        RETURNING count, reset_at
+    `;
+    if (Math.random() < 0.01) {
+        await client`DELETE FROM security_rate_limits WHERE key IN
+            (SELECT key FROM security_rate_limits WHERE reset_at < NOW() LIMIT 1000)`;
     }
-
-    // Prune old entries every 100 calls to prevent memory leak
-    if (store.size > 1000) {
-        for (const [k, v] of store.entries()) {
-            if (v.resetAt <= now) store.delete(k);
-        }
-    }
-
-    next();
+    return { allowed: bucket.count <= limit, retryAfter: Math.max(1, Math.ceil((new Date(bucket.reset_at) - Date.now()) / 1000)) };
 }
 
-// Per-tenant API rate limit — a noisy or runaway tenant cannot exhaust
-// capacity for others. Keyed by organization (falls back to IP pre-tenant).
-// Generous ceiling so normal clinical use is never throttled.
-const tenantStore = new Map();
-const TENANT_WINDOW_MS = 60 * 1000;   // 1-minute window
-const TENANT_MAX       = 600;          // 600 requests/min per tenant
+async function enforce(req, res, next, buckets) {
+    try {
+        for (const [key, limit, windowMs] of buckets) {
+            const result = await consume(key, limit, windowMs);
+            if (!result.allowed) {
+                res.setHeader('Retry-After', result.retryAfter);
+                return res.status(429).json({ error: 'Too many requests. Try again later.', retryAfter: result.retryAfter });
+            }
+        }
+        next();
+    } catch {
+        res.status(503).json({ error: 'Security checks temporarily unavailable.' });
+    }
+}
+
+export function rateLimitAuth(req, res, next) {
+    const buckets = [[`auth:ip:${req.ip}`, 30, 15 * 60000]];
+    const email = req.body?.email ?? req.body?.adminEmail;
+    if (typeof email === 'string' && email.length <= 254) buckets.push([`auth:email:${email.trim().toLowerCase()}`, 10, 15 * 60000]);
+    if (typeof req.body?.tempToken === 'string' && req.body.tempToken.length <= 128) {
+        buckets.push([`auth:challenge:${req.body.tempToken}`, 5, 10 * 60000]);
+    }
+    return enforce(req, res, next, buckets);
+}
 
 export function rateLimitTenant(req, res, next) {
-    const key = req.orgId != null ? `org:${req.orgId}` : `ip:${req.ip || 'unknown'}`;
-    const now = Date.now();
-    const rec = tenantStore.get(key);
-
-    if (rec && rec.resetAt > now) {
-        if (rec.count >= TENANT_MAX) {
-            return res.status(429).json({
-                error: 'Rate limit exceeded for your organization. Please slow down.',
-                retryAfter: Math.ceil((rec.resetAt - now) / 1000),
-            });
-        }
-        rec.count++;
-    } else {
-        tenantStore.set(key, { count: 1, resetAt: now + TENANT_WINDOW_MS });
-    }
-
-    if (tenantStore.size > 5000) {
-        for (const [k, v] of tenantStore.entries()) {
-            if (v.resetAt <= now) tenantStore.delete(k);
-        }
-    }
-
-    next();
+    return enforce(req, res, next, [[`tenant:${req.orgId ?? `ip:${req.ip}`}`, 600, 60000]]);
 }

@@ -1,3 +1,5 @@
+import { readSessionToken } from '../lib/session.js';
+import { tokenDigest } from '../lib/security-crypto.js';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { session as sessionTable, user, accountLocks, passwordMeta, organizations } from '../db/schemas/schema.js';
@@ -8,22 +10,11 @@ const MUST_CHANGE_ALLOWED = new Set([
     '/api/security/change-password',
     '/api/security/password-status',
     '/api/mfa/logout',
+    '/api/auth/sign-out',
 ]);
 
-function parseCookies(cookieHeader) {
-    const cookies = {};
-    (cookieHeader || '').split(';').forEach(pair => {
-        const idx = pair.indexOf('=');
-        if (idx < 0) return;
-        const k = pair.slice(0, idx).trim();
-        const v = pair.slice(idx + 1).trim();
-        if (k) cookies[k] = decodeURIComponent(v);
-    });
-    return cookies;
-}
-
 export async function requireAuth(req, res, next) {
-    const token = parseCookies(req.headers.cookie)['better-auth.session_token'];
+    const token = readSessionToken(req);
     if (!token) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -45,7 +36,7 @@ export async function requireAuth(req, res, next) {
             .from(sessionTable)
             .innerJoin(user, eq(sessionTable.userId, user.id))
             .leftJoin(organizations, eq(user.organizationId, organizations.id))
-            .where(eq(sessionTable.token, token));
+            .where(eq(sessionTable.token, tokenDigest(token)));
 
         if (!row || new Date(row.expiresAt) < new Date()) {
             return res.status(401).json({ error: 'Unauthorized' });
@@ -64,8 +55,8 @@ export async function requireAuth(req, res, next) {
         }
 
         // ICH GCP E6(R3) C.4.3 — reject requests from locked accounts
-        // try-catch: table may not exist before migration completes on first deploy
-        try {
+        // Fail closed if security tables cannot be checked.
+        {
             const [lock] = await db.select().from(accountLocks)
                 .where(eq(accountLocks.userId, row.userId));
             if (lock && !lock.unlockedAt && lock.lockedAt) {
@@ -73,11 +64,11 @@ export async function requireAuth(req, res, next) {
                     return res.status(423).json({ error: 'Account is locked. Contact your administrator.' });
                 }
             }
-        } catch { /* migration pending — skip lock check */ }
+        }
 
         // Admin-forced password reset: block the API (not just the UI) until
         // the password is actually changed (ICH GCP E6(R3) C.4.3).
-        try {
+        {
             const url = (req.originalUrl || req.url || '').split('?')[0];
             if (!MUST_CHANGE_ALLOWED.has(url)) {
                 const [meta] = await db.select({ mustChange: passwordMeta.mustChange })
@@ -89,8 +80,10 @@ export async function requireAuth(req, res, next) {
                     });
                 }
             }
-        } catch { /* migration pending — skip must-change check */ }
+        }
 
+        req.authTokenHash = tokenDigest(token);
+        req.sessionExpiresAt = row.expiresAt;
         req.user = {
             id:          row.userId,
             name:        row.name,
@@ -114,6 +107,6 @@ export async function requireAuth(req, res, next) {
         next();
     } catch (err) {
         console.error('requireAuth error:', err.message);
-        return res.status(401).json({ error: 'Unauthorized' });
+        return res.status(503).json({ error: 'Authentication temporarily unavailable' });
     }
 }

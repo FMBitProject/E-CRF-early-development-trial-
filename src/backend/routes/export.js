@@ -1,5 +1,6 @@
+import { siteCondition } from '../lib/sitescope.js';
 import { Router } from 'express';
-import { eq } from 'drizzle-orm';
+import { eq, and, inArray, or, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import {
     subjects, sites, visits, crfDataEntries, crfForms,
@@ -13,6 +14,14 @@ import { isoDay, isoDateTime } from '../lib/isodate.js';
 import { buildCsv, withBom, INVALID_DOMAIN_ERROR, vitalsToRows } from '../lib/csv.js';
 
 const router = Router();
+
+function exportSubjectScope(req, subjectColumn) {
+    if (req.siteScope !== null && (!Array.isArray(req.siteScope) || !req.siteScope.length)) return sql`false`;
+    const allowed = db.select({ id: subjects.id }).from(subjects)
+        .where(and(eq(subjects.studyId, req.studyId), siteCondition(req)));
+    // Study-level deviations have no subject; retain them for authorized study members.
+    return or(isNull(subjectColumn), inArray(subjectColumn, allowed));
+}
 
 // ── CDISC ODM-XML 1.3.2 Export ───────────────────────────────────────────────
 // The serialiser itself lives in lib/odm.js so the exact bytes we ship to a
@@ -31,21 +40,21 @@ router.get('/odm', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
             allConsents,
             sigRows,
         ] = await Promise.all([
-            db.select().from(subjects).leftJoin(sites, eq(subjects.siteId, sites.id)).where(eq(subjects.studyId, sid)),
+            db.select().from(subjects).leftJoin(sites, eq(subjects.siteId, sites.id)).where(and(eq(subjects.studyId, sid), siteCondition(req))),
             // visits/entries/signatures have no study_id — scope via the subject
             db.select({ row: visits }).from(visits)
                 .innerJoin(subjects, eq(visits.subjectId, subjects.id))
-                .where(eq(subjects.studyId, sid)),
+                .where(and(eq(subjects.studyId, sid), siteCondition(req))),
             db.select({ row: crfDataEntries }).from(crfDataEntries)
                 .innerJoin(subjects, eq(crfDataEntries.subjectId, subjects.id))
-                .where(eq(subjects.studyId, sid)),
+                .where(and(eq(subjects.studyId, sid), siteCondition(req))),
             db.select().from(crfForms),
-            db.select().from(adverseEvents).where(eq(adverseEvents.studyId, sid)),
-            db.select().from(informedConsents).where(eq(informedConsents.studyId, sid)),
+            db.select().from(adverseEvents).where(and(eq(adverseEvents.studyId, sid), exportSubjectScope(req, adverseEvents.subjectId))),
+            db.select().from(informedConsents).where(and(eq(informedConsents.studyId, sid), exportSubjectScope(req, informedConsents.subjectId))),
             db.select({ row: esignatures }).from(esignatures)
                 .innerJoin(crfDataEntries, eq(esignatures.entryId, crfDataEntries.id))
                 .innerJoin(subjects, eq(crfDataEntries.subjectId, subjects.id))
-                .where(eq(subjects.studyId, sid)),
+                .where(and(eq(subjects.studyId, sid), siteCondition(req))),
         ]);
         const allVisits  = visitRows.map(r => r.row);
         const allEntries = entryRows.map(r => r.row);
@@ -95,7 +104,7 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
         const sid = req.studyId;
         if (domain === 'DM') {
             headers = ['SUBJID','SITEID','SITE_NAME','SEX','GENDER_IDENTITY','DOB','ENRLDTC','STATUS','WDRAWDTC','WDRAWREASON'];
-            const data = await db.select().from(subjects).leftJoin(sites, eq(subjects.siteId, sites.id)).where(eq(subjects.studyId, sid));
+            const data = await db.select().from(subjects).leftJoin(sites, eq(subjects.siteId, sites.id)).where(and(eq(subjects.studyId, sid), siteCondition(req)));
             rows = data.map(r => {
                 const s = r.subjects ?? r;
                 const site = r.sites ?? null;
@@ -112,7 +121,7 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
             headers = ['SUBJID','AESEQ','AETERM','AEDECOD','AESOC','AESTDTC','AEENDTC','AESEV','AESER','AEREL','AEOUT','AEACN','AESTATUS','CREATED_BY','CREATED_AT'];
             const data = await db.select().from(adverseEvents)
                 .leftJoin(subjects, eq(adverseEvents.subjectId, subjects.id))
-                .where(eq(adverseEvents.studyId, sid))
+                .where(and(eq(adverseEvents.studyId, sid), exportSubjectScope(req, adverseEvents.subjectId)))
                 .orderBy(adverseEvents.subjectId, adverseEvents.id);
             rows = data.map(r => {
                 const ae = r.adverse_events ?? r;
@@ -131,7 +140,7 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
             headers = ['DEVID','SUBJID','TYPE','CATEGORY','DESCRIPTION','DEVIATION_DATE','DISCOVERY_DATE','ROOT_CAUSE','IMPACT','CAPA','REPORTED_TO_IRB','STATUS','CREATED_BY','CREATED_AT'];
             const data = await db.select().from(protocolDeviations)
                 .leftJoin(subjects, eq(protocolDeviations.subjectId, subjects.id))
-                .where(eq(protocolDeviations.studyId, sid))
+                .where(and(eq(protocolDeviations.studyId, sid), exportSubjectScope(req, protocolDeviations.subjectId)))
                 .orderBy(protocolDeviations.id);
             rows = data.map(r => {
                 const d = r.protocol_deviations ?? r;
@@ -149,7 +158,7 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
             headers = ['ICID','SUBJID','VERSION','DATE','TIME','TYPE','LANGUAGE','OBTAINED_BY','WITNESS','WITNESS_TYPE','ASSENT','ASSENT_DTC','COPY_PROVIDED','WITHDRAWN','WITHDRAWN_DTC','WITHDRAWN_REASON','CREATED_BY','CREATED_AT'];
             const data = await db.select().from(informedConsents)
                 .leftJoin(subjects, eq(informedConsents.subjectId, subjects.id))
-                .where(eq(informedConsents.studyId, sid))
+                .where(and(eq(informedConsents.studyId, sid), exportSubjectScope(req, informedConsents.subjectId)))
                 .orderBy(informedConsents.id);
             rows = data.map(r => {
                 const c = r.informed_consents ?? r;
@@ -174,7 +183,7 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
             const data = await db.select().from(labResults)
                 .leftJoin(subjects, eq(labResults.subjectId, subjects.id))
                 .leftJoin(visits, eq(labResults.visitId, visits.id))
-                .where(eq(labResults.studyId, sid))
+                .where(and(eq(labResults.studyId, sid), exportSubjectScope(req, labResults.subjectId)))
                 .orderBy(labResults.subjectId, labResults.id);
             rows = data.map(r => {
                 const l = r.lab_results ?? r;
@@ -191,7 +200,7 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
             const data = await db.select().from(vitalSigns)
                 .leftJoin(subjects, eq(vitalSigns.subjectId, subjects.id))
                 .leftJoin(visits, eq(vitalSigns.visitId, visits.id))
-                .where(eq(vitalSigns.studyId, sid))
+                .where(and(eq(vitalSigns.studyId, sid), exportSubjectScope(req, vitalSigns.subjectId)))
                 .orderBy(vitalSigns.subjectId, vitalSigns.id);
             rows = data.flatMap(r => vitalsToRows(
                 r.vital_signs ?? r,
@@ -206,7 +215,7 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
                 .leftJoin(subjects, eq(crfDataEntries.subjectId, subjects.id))
                 .leftJoin(visits, eq(crfDataEntries.visitId, visits.id))
                 .leftJoin(crfForms, eq(crfDataEntries.formId, crfForms.id))
-                .where(eq(subjects.studyId, sid))
+                .where(and(eq(subjects.studyId, sid), siteCondition(req)))
                 .orderBy(crfDataEntries.subjectId, crfDataEntries.id);
             rows = data.flatMap(r => {
                 const e = r.crf_data_entries ?? r;

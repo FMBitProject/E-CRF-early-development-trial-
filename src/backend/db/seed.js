@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+import { writeFileSync } from 'node:fs';
 /**
  * Seed script — run once to populate demo data.
  * Usage: npm run db:seed
@@ -8,6 +10,11 @@ import { db } from './connection.js';
 import { auth } from '../auth/better-auth.js';
 import { organizations, sites, subjects, visits, crfForms, user } from './schemas/schema.js';
 
+if (process.env.NODE_ENV === 'production' || process.env.ALLOW_DEMO_SEED !== 'true') {
+    throw new Error('Demo seed is disabled. Only explicitly enabled development databases may be seeded.');
+}
+if (!process.env.SEED_CREDENTIALS_FILE) throw new Error('Set SEED_CREDENTIALS_FILE to a private, new file path');
+
 // ─── Sites ───────────────────────────────────────────────────────────────────
 const seedSites = [
     { name: 'Jakarta General Hospital', code: 'JKT-001', country: 'Indonesia', piName: 'Dr. Budi Santoso' },
@@ -16,9 +23,9 @@ const seedSites = [
 
 // ─── Demo users (Better Auth email/password) ─────────────────────────────────
 const seedUsers = [
-    { name: 'Admin User',       email: 'admin@ecrf.local',       password: 'Admin@123',       role: 'admin' },
-    { name: 'Dr. Investigator', email: 'investigator@ecrf.local', password: 'Investigator@123', role: 'investigator' },
-    { name: 'CRA Monitor',      email: 'cra@ecrf.local',         password: 'CRA@123456',      role: 'cra' },
+    { name: 'Admin User',       email: 'admin@ecrf.local',       password: crypto.randomBytes(24).toString('base64url'),       role: 'admin' },
+    { name: 'Dr. Investigator', email: 'investigator@ecrf.local', password: crypto.randomBytes(24).toString('base64url'), role: 'investigator' },
+    { name: 'CRA Monitor',      email: 'cra@ecrf.local',         password: crypto.randomBytes(24).toString('base64url'),      role: 'cra' },
 ];
 
 // ─── CRF Form templates ───────────────────────────────────────────────────────
@@ -100,6 +107,8 @@ const seedSubjects = [
 ];
 
 async function main() {
+    // Exclusive private file: never overwrite existing credentials or print passwords.
+    writeFileSync(process.env.SEED_CREDENTIALS_FILE, JSON.stringify(seedUsers, null, 2), { flag: 'wx', mode: 0o600 });
     console.log('🌱 Seeding database...\n');
 
     // 0. Default organization (tenant that owns all seeded data)
@@ -125,7 +134,8 @@ async function main() {
             console.log(`   ✓ ${u.email} (${u.role})`);
         } catch (err) {
             // User might already exist
-            console.log(`   ~ ${u.email} already exists`);
+            console.log(`   ~ ${u.email} was not created; leaving existing privileges unchanged`);
+            continue;
         }
         // role/siteId/org are input:false in Better Auth (privilege-escalation
         // guard) — assign them server-side after signup, and into the default org.
@@ -167,10 +177,7 @@ async function main() {
     console.log(`   ${insertedVisits.length} visits inserted\n`);
 
     console.log('✅ Seed complete!\n');
-    console.log('Demo accounts:');
-    console.log('  admin@ecrf.local         / Admin@123');
-    console.log('  investigator@ecrf.local  / Investigator@123');
-    console.log('  cra@ecrf.local           / CRA@123456');
+    console.log('Generated demo credentials are in the private SEED_CREDENTIALS_FILE.');
 
     process.exit(0);
 }

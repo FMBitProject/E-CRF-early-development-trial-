@@ -29,15 +29,15 @@ services:
       PORT: 3000
       # App → db over the internal Docker network (no TLS needed inside the host).
       DATABASE_URL: postgresql://${POSTGRES_USER:-ecrf}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ecrf}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?set MFA_ENCRYPTION_KEY in .env}
+      TRUST_PROXY_CIDRS: ${TRUST_PROXY_CIDRS:-}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
       BETTER_AUTH_URL:    ${BETTER_AUTH_URL:-http://localhost:3000}
       # Access control — self-service signup off by default for on-prem.
       ALLOW_SELF_REGISTRATION: ${ALLOW_SELF_REGISTRATION:-false}
       ALLOW_TENANT_SIGNUP:     ${ALLOW_TENANT_SIGNUP:-false}
       PLATFORM_OWNER_EMAIL:    ${PLATFORM_OWNER_EMAIL:-}
-      # First-run bootstrap: this email may register the first admin account
-      # even while self-registration is disabled. Set it to the customer's IT
-      # administrator before first boot.
+      # Reserved address; provision admins with the trusted local CLI.
       ADMIN_EMAIL:             ${ADMIN_EMAIL:-}
       # Licensing — on-prem enforces the license by default. When the license is
       # missing/expired, creating NEW records (enrollment/studies/sites) is

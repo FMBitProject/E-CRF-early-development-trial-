@@ -1,3 +1,4 @@
+import { escapeAttribute } from './visit-actions.js';
 // Visit Schedule Template UI — Study design / visit plan builder
 
 import { api } from './api.js';
@@ -94,7 +95,7 @@ function openBuilderModal(tmpl = null) {
     _items    = tmpl ? JSON.parse(JSON.stringify(tmpl.items ?? [])) : [];
 
     const formOptions = _forms.map(f =>
-        `<option value="${f.id}">${f.name}</option>`
+        `<option value="${f.id}">${escapeAttribute(f.name)}</option>`
     ).join('');
 
     showModal({
@@ -169,7 +170,7 @@ function renderItemList() {
             <div class="flex-1 grid grid-cols-4 gap-2">
               <div class="col-span-2">
                 <label class="ph-label text-xs">Visit Name *</label>
-                <input class="ph-input text-xs" value="${it.visitName ?? ''}" onchange="window.vtUpdateItem(${i},'visitName',this.value)" placeholder="e.g. Screening Visit">
+                <input class="ph-input text-xs" value="${escapeAttribute(it.visitName ?? '')}" onchange="window.vtUpdateItem(${i},'visitName',this.value)" placeholder="e.g. Screening Visit">
               </div>
               <div>
                 <label class="ph-label text-xs">Visit Type</label>
@@ -179,7 +180,7 @@ function renderItemList() {
               </div>
               <div>
                 <label class="ph-label text-xs">Study Day</label>
-                <input type="number" class="ph-input text-xs" value="${it.studyDay ?? ''}" onchange="window.vtUpdateItem(${i},'studyDay',this.value ? +this.value : null)" placeholder="e.g. 0">
+                <input type="number" class="ph-input text-xs" value="${escapeAttribute(it.studyDay ?? '')}" onchange="window.vtUpdateItem(${i},'studyDay',this.value ? +this.value : null)" placeholder="e.g. 0">
               </div>
             </div>
             <button onclick="window.vtRemoveItem(${i})" class="text-red-400 hover:text-red-600 p-1 flex-shrink-0">
@@ -189,9 +190,9 @@ function renderItemList() {
           <div class="flex items-center gap-3 pl-8">
             <div class="flex items-center gap-1.5">
               <label class="ph-label text-xs mb-0">Window (±days)</label>
-              <input type="number" class="ph-input text-xs w-16" value="${it.windowDaysBefore ?? 3}" onchange="window.vtUpdateItem(${i},'windowDaysBefore',+this.value)" placeholder="3" min="0">
+              <input type="number" class="ph-input text-xs w-16" value="${escapeAttribute(it.windowDaysBefore ?? 3)}" onchange="window.vtUpdateItem(${i},'windowDaysBefore',+this.value)" placeholder="3" min="0">
               <span class="text-xs text-slate-400">/</span>
-              <input type="number" class="ph-input text-xs w-16" value="${it.windowDaysAfter ?? 3}" onchange="window.vtUpdateItem(${i},'windowDaysAfter',+this.value)" placeholder="3" min="0">
+              <input type="number" class="ph-input text-xs w-16" value="${escapeAttribute(it.windowDaysAfter ?? 3)}" onchange="window.vtUpdateItem(${i},'windowDaysAfter',+this.value)" placeholder="3" min="0">
             </div>
             <label class="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
               <input type="checkbox" ${it.isMandatory !== false ? 'checked' : ''} onchange="window.vtUpdateItem(${i},'isMandatory',this.checked)" class="rounded">
@@ -205,7 +206,7 @@ function renderItemList() {
                 <label class="flex items-center gap-1 text-xs cursor-pointer bg-white border border-slate-200 rounded px-2 py-1 hover:border-blue-400 ${(it.formIds ?? []).includes(f.id) ? 'border-blue-500 bg-blue-50 text-blue-700' : 'text-slate-600'}">
                   <input type="checkbox" class="hidden" ${(it.formIds ?? []).includes(f.id) ? 'checked' : ''}
                     onchange="window.vtToggleForm(${i},${f.id},this.checked)">
-                  ${f.name}
+                  ${escapeAttribute(f.name)}
                 </label>`).join('')}
               ${!_forms.length ? '<p class="text-xs text-slate-400 italic">No forms available — create forms first</p>' : ''}
             </div>

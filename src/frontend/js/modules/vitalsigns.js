@@ -1,3 +1,4 @@
+import { actionAttributes } from './visit-actions.js';
 // ============================================================
 // Vital Signs — study-wide view
 // ============================================================
@@ -150,7 +151,7 @@ function renderVitalRows(records, user, canWrite) {
             <td class="text-xs text-slate-600">${r.oxygenSaturation != null ? `${r.oxygenSaturation}%` : '—'}</td>
             <td class="text-right">
                 <div class="flex items-center justify-end gap-1.5">
-                    ${canQuery ? `<button onclick="openRowInlineQuery(${r.subjectId}, ${r.visitId || null}, 'vital_signs', 'Vital Signs — ${esc(r.assessmentDate || '')}')"
+                    ${canQuery ? `<button ${actionAttributes('query', [r.subjectId, r.visitId || null, 'vital_signs', 'Vital Signs — ' + (r.assessmentDate || '')])}
                         class="p-1.5 text-slate-400 hover:text-orange-500 hover:bg-orange-50 rounded transition" title="Raise Query">
                         <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
                     </button>` : ''}

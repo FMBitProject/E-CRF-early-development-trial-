@@ -1,3 +1,4 @@
+import { actionAttributes } from './visit-actions.js';
 // ============================================================
 // Concomitant Medications — study-wide view
 // ============================================================
@@ -134,7 +135,7 @@ function renderConMedRows(records, user, canWrite) {
             </td>
             <td class="text-right">
                 <div class="flex items-center justify-end gap-1.5">
-                    ${canQuery ? `<button onclick="openRowInlineQuery(${r.subjectId}, null, 'con_medication', 'ConMed: ${esc(r.drugName || '')}')"
+                    ${canQuery ? `<button ${actionAttributes('query', [r.subjectId, null, 'con_medication', 'ConMed: ' + (r.drugName || '')])}
                         class="p-1.5 text-slate-400 hover:text-orange-500 hover:bg-orange-50 rounded transition" title="Raise Query">
                         <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
                     </button>` : ''}

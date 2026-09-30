@@ -1,3 +1,4 @@
+import { actionAttributes } from './visit-actions.js';
 // ============================================================
 // Laboratory Results — study-wide view with LOINC coding
 // ============================================================
@@ -269,7 +270,7 @@ function renderLabRows(records, user, canWrite, canVerify) {
                         class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md transition border border-emerald-200">
                         <i data-lucide="check-circle" class="w-3 h-3"></i> Verify
                     </button>` : ''}
-                    ${canQuery ? `<button onclick="openRowInlineQuery(${r.subjectId}, ${r.visitId || null}, 'lab_result', 'Lab: ${esc(r.testName || '')}')"
+                    ${canQuery ? `<button ${actionAttributes('query', [r.subjectId, r.visitId || null, 'lab_result', 'Lab: ' + (r.testName || '')])}
                         class="p-1.5 text-slate-400 hover:text-orange-500 hover:bg-orange-50 rounded transition" title="Raise Query">
                         <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
                     </button>` : ''}

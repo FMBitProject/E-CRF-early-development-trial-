@@ -63,7 +63,7 @@ router.get('/status-overview', requireRole('pi', 'admin', 'cra', 'data_manager')
             })
             .from(subjects)
             .leftJoin(sites, eq(subjects.siteId, sites.id))
-            .where(eq(subjects.studyId, req.studyId))
+            .where(and(eq(subjects.studyId, req.studyId), siteCondition(req)))
             .orderBy(subjects.subjectCode);
 
         if (studySubjects.length === 0) return res.json([]);

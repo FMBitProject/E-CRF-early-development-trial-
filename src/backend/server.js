@@ -4,8 +4,8 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { toNodeHandler } from 'better-auth/node';
-import { auth } from './auth/better-auth.js';
+import { trustedOrigins, checkOrigin } from './lib/http-security.js';
+import { migrateSecurity } from './lib/security-migration.js';
 import { requireAuth } from './middleware/auth.js';
 import { client } from './db/connection.js';
 
@@ -16,7 +16,7 @@ import entriesRouter       from './routes/entries.js';
 import importRouter        from './routes/import.js';
 import auditRouter         from './routes/audit.js';
 import queriesRouter       from './routes/queries.js';
-import mfaRouter           from './routes/mfa.js';
+import mfaRouter, { logout } from './routes/mfa.js';
 import registerRouter      from './routes/register.js';
 import signupRouter        from './routes/signup.js';
 import organizationsRouter from './routes/organizations.js';
@@ -1038,10 +1038,8 @@ async function runMigrations() {
 const app = express();
 app.use(safeErrorResponses);
 
-// Behind Vercel/reverse proxy: trust the first hop so req.ip is the real
-// client address (rate limiting and login_attempts would otherwise key on the
-// proxy IP — one shared bucket for every user).
-app.set('trust proxy', 1);
+// Configure only the actual proxy CIDRs. Direct deployments do not trust forwarded IPs.
+app.set('trust proxy', process.env.TRUST_PROXY_CIDRS?.split(',').map(s => s.trim()).filter(Boolean) || false);
 app.disable('x-powered-by');
 
 // Security headers (helmet-equivalent, no extra dependency).
@@ -1067,40 +1065,21 @@ app.use((req, res, next) => {
     next();
 });
 
-// CORS pinned to the deployment origins — never reflect arbitrary origins
-// while credentials are enabled.
-const _trustedOrigin = process.env.BETTER_AUTH_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
-const ALLOWED_ORIGINS = new Set([
-    _trustedOrigin,
-    'http://localhost:3000',
-    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
-].filter(Boolean));
-app.use(cors({
-    origin: (origin, cb) => {
-        // Same-origin/no-Origin requests (fetch from own pages, curl) pass.
-        if (!origin || ALLOWED_ORIGINS.has(origin) || /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin)) {
-            return cb(null, true);
-        }
-        cb(null, false);
-    },
-    credentials: true,
-}));
-
-// Only a small allowlist of Better Auth endpoints is reachable over HTTP.
-// sign-up would accept client-supplied fields and sign-in would bypass the
-// account-lockout + TOTP flow in /api/mfa — both stay server-side only
-// (routes/register.js, routes/usermgmt.js, routes/mfa.js call auth.api.* directly).
-const AUTH_PUBLIC_PATHS = new Set(['/api/auth/sign-out', '/api/auth/get-session']);
-app.all('/api/auth/*', rateLimitAuth, (req, res, next) => {
-    if (!AUTH_PUBLIC_PATHS.has(req.path)) {
-        return res.status(403).json({ error: 'This endpoint is disabled. Use /api/mfa for sign-in.' });
-    }
-    // Normalize Origin for Better Auth's own origin check across deploy URLs.
-    req.headers['origin'] = _trustedOrigin;
+// Exact deployment origins only; do not normalize/overwrite the caller's Origin.
+app.use(cors({ origin: (origin, cb) => cb(null, !origin || trustedOrigins().has(origin)), credentials: true }));
+app.use('/api', checkOrigin);
+let securityReady = false;
+app.use('/api', (req, res, next) => {
+    if (req.path === '/health') return next();
+    if (!securityReady) return res.status(503).json({ error: 'Service initializing' });
     next();
 });
-app.all('/api/auth/*', toNodeHandler(auth));
+// Compatibility endpoints use the same custom session protocol as /api/mfa.
+app.post('/api/auth/sign-out', logout);
+app.get('/api/auth/get-session', requireAuth, (req, res) => res.json({
+    user: req.user, session: { expiresAt: req.sessionExpiresAt },
+}));
+app.all('/api/auth/*', (_req, res) => res.status(403).json({ error: 'Use /api/mfa for authentication.' }));
 
 // Billing webhook needs the RAW body for Stripe signature verification — mount
 // it before express.json() so the payload isn't parsed/re-serialized.
@@ -1210,8 +1189,7 @@ async function ensureBaseSchema() {
     console.log('Base schema created (fresh database).');
 }
 
-// Start listening immediately so the port is bound on deploy, then migrate in the background.
-// Per-statement try/catch inside runMigrations() ensures one failing DDL never blocks the rest.
+// Bind the port for liveness; API traffic remains blocked until mandatory security migration succeeds.
 app.listen(PORT, () => {
     console.log(`E-CRF Server running on http://localhost:${PORT}`);
     console.log(`Better Auth endpoint: http://localhost:${PORT}/api/auth`);
@@ -1227,6 +1205,7 @@ app.listen(PORT, () => {
     }
     ensureBaseSchema()
         .then(runMigrations)
-        .then(() => console.log('DB migrations applied.'))
-        .catch(err => console.warn('Migration warning (non-fatal):', err.message));
+        .then(() => migrateSecurity(client))
+        .then(() => { securityReady = true; console.log('DB and security migrations applied.'); })
+        .catch(err => console.error('Startup incomplete; requests remain blocked:', err.code || err.message));
 });

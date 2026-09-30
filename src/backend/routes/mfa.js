@@ -1,484 +1,262 @@
 import { Router } from 'express';
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 import { TOTP, NobleCryptoPlugin, ScureBase32Plugin, generateSecret, generateURI } from 'otplib';
 import QRCode from 'qrcode';
-
-// Singleton TOTP instance with bundled crypto/base32 plugins
-const totp = new TOTP({ crypto: new NobleCryptoPlugin(), base32: new ScureBase32Plugin() });
-import { db } from '../db/connection.js';
-import { client } from '../db/connection.js';
-import { verification, loginAttempts, accountLocks, user as userTable } from '../db/schemas/schema.js';
-import { eq, gt } from 'drizzle-orm';
-import { sendOTPEmail } from '../lib/email.js';
-import { auth } from '../auth/better-auth.js';
+import { verifyPassword, hashPassword } from '@better-auth/utils/password';
+import { client, db } from '../db/connection.js';
 import { POLICY } from '../lib/passwordpolicy.js';
 import { requireAuth } from '../middleware/auth.js';
 import { writeAudit } from '../lib/audit.js';
+import { asyncRoute, validCredentials } from '../lib/http-security.js';
+import { encryptSecret, decryptSecret, backupDigest, tokenDigest, equalDigest, credentialFingerprint } from '../lib/security-crypto.js';
+import { createSession, setSessionCookie, clearSessionCookie, readSessionToken } from '../lib/session.js';
 
 const router = Router();
+const totp = new TOTP({ crypto: new NobleCryptoPlugin(), base32: new ScureBase32Plugin() });
+// Match password verification cost for unknown users without storing any credential.
+let dummyHash;
+const codeIsValidInput = code => typeof code === 'string' && /^[a-zA-Z0-9\s]{6,24}$/.test(code);
 
-const SESSION_COOKIE   = 'better-auth.session_token';
-const SESSION_MAX_AGE  = 60 * 60 * 24 * 7;
-const APP_NAME         = 'E-CRF System';
-
-function generateOTP() {
-    return crypto.randomInt(100000, 1000000).toString();
-}
-
-function hashOTP(otp) {
-    return crypto.createHash('sha256').update(otp.trim()).digest('hex');
-}
-
-function generateBackupCodes(count = 8) {
-    return Array.from({ length: count }, () =>
-        crypto.randomBytes(5).toString('hex').toUpperCase()
-    );
-}
-
-async function recordFailedAttempt(email, ipAddress) {
+function jsonArray(value) {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
     try {
-        const now = new Date();
-        await db.insert(loginAttempts).values({ email, ipAddress: ipAddress || 'unknown', success: false });
-
-        const [existing] = await db.select().from(accountLocks).where(eq(accountLocks.email, email));
-        const newCount = (existing?.failedCount ?? 0) + 1;
-        const shouldLock = newCount >= POLICY.maxFailedAttempts;
-        const lockFields = shouldLock
-            ? { lockedAt: now, autoUnlockAt: new Date(now.getTime() + POLICY.lockoutMinutes * 60000) }
-            : {};
-
-        if (existing) {
-            await db.update(accountLocks)
-                .set({ failedCount: newCount, ...lockFields })
-                .where(eq(accountLocks.id, existing.id));
-        } else {
-            const [userRow] = await db.select({ id: userTable.id }).from(userTable)
-                .where(eq(userTable.email, email));
-            await db.insert(accountLocks).values({
-                userId: userRow?.id ?? null, email, failedCount: newCount, ...lockFields,
-            });
-        }
-    } catch (e) {
-        console.warn('recordFailedAttempt skipped (migration pending):', e.message);
-    }
-}
-
-// ── Helper: get TOTP row for a user ──────────────────────────────────────────
-async function getTotpRow(userId) {
-    try {
-        const rows = await client.unsafe(
-            `SELECT id, secret, is_enabled, enabled_at, backup_codes FROM user_totp WHERE user_id = $1`,
-            [userId]
-        );
-        return rows[0] ?? null;
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
     } catch {
-        return null;
+        return [];
     }
 }
 
-// ── POST /api/mfa/initiate — verify password; if TOTP enabled return totp_required, else authenticate directly ──
-router.post('/initiate', async (req, res) => {
-    const { email, password } = req.body;
-    if (!email || !password) {
-        return res.status(400).json({ error: 'Email and password are required.' });
+async function lockEmail(tx, email) {
+    await tx`SELECT pg_advisory_xact_lock(hashtextextended(${email}, 19))`;
+}
+
+async function recordFailure(tx, email, userId, ip) {
+    await tx`INSERT INTO login_attempts (email, ip_address, success) VALUES (${email}, ${ip || 'unknown'}, FALSE)`;
+    const [row] = await tx`
+        INSERT INTO account_locks (user_id, email, failed_count, unlocked_at) VALUES (${userId}, ${email}, 1, NOW())
+        ON CONFLICT (email) DO UPDATE SET failed_count = account_locks.failed_count + 1,
+            user_id = COALESCE(EXCLUDED.user_id, account_locks.user_id)
+        RETURNING id, failed_count
+    `;
+    if (row.failed_count >= POLICY.maxFailedAttempts) {
+        await tx`UPDATE account_locks SET locked_at = NOW(), unlocked_at = NULL,
+            unlocked_by = NULL, unlock_reason = NULL,
+            auto_unlock_at = ${new Date(Date.now() + POLICY.lockoutMinutes * 60000).toISOString()} WHERE id = ${row.id}`;
     }
+}
 
-    const normalizedEmail = email.trim().toLowerCase();
+async function resetFailures(tx, email, ip) {
+    await tx`UPDATE account_locks SET failed_count = 0, auto_unlock_at = NULL,
+        unlocked_at = NOW(), unlock_reason = 'Successful authentication' WHERE email = ${email}`;
+    await tx`INSERT INTO login_attempts (email, ip_address, success) VALUES (${email}, ${ip || 'unknown'}, TRUE)`;
+}
 
-    try {
-        const now = new Date();
-        let lockRecord = null;
-        try {
-            [lockRecord] = await db.select().from(accountLocks)
-                .where(eq(accountLocks.email, normalizedEmail));
-        } catch { /* migration pending */ }
+async function checkAccount(tx, userId) {
+    const [user] = await tx`SELECT u.*, o.status AS org_status FROM "user" u
+        LEFT JOIN organizations o ON o.id = u.organization_id WHERE u.id = ${userId} FOR UPDATE OF u`;
+    if (!user || !user.is_active || !user.email_verified ||
+        (user.role !== 'platform_owner' && user.org_status !== 'Active')) return null;
+    const [lock] = await tx`SELECT * FROM account_locks WHERE email = ${user.email}`;
+    if (lock?.locked_at && !lock.unlocked_at && (!lock.auto_unlock_at || new Date(lock.auto_unlock_at) > new Date())) return null;
+    return user;
+}
 
-        if (lockRecord && !lockRecord.unlockedAt && lockRecord.lockedAt) {
-            if (!lockRecord.autoUnlockAt || new Date(lockRecord.autoUnlockAt) > now) {
-                try {
-                    await db.insert(loginAttempts)
-                        .values({ email: normalizedEmail, ipAddress: req.ip || 'unknown', success: false });
-                } catch { /* migration pending */ }
-                return res.status(423).json({
-                    error: `Account locked after ${POLICY.maxFailedAttempts} failed attempts. ` +
-                           `Auto-unlocks at ${lockRecord.autoUnlockAt?.toISOString() ?? 'N/A'} or contact your administrator.`,
-                    lockedAt:      lockRecord.lockedAt,
-                    autoUnlockAt:  lockRecord.autoUnlockAt,
-                });
-            }
+function publicUser(user) {
+    return { id: user.id, name: user.name, displayName: user.display_name ?? null, role: user.role };
+}
+
+async function verifyTotp(code, row) {
+    if (!codeIsValidInput(code)) return false;
+    const secret = decryptSecret(row.secret, row.user_id); // decryption/configuration failures must propagate
+    try { return (await totp.verify(code.replace(/\s/g, ''), { secret })).valid; }
+    catch { return false; }
+}
+
+async function loginAudit(user, req, reason) {
+    await writeAudit(db, {
+        tableName: 'user', recordId: user.id, action: 'LOGIN', reason,
+        user: { ...user, organizationId: user.organization_id }, ipAddress: req.ip,
+    });
+}
+
+router.post('/initiate', asyncRoute(async (req, res) => {
+    if (!validCredentials(req.body)) return res.status(400).json({ error: 'Invalid email or password format.' });
+    const email = req.body.email.trim().toLowerCase();
+    const result = await client.begin(async tx => {
+        await lockEmail(tx, email);
+        const [record] = await tx`SELECT u.id, a.password FROM "user" u JOIN account a ON a.user_id = u.id
+            AND a.provider_id = 'credential' WHERE u.email = ${email}`;
+        const [lock] = await tx`SELECT * FROM account_locks WHERE email = ${email}`;
+        if (lock?.locked_at && !lock.unlocked_at) {
+            if (!lock.auto_unlock_at || new Date(lock.auto_unlock_at) > new Date()) return { locked: true };
+            await tx`UPDATE account_locks SET failed_count = 0, unlocked_at = NOW(), auto_unlock_at = NULL WHERE id = ${lock.id}`;
         }
-
-        let signIn;
-        try {
-            signIn = await auth.api.signInEmail({ body: { email: normalizedEmail, password } });
-        } catch (authErr) {
-            console.error('MFA auth error:', authErr.message);
-            await recordFailedAttempt(normalizedEmail, req.ip);
-            return res.status(401).json({ error: 'Invalid email or password.' });
+        dummyHash ??= hashPassword(crypto.randomBytes(32).toString('hex'));
+        const valid = await verifyPassword(record?.password || await dummyHash, req.body.password);
+        if (!record || !valid) {
+            await recordFailure(tx, email, record?.id ?? null, req.ip);
+            return { invalid: true };
         }
-
-        if (!signIn || !signIn.token) {
-            await recordFailedAttempt(normalizedEmail, req.ip);
-            return res.status(401).json({ error: 'Invalid email or password.' });
+        const user = await checkAccount(tx, record.id);
+        if (!user) return { invalid: true };
+        // Lock/read the current credential again to detect a concurrent password change.
+        const [current] = await tx`SELECT password FROM account WHERE user_id = ${user.id} AND provider_id = 'credential'`;
+        if (current?.password !== record.password) return { invalid: true };
+        const [mfa] = await tx`SELECT * FROM user_totp WHERE user_id = ${user.id}`;
+        if (mfa?.is_enabled) {
+            decryptSecret(mfa.secret, user.id); // fail closed until legacy secrets have been migrated
+            const tempToken = crypto.randomBytes(32).toString('hex');
+            await tx`DELETE FROM verification WHERE identifier = ${`mfa:${user.id}`}`;
+            await tx`INSERT INTO verification (id, identifier, value, expires_at, created_at, updated_at)
+                VALUES (${tokenDigest(tempToken)}, ${`mfa:${user.id}`},
+                    ${JSON.stringify({ userId: user.id, email, credential: credentialFingerprint(current.password), secretVersion: tokenDigest(mfa.secret), attempts: 0 })},
+                    ${new Date(Date.now() + 10 * 60000).toISOString()}, NOW(), NOW())`;
+            return { tempToken };
         }
+        const token = await createSession(tx, user.id, req);
+        await resetFailures(tx, email, req.ip);
+        return { token, user };
+    });
+    if (result.locked) return res.status(423).json({ error: 'Account temporarily locked.' });
+    if (result.invalid) return res.status(401).json({ error: 'Invalid email or password.' });
+    if (result.tempToken) return res.json({ status: 'totp_required', tempToken: result.tempToken });
+    await loginAudit(result.user, req, 'Successful login');
+    setSessionCookie(res, result.token);
+    res.json({ status: 'authenticated', user: publicUser(result.user) });
+}));
 
-        // Reset lock state on success
-        try {
-            await db.insert(loginAttempts)
-                .values({ email: normalizedEmail, ipAddress: req.ip || 'unknown', success: true });
-            if (lockRecord && !lockRecord.unlockedAt) {
-                await db.update(accountLocks)
-                    .set({ unlockedAt: new Date(), unlockReason: 'Successful login' })
-                    .where(eq(accountLocks.id, lockRecord.id));
-            }
-        } catch { /* migration pending */ }
-
-        const { token, user } = signIn;
-
-        // Deactivated accounts must not receive a session (ICH GCP E6(R3) C.4.2);
-        // self-service signups must verify their email before first login.
-        let displayName = null;
-        try {
-            const [uRow] = await client.unsafe(
-                `SELECT display_name, is_active, email_verified FROM "user" WHERE id = $1`, [user.id]
-            );
-            if (uRow && uRow.is_active === false) {
-                return res.status(403).json({ error: 'Account is deactivated. Contact your administrator.' });
-            }
-            if (uRow && uRow.email_verified === false) {
-                return res.status(403).json({ error: 'Please verify your email address first — check your inbox for the verification link.' });
-            }
-            displayName = uRow?.display_name ?? null;
-        } catch { /* column may not exist yet on first boot; safe to ignore */ }
-
-        // Check if TOTP is enabled for this user
-        const totpRow = await getTotpRow(user.id);
-        if (totpRow?.is_enabled) {
-            // Store temp token so the totp-verify endpoint can retrieve the auth token
-            const tempToken = crypto.randomUUID();
-            const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-            const existing = await db.select().from(verification)
-                .where(eq(verification.identifier, `mfa:${normalizedEmail}`));
-            for (const r of existing) await db.delete(verification).where(eq(verification.id, r.id));
-
-            await db.insert(verification).values({
-                id:         crypto.randomUUID(),
-                identifier: `mfa:${normalizedEmail}`,
-                value:      JSON.stringify({
-                    tempToken,
-                    authToken:   token,
-                    userId:      user.id,
-                    name:        user.name,
-                    displayName,
-                    role:        user.role ?? 'investigator',
-                }),
-                expiresAt,
-            });
-
-            return res.json({ status: 'totp_required', tempToken });
-        }
-
-        // No TOTP — authenticate directly
-        const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
-        res.cookie(SESSION_COOKIE, token, {
-            httpOnly: true,
-            secure:   isSecure,
-            sameSite: 'lax',
-            path:     '/',
-            maxAge:   SESSION_MAX_AGE * 1000,
-        });
-
-        // ICH E6(R3) C.4.3 — log successful login to audit trail
-        try {
-            await writeAudit(db, {
-                tableName: 'user', recordId: user.id, action: 'LOGIN',
-                reason: 'Successful login (no MFA)',
-                user: { id: user.id, name: user.name, role: user.role ?? 'investigator' },
-                ipAddress: req.ip,
-            });
-        } catch (auditErr) {
-            console.error('Audit trail write failed (login will proceed):', auditErr.message);
-        }
-
-        // Session token travels only in the httpOnly cookie — never in the body
-        // (an XSS could otherwise exfiltrate it).
-        res.json({
-            status: 'authenticated',
-            user: { id: user.id, name: user.name, displayName, role: user.role ?? 'investigator' },
-        });
-
-    } catch (err) {
-        console.error('MFA initiate error:', err.message);
-        res.status(500).json({ error: `Server error: ${err.message}` });
+router.post('/totp-verify', asyncRoute(async (req, res) => {
+    const { tempToken, totpCode } = req.body ?? {};
+    if (typeof tempToken !== 'string' || !/^[a-f0-9]{64}$/.test(tempToken) || !codeIsValidInput(totpCode)) {
+        return res.status(400).json({ error: 'Invalid verification input.' });
     }
-});
-
-// ── POST /api/mfa/totp-verify — verify TOTP code during login (uses tempToken) ──
-router.post('/totp-verify', async (req, res) => {
-    const { tempToken, totpCode } = req.body;
-    if (!tempToken || !totpCode) {
-        return res.status(400).json({ error: 'Verification token and TOTP code are required.' });
-    }
-
-    try {
-        const now     = new Date();
-        const records = await db.select().from(verification).where(gt(verification.expiresAt, now));
-
-        const record = records.find(r => {
-            try { return JSON.parse(r.value).tempToken === tempToken; } catch { return false; }
-        });
-
-        if (!record) {
-            return res.status(401).json({ error: 'Session expired. Please sign in again.' });
-        }
-
-        const { authToken, userId, name, displayName, role } = JSON.parse(record.value);
-
-        // Fetch TOTP secret
-        const totpRow = await getTotpRow(userId);
-        if (!totpRow || !totpRow.is_enabled) {
-            return res.status(400).json({ error: 'TOTP is not enabled for this account.' });
-        }
-
-        // Verify TOTP code
-        const codeClean = totpCode.replace(/\s/g, '');
-        let valid = false;
-        try {
-            const r = await totp.verify(codeClean, { secret: totpRow.secret });
-            valid = r.valid;
-        } catch { valid = false; }
-
-        // Fall back to backup codes
+    const id = tokenDigest(tempToken);
+    const result = await client.begin(async tx => {
+        // Resolve only this indexed challenge; never scan all verification records.
+        const [preview] = await tx`SELECT value FROM verification WHERE id = ${id} AND expires_at > NOW()`;
+        if (!preview) return null;
+        const context = JSON.parse(preview.value);
+        await lockEmail(tx, context.email);
+        const user = await checkAccount(tx, context.userId);
+        if (!user) return null;
+        const [challenge] = await tx`SELECT * FROM verification WHERE id = ${id} AND identifier = ${`mfa:${user.id}`}
+            AND expires_at > NOW() FOR UPDATE`;
+        if (!challenge) return null;
+        const data = JSON.parse(challenge.value);
+        const [credential] = await tx`SELECT password FROM account WHERE user_id = ${user.id} AND provider_id = 'credential'`;
+        const [mfa] = await tx`SELECT * FROM user_totp WHERE user_id = ${user.id} FOR UPDATE`;
+        if (data.attempts >= 5 || !credential || !mfa?.is_enabled ||
+            !equalDigest(data.credential, credentialFingerprint(credential.password)) ||
+            !equalDigest(data.secretVersion, tokenDigest(mfa.secret))) return null;
+        let valid = await verifyTotp(totpCode, mfa);
         if (!valid) {
-            const backupCodes = Array.isArray(totpRow.backup_codes) ? totpRow.backup_codes : [];
-            const matchIdx = backupCodes.findIndex(b => !b.used && b.code === codeClean.toUpperCase());
-            if (matchIdx !== -1) {
+            const codes = jsonArray(mfa.backup_codes);
+            const digest = backupDigest(totpCode, user.id);
+            const match = codes.find(code => !code.used && equalDigest(code.digest, digest));
+            if (match) {
+                match.used = true;
+                await tx`UPDATE user_totp SET backup_codes = ${JSON.stringify(codes)} WHERE user_id = ${user.id}`;
                 valid = true;
-                backupCodes[matchIdx].used = true;
-                await client.unsafe(
-                    `UPDATE user_totp SET backup_codes = $1 WHERE user_id = $2`,
-                    [JSON.stringify(backupCodes), userId]
-                );
             }
         }
-
         if (!valid) {
-            return res.status(401).json({ error: 'Invalid authenticator code. Please try again.' });
+            data.attempts++;
+            await tx`UPDATE verification SET value = ${JSON.stringify(data)} WHERE id = ${id}`;
+            await recordFailure(tx, user.email, user.id, req.ip);
+            return null;
         }
+        await tx`DELETE FROM verification WHERE id = ${id}`;
+        await resetFailures(tx, user.email, req.ip);
+        return { token: await createSession(tx, user.id, req), user };
+    });
+    if (!result) return res.status(401).json({ error: 'Invalid or expired verification.' });
+    await loginAudit(result.user, req, 'Successful login (TOTP verified)');
+    setSessionCookie(res, result.token);
+    res.json({ user: publicUser(result.user) });
+}));
 
-        await db.delete(verification).where(eq(verification.id, record.id));
+router.get('/totp/status', requireAuth, asyncRoute(async (req, res) => {
+    const [row] = await client`SELECT * FROM user_totp WHERE user_id = ${req.user.id}`;
+    res.json({ enabled: !!row?.is_enabled, enabledAt: row?.enabled_at ?? null,
+        backupCodesRemaining: jsonArray(row?.backup_codes).filter(code => !code.used).length });
+}));
 
-        const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
-        res.cookie(SESSION_COOKIE, authToken, {
-            httpOnly: true,
-            secure:   isSecure,
-            sameSite: 'lax',
-            path:     '/',
-            maxAge:   SESSION_MAX_AGE * 1000,
-        });
+router.post('/totp/setup', requireAuth, asyncRoute(async (req, res) => {
+    const secret = generateSecret();
+    const encrypted = encryptSecret(secret, req.user.id);
+    const result = await client.begin(async tx => {
+        await tx`SELECT id FROM "user" WHERE id = ${req.user.id} FOR UPDATE`;
+        const [row] = await tx`INSERT INTO user_totp (user_id, secret, is_enabled)
+            VALUES (${req.user.id}, ${encrypted}, FALSE)
+            ON CONFLICT (user_id) DO UPDATE SET secret = EXCLUDED.secret, backup_codes = '[]', enabled_at = NULL
+            WHERE user_totp.is_enabled = FALSE RETURNING id`;
+        return row;
+    });
+    if (!result) return res.status(409).json({ error: 'Verify and disable the existing authenticator before replacing it.' });
+    const otpauthUrl = generateURI({ type: 'totp', label: req.user.email, secret, issuer: 'E-CRF System' });
+    res.json({ secret, otpauthUrl, qrDataUrl: await QRCode.toDataURL(otpauthUrl, { width: 220, margin: 2 }) });
+}));
 
-        // ICH E6(R3) C.4.3 — log successful TOTP login to audit trail
-        try {
-            await writeAudit(db, {
-                tableName: 'user', recordId: userId, action: 'LOGIN',
-                reason: 'Successful login (TOTP verified)',
-                user: { id: userId, name, role: role ?? 'investigator' },
-                ipAddress: req.ip,
-            });
-        } catch (auditErr) {
-            console.error('Audit trail write failed (TOTP login will proceed):', auditErr.message);
+router.post('/totp/enable', requireAuth, asyncRoute(async (req, res) => {
+    if (!codeIsValidInput(req.body?.totpCode)) return res.status(400).json({ error: 'Invalid code.' });
+    const result = await client.begin(async tx => {
+        await tx`SELECT id FROM "user" WHERE id = ${req.user.id} FOR UPDATE`;
+        const [row] = await tx`SELECT * FROM user_totp WHERE user_id = ${req.user.id} FOR UPDATE`;
+        if (!row || row.is_enabled || !await verifyTotp(req.body.totpCode, row)) return null;
+        const codes = Array.from({ length: 8 }, () => crypto.randomBytes(10).toString('hex').toUpperCase());
+        await tx`UPDATE user_totp SET is_enabled = TRUE, enabled_at = NOW(),
+            backup_codes = ${JSON.stringify(codes.map(code => ({ digest: backupDigest(code, req.user.id), used: false })))}
+            WHERE user_id = ${req.user.id}`;
+        await tx`DELETE FROM session WHERE user_id = ${req.user.id} AND token <> ${req.authTokenHash}`;
+        await tx`DELETE FROM verification WHERE identifier = ${`mfa:${req.user.id}`}`;
+        return { id: row.id, codes };
+    });
+    if (!result) return res.status(400).json({ error: 'Invalid code or authenticator already enabled.' });
+    await writeAudit(db, { tableName: 'user_totp', recordId: result.id, action: 'UPDATE',
+        fieldName: 'is_enabled', newValue: 'true', reason: 'Enabled TOTP', user: req.user, ipAddress: req.ip });
+    res.json({ enabled: true, backupCodes: result.codes });
+}));
+
+router.delete('/totp/disable', requireAuth, asyncRoute(async (req, res) => {
+    if (!codeIsValidInput(req.body?.totpCode)) return res.status(400).json({ error: 'Invalid code.' });
+    const row = await client.begin(async tx => {
+        await tx`SELECT id FROM "user" WHERE id = ${req.user.id} FOR UPDATE`;
+        const [mfa] = await tx`SELECT * FROM user_totp WHERE user_id = ${req.user.id} FOR UPDATE`;
+        if (!mfa?.is_enabled || !await verifyTotp(req.body.totpCode, mfa)) return null;
+        await tx`DELETE FROM user_totp WHERE user_id = ${req.user.id}`;
+        await tx`DELETE FROM verification WHERE identifier = ${`mfa:${req.user.id}`}`;
+        await tx`DELETE FROM session WHERE user_id = ${req.user.id} AND token <> ${req.authTokenHash}`;
+        return mfa;
+    });
+    if (!row) return res.status(401).json({ error: 'Invalid code or authenticator disabled.' });
+    await writeAudit(db, { tableName: 'user_totp', recordId: row.id, action: 'UPDATE',
+        fieldName: 'is_enabled', newValue: 'false', reason: 'Disabled TOTP', user: req.user, ipAddress: req.ip });
+    res.json({ enabled: false });
+}));
+
+for (const path of ['/verify', '/direct-login', '/resend']) {
+    router.post(path, (_req, res) => res.status(410).json({ error: 'Use /api/mfa/initiate and /api/mfa/totp-verify.' }));
+}
+
+// Logout also works for locked/deactivated users, and is idempotent.
+export const logout = asyncRoute(async (req, res) => {
+    const token = readSessionToken(req);
+    if (token) {
+        const rows = await client`DELETE FROM session WHERE token = ${tokenDigest(token)} RETURNING user_id`;
+        if (rows.length) {
+            try {
+                await writeAudit(db, { tableName: 'user', recordId: rows[0].user_id, action: 'LOGOUT',
+                    reason: 'Session revoked', user: null, ipAddress: req.ip });
+            } catch (error) {
+                console.error('Logout audit failed:', error.message);
+            }
         }
-
-        // Session token only in the httpOnly cookie — never in the body.
-        res.json({ user: { id: userId, name, displayName: displayName ?? null, role: role ?? 'investigator' } });
-
-    } catch (err) {
-        console.error('TOTP verify error:', err.message);
-        res.status(500).json({ error: 'Verification failed.' });
     }
-});
-
-// ── TOTP Management (requires session auth) ───────────────────────────────────
-
-// GET /api/mfa/totp/status
-router.get('/totp/status', requireAuth, async (req, res) => {
-    try {
-        const totpRow = await getTotpRow(req.user.id);
-        const backupCodes = totpRow?.backup_codes ?? [];
-        const unusedCount = Array.isArray(backupCodes)
-            ? backupCodes.filter(b => !b.used).length
-            : 0;
-        res.json({
-            enabled:     !!totpRow?.is_enabled,
-            enabledAt:   totpRow?.enabled_at ?? null,
-            backupCodesRemaining: unusedCount,
-        });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// POST /api/mfa/totp/setup — generate secret & QR code (does NOT enable yet)
-router.post('/totp/setup', requireAuth, async (req, res) => {
-    try {
-        const secret     = generateSecret();
-        const otpauthUrl = generateURI({ type: 'totp', label: req.user.email, secret, issuer: APP_NAME });
-        const qrDataUrl  = await QRCode.toDataURL(otpauthUrl, { width: 220, margin: 2 });
-
-        // Upsert a pending (not yet enabled) TOTP row
-        await client.unsafe(
-            `INSERT INTO user_totp (user_id, secret, is_enabled) VALUES ($1, $2, FALSE)
-             ON CONFLICT (user_id) DO UPDATE SET secret = $2, is_enabled = FALSE, enabled_at = NULL, backup_codes = '[]'`,
-            [req.user.id, secret]
-        );
-
-        res.json({ secret, otpauthUrl, qrDataUrl });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// POST /api/mfa/totp/enable — verify first code then enable
-router.post('/totp/enable', requireAuth, async (req, res) => {
-    const { totpCode } = req.body;
-    if (!totpCode) return res.status(400).json({ error: 'TOTP code is required.' });
-
-    try {
-        const totpRow = await getTotpRow(req.user.id);
-        if (!totpRow) return res.status(400).json({ error: 'Run /setup first.' });
-
-        const codeClean = totpCode.replace(/\s/g, '');
-        let valid = false;
-        try { const r = await totp.verify(codeClean, { secret: totpRow.secret }); valid = r.valid; } catch { valid = false; }
-        if (!valid) return res.status(400).json({ error: 'Invalid code. Make sure your authenticator clock is correct.' });
-
-        const rawCodes   = generateBackupCodes(8);
-        const backupObjs = rawCodes.map(code => ({ code, used: false }));
-
-        await client.unsafe(
-            `UPDATE user_totp SET is_enabled = TRUE, enabled_at = NOW(), backup_codes = $1 WHERE user_id = $2`,
-            [JSON.stringify(backupObjs), req.user.id]
-        );
-
-        await writeAudit(db, {
-            tableName: 'user_totp', recordId: totpRow.id, action: 'UPDATE',
-            fieldName: 'is_enabled', oldValue: 'false', newValue: 'true',
-            reason: 'User enabled TOTP authenticator',
-            user: req.user, ipAddress: req.ip,
-        });
-
-        res.json({ enabled: true, backupCodes: rawCodes });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// DELETE /api/mfa/totp/disable — disable TOTP (must supply valid TOTP code)
-router.delete('/totp/disable', requireAuth, async (req, res) => {
-    const { totpCode } = req.body;
-    if (!totpCode) return res.status(400).json({ error: 'TOTP code is required to disable 2FA.' });
-
-    try {
-        const totpRow = await getTotpRow(req.user.id);
-        if (!totpRow?.is_enabled) return res.status(400).json({ error: 'TOTP is not enabled.' });
-
-        const codeClean = totpCode.replace(/\s/g, '');
-        let valid = false;
-        try { const r = await totp.verify(codeClean, { secret: totpRow.secret }); valid = r.valid; } catch { valid = false; }
-        if (!valid) return res.status(401).json({ error: 'Invalid authenticator code.' });
-
-        await client.unsafe(
-            `UPDATE user_totp SET is_enabled = FALSE, enabled_at = NULL, backup_codes = '[]' WHERE user_id = $1`,
-            [req.user.id]
-        );
-
-        await writeAudit(db, {
-            tableName: 'user_totp', recordId: totpRow.id, action: 'UPDATE',
-            fieldName: 'is_enabled', oldValue: 'true', newValue: 'false',
-            reason: 'User disabled TOTP authenticator',
-            user: req.user, ipAddress: req.ip,
-        });
-
-        res.json({ enabled: false });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ── POST /api/mfa/verify — verify email OTP (legacy flow) ────────────────────
-router.post('/verify', async (req, res) => {
-    const { tempToken, otp } = req.body;
-    if (!tempToken || !otp) {
-        return res.status(400).json({ error: 'Verification token and code are required.' });
-    }
-
-    try {
-        const now     = new Date();
-        const records = await db.select().from(verification).where(gt(verification.expiresAt, now));
-
-        const record = records.find(r => {
-            try { return JSON.parse(r.value).tempToken === tempToken; } catch { return false; }
-        });
-
-        if (!record) {
-            return res.status(401).json({ error: 'Session expired. Please sign in again.' });
-        }
-
-        const { otpHash, authToken, userId, name, role } = JSON.parse(record.value);
-
-        if (hashOTP(otp) !== otpHash) {
-            return res.status(401).json({ error: 'Invalid verification code. Please try again.' });
-        }
-
-        await db.delete(verification).where(eq(verification.id, record.id));
-
-        const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
-        res.cookie(SESSION_COOKIE, authToken, {
-            httpOnly: true,
-            secure:   isSecure,
-            sameSite: 'lax',
-            path:     '/',
-            maxAge:   SESSION_MAX_AGE * 1000,
-        });
-
-        res.json({ token: authToken, user: { id: userId, name, role: role ?? 'investigator' } });
-
-    } catch (err) {
-        console.error('MFA verify error:', err.message);
-        res.status(500).json({ error: 'Verification failed.' });
-    }
-});
-
-// POST /api/mfa/direct-login — REMOVED. It authenticated with password only,
-// bypassing a user's enabled TOTP and returning the session token in the body.
-// All sign-ins must go through /initiate (+ /totp-verify when TOTP is enabled).
-router.post('/direct-login', (_req, res) => {
-    res.status(410).json({ error: 'This endpoint has been removed. Use /api/mfa/initiate.' });
-});
-
-// POST /api/mfa/resend
-router.post('/resend', (_req, res) => {
-    res.status(400).json({ error: 'Please go back and sign in again to get a new code.' });
-});
-
-// POST /api/mfa/logout — ICH E6(R3) C.4.3: audit logout then invalidate session
-router.post('/logout', requireAuth, async (req, res) => {
-    try {
-        await writeAudit(db, {
-            tableName: 'user', recordId: req.user.id, action: 'LOGOUT',
-            reason: 'User signed out',
-            user: req.user, ipAddress: req.ip,
-        });
-    } catch { /* non-fatal */ }
-
-    try {
-        await auth.api.signOut({ headers: req.headers });
-    } catch { /* ignore */ }
-
-    const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
-    res.clearCookie('better-auth.session_token', { path: '/', secure: isSecure, sameSite: 'lax' });
+    clearSessionCookie(res);
     res.json({ ok: true });
 });
+router.post('/logout', logout);
 
 export default router;

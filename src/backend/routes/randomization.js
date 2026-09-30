@@ -1,5 +1,6 @@
+import { siteCondition } from '../lib/sitescope.js';
 import { Router } from 'express';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { randomizationList, subjectRandomization, subjects } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
@@ -19,7 +20,7 @@ router.get('/list', requireRole('admin'), async (req, res) => {
             .orderBy(randomizationList.id);
         res.json(rows);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status([400, 404, 409].includes(err.status) ? err.status : 500).json({ error: err.message });
     }
 });
 
@@ -57,7 +58,7 @@ router.post('/list', requireRole('admin'), async (req, res) => {
 
         res.status(201).json({ uploaded: inserted.length, total: entries.length });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status([400, 404, 409].includes(err.status) ? err.status : 500).json({ error: err.message });
     }
 });
 
@@ -65,8 +66,14 @@ router.post('/list', requireRole('admin'), async (req, res) => {
 router.get('/', async (req, res) => {
     try {
         const { subjectId } = req.query;
-        const conditions = [];
-        if (subjectId) conditions.push(eq(subjectRandomization.subjectId, parseInt(subjectId)));
+        const conditions = [eq(subjects.studyId, req.studyId), siteCondition(req)];
+        if (subjectId) {
+            const sid = Number(subjectId);
+            if (!Number.isSafeInteger(sid) || sid <= 0) {
+                return res.status(400).json({ error: 'Invalid subjectId' });
+            }
+            conditions.push(eq(subjectRandomization.subjectId, sid));
+        }
 
         const rows = await db
             .select({
@@ -90,7 +97,7 @@ router.get('/', async (req, res) => {
         // Blind treatment arm for non-admin users
         res.json(maskTreatmentArms(rows, req.user.role));
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status([400, 404, 409].includes(err.status) ? err.status : 500).json({ error: err.message });
     }
 });
 
@@ -100,49 +107,57 @@ router.post('/', requireRole('admin', 'investigator', 'pi'), async (req, res) =>
         const { subjectId, stratum } = req.body;
         if (!subjectId) return res.status(400).json({ error: 'subjectId is required' });
 
-        const sid = parseInt(subjectId);
+        const sid = Number(subjectId);
+        if (!Number.isSafeInteger(sid) || sid <= 0) {
+            return res.status(400).json({ error: 'Invalid subjectId' });
+        }
 
-        // Check subject exists in this study, is at the caller's site, and is Active
-        const [subject] = await db.select().from(subjects)
-            .where(and(eq(subjects.id, sid), eq(subjects.studyId, req.studyId)));
-        const [existing] = await db.select().from(subjectRandomization)
-            .where(eq(subjectRandomization.subjectId, sid));
+        const assignment = await db.transaction(async tx => {
+            // Check subject exists in this study, is at the caller's site, and is Active
+            const [subject] = await tx.select().from(subjects)
+                .where(and(eq(subjects.id, sid), eq(subjects.studyId, req.studyId)))
+                .for('update');
+            const [existing] = await tx.select().from(subjectRandomization)
+                .where(eq(subjectRandomization.subjectId, sid));
 
-        const guard = canRandomize({ subject, existingAssignment: existing, siteScope: req.siteScope });
-        if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
+            const guard = canRandomize({ subject, existingAssignment: existing, siteScope: req.siteScope });
+            if (!guard.ok) throw Object.assign(new Error(guard.error), { status: guard.status });
 
-        // Find next available slot (matching stratum if provided, scoped to study)
-        const listConditions = [eq(randomizationList.isUsed, false), eq(randomizationList.studyId, req.studyId)];
-        if (stratum) listConditions.push(eq(randomizationList.stratum, stratum));
+            // Find next available slot (matching stratum if provided, scoped to study)
+            const listConditions = [eq(randomizationList.isUsed, false), eq(randomizationList.studyId, req.studyId)];
+            if (stratum) listConditions.push(eq(randomizationList.stratum, stratum));
 
-        const [slot] = await db.select().from(randomizationList)
-            .where(and(...listConditions))
-            .orderBy(randomizationList.id)
-            .limit(1);
+            const [slot] = await tx.select().from(randomizationList)
+                .where(and(...listConditions))
+                .orderBy(randomizationList.id)
+                .limit(1).for('update', { skipLocked: true });
 
-        if (!slot) return res.status(409).json({ error: noSlotError(stratum) });
+            if (!slot) throw Object.assign(new Error(noSlotError(stratum)), { status: 409 });
 
-        // Mark slot as used
-        await db.update(randomizationList)
-            .set({ isUsed: true })
-            .where(eq(randomizationList.id, slot.id));
+            // Mark slot as used
+            await tx.update(randomizationList)
+                .set({ isUsed: true })
+                .where(eq(randomizationList.id, slot.id));
 
-        // Create assignment
-        const [assignment] = await db.insert(subjectRandomization).values({
-            subjectId:        sid,
-            randCode:         slot.randCode,
-            treatmentArm:     slot.treatmentArm,
-            stratum:          slot.stratum ?? null,
-            isBlinded:        true,
-            randomizedBy:     req.user.id,
-            randomizedByName: req.user.name,
-        }).returning();
+            // Create assignment
+            const [assignment] = await tx.insert(subjectRandomization).values({
+                subjectId:        sid,
+                randCode:         slot.randCode,
+                treatmentArm:     slot.treatmentArm,
+                stratum:          slot.stratum ?? null,
+                isBlinded:        true,
+                randomizedBy:     req.user.id,
+                randomizedByName: req.user.name,
+            }).returning();
 
-        await writeAudit(db, {
-            tableName: 'subject_randomization', recordId: assignment.id, action: 'INSERT',
-            newValue: `Subject ${subject.subjectCode} → Code ${slot.randCode}`,
-            reason: 'Subject randomized',
-            user: req.user, ipAddress: req.ip,
+            await writeAudit(tx, {
+                tableName: 'subject_randomization', recordId: assignment.id, action: 'INSERT',
+                newValue: `Subject ${subject.subjectCode} → Code ${slot.randCode}`,
+                reason: 'Subject randomized',
+                user: req.user, ipAddress: req.ip,
+            });
+
+            return assignment;
         });
 
         res.status(201).json({
@@ -150,24 +165,29 @@ router.post('/', requireRole('admin', 'investigator', 'pi'), async (req, res) =>
             treatmentArm: BLINDED_LABEL, // always blind at creation
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status([400, 404, 409].includes(err.status) ? err.status : 500).json({ error: err.message });
     }
 });
 
 // PATCH /api/randomization/:id/unblind — emergency or final unblinding (admin only)
 router.patch('/:id/unblind', requireRole('admin'), async (req, res) => {
     try {
-        const id = parseInt(req.params.id);
+        const id = Number(req.params.id);
+        if (!Number.isSafeInteger(id) || id <= 0) {
+            return res.status(400).json({ error: 'Invalid randomization id' });
+        }
         const { reason } = req.body;
 
-        const [existing] = await db.select().from(subjectRandomization)
-            .where(eq(subjectRandomization.id, id));
+        const allowedSubjects = db.select({ id: subjects.id }).from(subjects)
+            .where(and(eq(subjects.studyId, req.studyId), siteCondition(req)));
+        const target = and(eq(subjectRandomization.id, id), inArray(subjectRandomization.subjectId, allowedSubjects));
+        const [existing] = await db.select().from(subjectRandomization).where(target);
         const guard = canUnblind(existing, { reason });
         if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
         const [updated] = await db.update(subjectRandomization)
             .set({ isBlinded: false, unblindedAt: new Date(), unblindedBy: req.user.id, unblindReason: reason })
-            .where(eq(subjectRandomization.id, id))
+            .where(target)
             .returning();
 
         await writeAudit(db, {
@@ -179,7 +199,7 @@ router.patch('/:id/unblind', requireRole('admin'), async (req, res) => {
 
         res.json(updated);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status([400, 404, 409].includes(err.status) ? err.status : 500).json({ error: err.message });
     }
 });
 
@@ -191,11 +211,11 @@ router.get('/stats', async (req, res) => {
         const assignments = await db.select({ isBlinded: subjectRandomization.isBlinded })
             .from(subjectRandomization)
             .leftJoin(subjects, eq(subjectRandomization.subjectId, subjects.id))
-            .where(eq(subjects.studyId, req.studyId));
+            .where(and(eq(subjects.studyId, req.studyId), siteCondition(req)));
 
         res.json(randomizationStats(allList, assignments));
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status([400, 404, 409].includes(err.status) ? err.status : 500).json({ error: err.message });
     }
 });
 

@@ -15,6 +15,7 @@ export const POLICY = {
  */
 export function validatePassword(password, email = '') {
     const errors = [];
+    if (typeof password !== 'string' || password.length > 256) return ['Password must be a string of at most 256 characters'];
 
     if (!password || password.length < POLICY.minLength) {
         errors.push(`Minimum ${POLICY.minLength} characters required (ICH E6(R3) C.4.3)`);

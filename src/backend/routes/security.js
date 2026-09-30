@@ -1,10 +1,13 @@
+import crypto from 'node:crypto';
+import { tokenDigest } from '../lib/security-crypto.js';
+import { setSessionCookie } from '../lib/session.js';
 // Security management — ICH GCP E6(R3) Appendix C.4.3
 // Password change, account lockout management, password expiry status
 
 import { Router } from 'express';
 import { eq, desc, and, gt, isNull } from 'drizzle-orm';
 import { db, client } from '../db/connection.js';
-import { user, account, accountLocks, loginAttempts, passwordHistory, passwordMeta } from '../db/schemas/schema.js';
+import { user, account, accountLocks, loginAttempts, passwordHistory, passwordMeta, session, verification } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
 import { validatePassword, POLICY, checkPasswordExpiry } from '../lib/passwordpolicy.js';
@@ -24,7 +27,7 @@ router.param('userId', async (req, res, next, userId) => {
         }
         next();
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status([400, 401].includes(err.status) ? err.status : 500).json({ error: err.message });
     }
 });
 
@@ -53,7 +56,7 @@ router.get('/password-status', async (req, res) => {
             },
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status([400, 401].includes(err.status) ? err.status : 500).json({ error: err.message });
     }
 });
 
@@ -61,7 +64,7 @@ router.get('/password-status', async (req, res) => {
 router.post('/change-password', async (req, res) => {
     try {
         const { currentPassword, newPassword } = req.body;
-        if (!currentPassword || !newPassword) {
+        if (typeof currentPassword !== 'string' || !currentPassword || currentPassword.length > 256 || typeof newPassword !== 'string' || !newPassword) {
             return res.status(400).json({ error: 'currentPassword and newPassword are required' });
         }
 
@@ -71,71 +74,81 @@ router.post('/change-password', async (req, res) => {
             return res.status(400).json({ error: 'Password does not meet policy requirements', details: policyErrors });
         }
 
-        // Verify current password
-        const [acct] = await db.select({ password: account.password }).from(account)
-            .where(and(eq(account.userId, req.user.id), eq(account.providerId, 'credential')));
-        if (!acct?.password) return res.status(400).json({ error: 'No credential account found' });
+        const replacementToken = 'v1.' + crypto.randomBytes(32).toString('hex');
+        await db.transaction(async tx => {
+            await tx.select({ id: user.id }).from(user).where(eq(user.id, req.user.id)).for('update');
+            const [active] = await tx.select({ id: session.id }).from(session)
+                .where(and(eq(session.userId, req.user.id), eq(session.token, req.authTokenHash)));
+            if (!active) throw Object.assign(new Error('Session expired'), { status: 401 });
+            // Verify current password
+            const [acct] = await tx.select({ password: account.password }).from(account)
+                .where(and(eq(account.userId, req.user.id), eq(account.providerId, 'credential')));
+            if (!acct?.password) throw Object.assign(new Error('No credential account found'), { status: 400 });
 
-        const valid = await verifyPassword(acct.password, currentPassword);
-        if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+            const valid = await verifyPassword(acct.password, currentPassword);
+            if (!valid) throw Object.assign(new Error('Current password is incorrect'), { status: 401 });
 
-        // Check password history
-        const history = await db.select({ passwordHash: passwordHistory.passwordHash })
-            .from(passwordHistory)
-            .where(eq(passwordHistory.userId, req.user.id))
-            .orderBy(desc(passwordHistory.createdAt))
-            .limit(POLICY.historyCount);
+            // Check password history
+            const history = await tx.select({ passwordHash: passwordHistory.passwordHash })
+                .from(passwordHistory)
+                .where(eq(passwordHistory.userId, req.user.id))
+                .orderBy(desc(passwordHistory.createdAt))
+                .limit(POLICY.historyCount);
 
-        for (const h of history) {
-            if (await verifyPassword(h.passwordHash, newPassword)) {
-                return res.status(400).json({
-                    error: `Cannot reuse any of your last ${POLICY.historyCount} passwords (ICH E6(R3) C.4.3)`,
-                });
+            for (const h of history) {
+                if (await verifyPassword(h.passwordHash, newPassword)) {
+                    throw Object.assign(new Error('Cannot reuse a recent password'), { status: 400 });
+                }
             }
-        }
 
-        // Hash and update password
-        const newHash = await hashPassword(newPassword);
-        await db.update(account)
-            .set({ password: newHash, updatedAt: new Date() })
-            .where(and(eq(account.userId, req.user.id), eq(account.providerId, 'credential')));
+            // Hash and update password
+            const newHash = await hashPassword(newPassword);
+            await tx.update(account)
+                .set({ password: newHash, updatedAt: new Date() })
+                .where(and(eq(account.userId, req.user.id), eq(account.providerId, 'credential')));
 
-        // Save to history
-        await db.insert(passwordHistory).values({
-            userId: req.user.id,
-            passwordHash: newHash,
-        });
-
-        // Trim history to last N
-        const allHistory = await db.select({ id: passwordHistory.id })
-            .from(passwordHistory)
-            .where(eq(passwordHistory.userId, req.user.id))
-            .orderBy(desc(passwordHistory.createdAt));
-        if (allHistory.length > POLICY.historyCount) {
-            const toDelete = allHistory.slice(POLICY.historyCount).map(h => h.id);
-            for (const id of toDelete) {
-                await db.delete(passwordHistory).where(eq(passwordHistory.id, id));
-            }
-        }
-
-        // Update password meta
-        await db.insert(passwordMeta)
-            .values({ userId: req.user.id, lastChangedAt: new Date(), mustChange: false })
-            .onConflictDoUpdate({
-                target: passwordMeta.userId,
-                set: { lastChangedAt: new Date(), mustChange: false },
+            // Save to history
+            await tx.insert(passwordHistory).values({
+                userId: req.user.id,
+                passwordHash: newHash,
             });
 
-        await writeAudit(db, {
-            tableName: 'account', recordId: req.user.id, action: 'UPDATE',
-            fieldName: 'password', newValue: '*** changed ***',
-            reason: 'Self-service password change (ICH E6(R3) C.4.3)',
-            user: req.user, ipAddress: req.ip,
-        });
+            // Trim history to last N
+            const allHistory = await tx.select({ id: passwordHistory.id })
+                .from(passwordHistory)
+                .where(eq(passwordHistory.userId, req.user.id))
+                .orderBy(desc(passwordHistory.createdAt));
+            if (allHistory.length > POLICY.historyCount) {
+                const toDelete = allHistory.slice(POLICY.historyCount).map(h => h.id);
+                for (const id of toDelete) {
+                    await tx.delete(passwordHistory).where(eq(passwordHistory.id, id));
+                }
+            }
 
+            // Update password meta
+            await tx.insert(passwordMeta)
+                .values({ userId: req.user.id, lastChangedAt: new Date(), mustChange: false })
+                .onConflictDoUpdate({
+                    target: passwordMeta.userId,
+                    set: { lastChangedAt: new Date(), mustChange: false },
+                });
+
+            await writeAudit(tx, {
+                tableName: 'account', recordId: req.user.id, action: 'UPDATE',
+                fieldName: 'password', newValue: '*** changed ***',
+                reason: 'Self-service password change (ICH E6(R3) C.4.3)',
+                user: req.user, ipAddress: req.ip,
+            });
+
+            await tx.delete(session).where(eq(session.userId, req.user.id));
+            await tx.insert(session).values({ id: crypto.randomUUID(), userId: req.user.id,
+                token: tokenDigest(replacementToken), expiresAt: req.sessionExpiresAt });
+            await tx.delete(verification).where(eq(verification.identifier, 'mfa:' + req.user.id));
+        });
+        setSessionCookie(res, replacementToken);
         res.json({ ok: true, message: 'Password changed successfully' });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status([400, 401].includes(err.status) ? err.status : 500).json({ error: err.message });
     }
 });
 
@@ -161,7 +174,7 @@ router.get('/locked-accounts', requireRole('admin'), async (req, res) => {
         const active = locks.filter(l => !l.autoUnlockAt || new Date(l.autoUnlockAt) > now);
         res.json(active);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status([400, 401].includes(err.status) ? err.status : 500).json({ error: err.message });
     }
 });
 
@@ -177,7 +190,7 @@ router.post('/unlock/:userId', requireRole('admin'), async (req, res) => {
         if (!lock) return res.status(404).json({ error: 'No active lock found for this user' });
 
         await db.update(accountLocks)
-            .set({ unlockedAt: new Date(), unlockedBy: req.user.id, unlockReason: reason })
+            .set({ unlockedAt: new Date(), unlockedBy: req.user.id, unlockReason: reason, failedCount: 0, autoUnlockAt: null })
             .where(eq(accountLocks.id, lock.id));
 
         await writeAudit(db, {
@@ -189,7 +202,7 @@ router.post('/unlock/:userId', requireRole('admin'), async (req, res) => {
 
         res.json({ ok: true });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status([400, 401].includes(err.status) ? err.status : 500).json({ error: err.message });
     }
 });
 
@@ -214,7 +227,7 @@ router.post('/force-password-reset/:userId', requireRole('admin'), async (req, r
 
         res.json({ ok: true });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status([400, 401].includes(err.status) ? err.status : 500).json({ error: err.message });
     }
 });
 
@@ -255,7 +268,7 @@ router.get('/users', requireRole('admin'), async (req, res) => {
 
         res.json(enriched);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status([400, 401].includes(err.status) ? err.status : 500).json({ error: err.message });
     }
 });
 
@@ -282,7 +295,7 @@ router.get('/login-activity', requireRole('admin'), async (req, res) => {
             .limit(100);
         res.json(rows);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status([400, 401].includes(err.status) ? err.status : 500).json({ error: err.message });
     }
 });
 

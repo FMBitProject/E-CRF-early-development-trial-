@@ -1,3 +1,4 @@
+import { actionAttributes } from './visit-actions.js';
 // ============================================================
 // Randomization Module — Blinded treatment assignment (Admin only)
 // ============================================================
@@ -147,7 +148,7 @@ export async function renderRandomization() {
                                 </td>
                                 <td class="text-right">
                                     ${a.isBlinded ? (isAdmin ? `
-                                    <button onclick="openUnblindModal(${a.id}, '${esc(a.subjectCode)}')"
+                                    <button ${actionAttributes('unblind', [a.id, a.subjectCode])}
                                         class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-md transition border border-amber-200">
                                         <i data-lucide="eye" class="w-3 h-3"></i> Unblind
                                     </button>` : `<span class="text-xs text-slate-300">🔒</span>`) : `<span class="text-xs text-slate-300">Unblinded</span>`}
