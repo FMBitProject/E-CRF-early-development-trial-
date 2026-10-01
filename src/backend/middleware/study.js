@@ -80,6 +80,7 @@ export async function requireStudy(req, res, next) {
 
         next();
     } catch (err) {
+        // TODO: Return a generic server error with a support reference instead of exposing raw database errors.
         res.status(500).json({ error: err.message });
     }
 }

@@ -87,6 +87,9 @@ router.post('/change-password', async (req, res) => {
 
             const valid = await verifyPassword(acct.password, currentPassword);
             if (!valid) throw Object.assign(new Error('Current password is incorrect'), { status: 401 });
+            if (await verifyPassword(acct.password, newPassword)) {
+                throw Object.assign(new Error('New password must differ from the current password'), { status: 400 });
+            }
 
             // Check password history
             const history = await tx.select({ passwordHash: passwordHistory.passwordHash })
@@ -101,17 +104,20 @@ router.post('/change-password', async (req, res) => {
                 }
             }
 
+            // Password history stores prior hashes. Older versions stored the
+            // new/current hash, so avoid inserting a duplicate during rollout.
+            if (!history.some(h => h.passwordHash === acct.password)) {
+                await tx.insert(passwordHistory).values({
+                    userId: req.user.id,
+                    passwordHash: acct.password,
+                });
+            }
+
             // Hash and update password
             const newHash = await hashPassword(newPassword);
             await tx.update(account)
                 .set({ password: newHash, updatedAt: new Date() })
                 .where(and(eq(account.userId, req.user.id), eq(account.providerId, 'credential')));
-
-            // Save to history
-            await tx.insert(passwordHistory).values({
-                userId: req.user.id,
-                passwordHash: newHash,
-            });
 
             // Trim history to last N
             const allHistory = await tx.select({ id: passwordHistory.id })
@@ -148,6 +154,7 @@ router.post('/change-password', async (req, res) => {
         setSessionCookie(res, replacementToken);
         res.json({ ok: true, message: 'Password changed successfully' });
     } catch (err) {
+        // TODO: Return a generic server error with a support reference instead of exposing raw database errors.
         res.status([400, 401].includes(err.status) ? err.status : 500).json({ error: err.message });
     }
 });

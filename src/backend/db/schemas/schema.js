@@ -1,5 +1,5 @@
 import {
-    pgTable, text, timestamp, boolean, integer, jsonb, pgEnum, varchar
+    pgTable, text, timestamp, boolean, integer, jsonb, pgEnum, varchar, uniqueIndex
 } from 'drizzle-orm/pg-core';
 
 // ─── Better Auth required tables ────────────────────────────────────────────
@@ -556,18 +556,20 @@ export const informedConsents = pgTable('informed_consents', {
 export const randomizationList = pgTable('randomization_list', {
     id:                integer('id').primaryKey().generatedAlwaysAsIdentity(),
     studyId:           integer('study_id').references(() => studies.id),
-    randCode:          text('rand_code').notNull().unique(),
+    randCode:          text('rand_code').notNull(),
     treatmentArm:      text('treatment_arm').notNull(),
     stratum:           text('stratum'),
     isUsed:            boolean('is_used').notNull().default(false),
     uploadedBy:        text('uploaded_by').references(() => user.id),
     uploadedAt:        timestamp('uploaded_at').notNull().defaultNow(),
-});
+}, table => [
+    uniqueIndex('randomization_list_study_code_unique').on(table.studyId, table.randCode),
+]);
 
 export const subjectRandomization = pgTable('subject_randomization', {
     id:               integer('id').primaryKey().generatedAlwaysAsIdentity(),
     subjectId:        integer('subject_id').notNull().unique().references(() => subjects.id),
-    randCode:         text('rand_code').notNull().unique(),
+    randCode:         text('rand_code').notNull(),
     treatmentArm:     text('treatment_arm').notNull(),
     stratum:          text('stratum'),
     isBlinded:        boolean('is_blinded').notNull().default(true),

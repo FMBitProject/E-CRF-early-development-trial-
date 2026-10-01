@@ -50,8 +50,11 @@ export async function requireAuth(req, res, next) {
 
         // Tenant lifecycle: users of a suspended/closed organization lose access
         // (platform_owner has no org and is exempt). One level above isActive.
-        if (row.role !== 'platform_owner' && row.orgStatus && row.orgStatus !== 'Active') {
-            return res.status(403).json({ error: `Organization is ${row.orgStatus}. Contact your administrator.` });
+        if (row.role !== 'platform_owner' && (row.organizationId == null || row.orgStatus !== 'Active')) {
+            return res.status(403).json({ error: 'Account is not attached to an active organization. Contact your administrator.' });
+        }
+        if (row.role === 'platform_owner' && row.organizationId != null) {
+            return res.status(403).json({ error: 'Invalid platform account configuration. Contact your administrator.' });
         }
 
         // ICH GCP E6(R3) C.4.3 — reject requests from locked accounts

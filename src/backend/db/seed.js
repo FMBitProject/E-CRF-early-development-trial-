@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 /**
  * Seed script — run once to populate demo data.
  * Usage: npm run db:seed
@@ -22,11 +22,36 @@ const seedSites = [
 ];
 
 // ─── Demo users (Better Auth email/password) ─────────────────────────────────
-const seedUsers = [
-    { name: 'Admin User',       email: 'admin@ecrf.local',       password: crypto.randomBytes(24).toString('base64url'),       role: 'admin' },
-    { name: 'Dr. Investigator', email: 'investigator@ecrf.local', password: crypto.randomBytes(24).toString('base64url'), role: 'investigator' },
-    { name: 'CRA Monitor',      email: 'cra@ecrf.local',         password: crypto.randomBytes(24).toString('base64url'),      role: 'cra' },
+const seedUserSpecs = [
+    { name: 'Admin User',       email: 'admin@ecrf.local',        role: 'admin' },
+    { name: 'Dr. Investigator', email: 'investigator@ecrf.local', role: 'investigator' },
+    { name: 'CRA Monitor',      email: 'cra@ecrf.local',          role: 'cra' },
 ];
+
+function readCredentialManifest() {
+    try {
+        const parsed = JSON.parse(readFileSync(process.env.SEED_CREDENTIALS_FILE, 'utf8'));
+        if (!Array.isArray(parsed)) throw new Error('Seed credential manifest must be an array');
+        const byEmail = new Map(parsed.map(row => [row?.email, row]));
+        return seedUserSpecs.map(spec => {
+            const saved = byEmail.get(spec.email);
+            if (!saved || typeof saved.password !== 'string' || !saved.password) {
+                throw new Error(`Seed credential manifest is missing ${spec.email}`);
+            }
+            return { ...spec, password: saved.password };
+        });
+    } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+        const generated = seedUserSpecs.map(spec => ({
+            ...spec,
+            password: crypto.randomBytes(24).toString('base64url'),
+        }));
+        // Persist before account creation so a partial run can safely reuse the
+        // exact same passwords instead of producing a misleading replacement file.
+        writeFileSync(process.env.SEED_CREDENTIALS_FILE, JSON.stringify(generated, null, 2), { flag: 'wx', mode: 0o600 });
+        return generated;
+    }
+}
 
 // ─── CRF Form templates ───────────────────────────────────────────────────────
 const seedForms = [
@@ -107,8 +132,7 @@ const seedSubjects = [
 ];
 
 async function main() {
-    // Exclusive private file: never overwrite existing credentials or print passwords.
-    writeFileSync(process.env.SEED_CREDENTIALS_FILE, JSON.stringify(seedUsers, null, 2), { flag: 'wx', mode: 0o600 });
+    const seedUsers = readCredentialManifest();
     console.log('🌱 Seeding database...\n');
 
     // 0. Default organization (tenant that owns all seeded data)
@@ -129,13 +153,12 @@ async function main() {
     // 2. Users via Better Auth (creates user + account + hashes password)
     console.log('→ Users');
     for (const u of seedUsers) {
-        try {
+        const [existing] = await db.select({ id: user.id }).from(user).where(eq(user.email, u.email));
+        if (!existing) {
             await auth.api.signUpEmail({ body: { name: u.name, email: u.email, password: u.password } });
             console.log(`   ✓ ${u.email} (${u.role})`);
-        } catch (err) {
-            // User might already exist
-            console.log(`   ~ ${u.email} was not created; leaving existing privileges unchanged`);
-            continue;
+        } else {
+            console.log(`   ~ ${u.email} already exists; reusing the persisted seed manifest`);
         }
         // role/siteId/org are input:false in Better Auth (privilege-escalation
         // guard) — assign them server-side after signup, and into the default org.

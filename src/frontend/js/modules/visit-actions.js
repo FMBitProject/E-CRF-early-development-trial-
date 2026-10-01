@@ -26,6 +26,7 @@ export function dispatchSafeAction(element, host = globalThis.window) {
     let args;
     try { args = JSON.parse(element.dataset.safeArgs); } catch { return false; }
     if (!Array.isArray(args) || args.length > 4) return false;
+    // TODO: Verify the resolved window handler is a function and handle handler failures without an uncaught TypeError.
     handlers[element.dataset.safeAction](...args);
     return true;
 }

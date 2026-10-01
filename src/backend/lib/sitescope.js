@@ -39,6 +39,7 @@ export async function subjectInSiteScope(req, subjectId) {
     if (req.siteScope === null) return true;
     if (!Array.isArray(req.siteScope) || !req.siteScope.length) return false;
     if (subjectId === null || subjectId === undefined) return true;
+    // TODO: Validate the complete subject ID and bind this helper query to req.studyId; parseInt accepts trailing garbage.
     const [s] = await db.select({ siteId: subjects.siteId }).from(subjects)
         .where(eq(subjects.id, parseInt(subjectId)));
     return !!s && req.siteScope.includes(s.siteId);

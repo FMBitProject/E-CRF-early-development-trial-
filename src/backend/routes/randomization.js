@@ -1,10 +1,11 @@
 import { siteCondition } from '../lib/sitescope.js';
 import { Router } from 'express';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { randomizationList, subjectRandomization, subjects } from '../db/schemas/schema.js';
 import { requireRole } from '../middleware/rbac.js';
 import { writeAudit } from '../lib/audit.js';
+import { isUniqueViolation } from '../lib/dberrors.js';
 import {
     BLINDED_LABEL, maskTreatmentArms, validateRandList, normalizeRandList,
     canRandomize, canUnblind, noSlotError, randomizationStats,
@@ -38,26 +39,23 @@ router.post('/list', requireRole('admin'), async (req, res) => {
             uploadedBy: req.user.id,
         }));
 
-        // Upsert — skip already existing codes
-        const inserted = [];
-        for (const v of values) {
-            try {
-                const [row] = await db.insert(randomizationList).values(v)
-                    .onConflictDoNothing()
-                    .returning();
-                if (row) inserted.push(row);
-            } catch {}
-        }
-
-        await writeAudit(db, {
-            tableName: 'randomization_list', recordId: 0, action: 'INSERT',
-            newValue: `${inserted.length} codes uploaded`,
-            reason: `Randomization list uploaded by admin`,
-            user: req.user, ipAddress: req.ip,
+        const inserted = await db.transaction(async tx => {
+            const rows = await tx.insert(randomizationList).values(values).returning();
+            await writeAudit(tx, {
+                tableName: 'randomization_list', recordId: 0, action: 'INSERT',
+                newValue: `${rows.length} codes uploaded`,
+                reason: 'Randomization list uploaded by admin',
+                user: req.user, ipAddress: req.ip,
+            });
+            return rows;
         });
 
         res.status(201).json({ uploaded: inserted.length, total: entries.length });
     } catch (err) {
+        if (isUniqueViolation(err)) {
+            return res.status(409).json({ error: 'One or more randomization codes already exist in this study.' });
+        }
+        // TODO: Return a generic server error with a support reference instead of exposing raw database errors.
         res.status([400, 404, 409].includes(err.status) ? err.status : 500).json({ error: err.message });
     }
 });
@@ -178,27 +176,38 @@ router.patch('/:id/unblind', requireRole('admin'), async (req, res) => {
         }
         const { reason } = req.body;
 
-        const allowedSubjects = db.select({ id: subjects.id }).from(subjects)
-            .where(and(eq(subjects.studyId, req.studyId), siteCondition(req)));
-        const target = and(eq(subjectRandomization.id, id), inArray(subjectRandomization.subjectId, allowedSubjects));
-        const [existing] = await db.select().from(subjectRandomization).where(target);
-        const guard = canUnblind(existing, { reason });
-        if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
+        const updated = await db.transaction(async tx => {
+            const [locked] = await tx.select({ assignment: subjectRandomization })
+                .from(subjectRandomization)
+                .innerJoin(subjects, eq(subjectRandomization.subjectId, subjects.id))
+                .where(and(
+                    eq(subjectRandomization.id, id),
+                    eq(subjects.studyId, req.studyId),
+                    siteCondition(req),
+                ))
+                .for('update');
 
-        const [updated] = await db.update(subjectRandomization)
-            .set({ isBlinded: false, unblindedAt: new Date(), unblindedBy: req.user.id, unblindReason: reason })
-            .where(target)
-            .returning();
+            const guard = canUnblind(locked?.assignment, { reason });
+            if (!guard.ok) throw Object.assign(new Error(guard.error), { status: guard.status });
 
-        await writeAudit(db, {
-            tableName: 'subject_randomization', recordId: id, action: 'UPDATE',
-            fieldName: 'is_blinded', oldValue: 'true', newValue: 'false',
-            reason: `Unblinding: ${reason}`,
-            user: req.user, ipAddress: req.ip,
+            const [row] = await tx.update(subjectRandomization)
+                .set({ isBlinded: false, unblindedAt: new Date(), unblindedBy: req.user.id, unblindReason: reason })
+                .where(and(eq(subjectRandomization.id, id), eq(subjectRandomization.isBlinded, true)))
+                .returning();
+            if (!row) throw Object.assign(new Error('Already unblinded'), { status: 409 });
+
+            await writeAudit(tx, {
+                tableName: 'subject_randomization', recordId: id, action: 'UPDATE',
+                fieldName: 'is_blinded', oldValue: 'true', newValue: 'false',
+                reason: `Unblinding: ${reason}`,
+                user: req.user, ipAddress: req.ip,
+            });
+            return row;
         });
 
         res.json(updated);
     } catch (err) {
+        // TODO: Return a generic server error with a support reference instead of exposing raw database errors.
         res.status([400, 404, 409].includes(err.status) ? err.status : 500).json({ error: err.message });
     }
 });

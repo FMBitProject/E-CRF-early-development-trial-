@@ -82,6 +82,16 @@ test('security HTTP/SQL integration on disposable PostgreSQL', { skip: !enabled 
         admin = await login();
     });
 
+    await t.test('a non-platform session fails closed when its organization disappears', async () => {
+        await sql`UPDATE "user" SET organization_id = NULL WHERE id = ${users.admin.id}`;
+        try {
+            const result = await request('/api/auth/get-session', { cookie: admin.cookie });
+            assert.equal(result.status, 403);
+        } finally {
+            await sql`UPDATE "user" SET organization_id = ${orgA.id} WHERE id = ${users.admin.id}`;
+        }
+    });
+
     await t.test('randomization reads and unblind deny foreign tenant objects', async () => {
         assert.equal((await request('/api/randomization?subjectId=not-an-id', { cookie: admin.cookie })).status, 400);
         assert.equal((await request('/api/randomization/not-an-id/unblind', {
@@ -126,16 +136,53 @@ test('security HTTP/SQL integration on disposable PostgreSQL', { skip: !enabled 
         assert.equal(repeat.status, 409);
     });
 
-    await t.test('failed randomization insert rolls back slot consumption', async () => {
+    await t.test('failed unblinding audit rolls back the irreversible state change', async () => {
+        const [assignment] = await sql`SELECT id FROM subject_randomization WHERE subject_id = ${subjectA.id}`;
+        await sql`ALTER TABLE audit_trails RENAME TO audit_trails_test_hidden`;
+        try {
+            const result = await request(`/api/randomization/${assignment.id}/unblind`, {
+                method: 'PATCH', cookie: admin.cookie, body: { reason: 'Rollback test' },
+            });
+            assert.equal(result.status, 500);
+        } finally {
+            await sql`ALTER TABLE audit_trails_test_hidden RENAME TO audit_trails`;
+        }
+        const [after] = await sql`SELECT is_blinded FROM subject_randomization WHERE id = ${assignment.id}`;
+        assert.equal(after.is_blinded, true);
+    });
+
+    await t.test('randomization codes are study-local and list uploads are atomic', async () => {
+        const sharedCode = 'SHARED-' + suffix;
+        const first = await request('/api/randomization/list', { method: 'POST', cookie: admin.cookie,
+            body: { entries: [{ randCode: sharedCode, treatmentArm: 'A' }] } });
+        assert.equal(first.status, 201, JSON.stringify(first.data));
+        const duplicate = await request('/api/randomization/list', { method: 'POST', cookie: admin.cookie,
+            body: { entries: [{ randCode: sharedCode, treatmentArm: 'B' }] } });
+        assert.equal(duplicate.status, 409);
+        const normalizedCode = sharedCode.toUpperCase();
+        await sql`INSERT INTO randomization_list (study_id, rand_code, treatment_arm)
+            VALUES (${studyB.id}, ${normalizedCode}, 'B')`;
+        const rows = await sql`SELECT study_id FROM randomization_list WHERE rand_code = ${normalizedCode}`;
+        assert.equal(rows.length, 2);
+    });
+
+    await t.test('failed randomization audit rolls back slot consumption and assignment', async () => {
         const [subject] = await sql`INSERT INTO subjects (study_id, site_id, subject_code)
             VALUES (${studyA.id}, ${siteA.id}, ${'FAIL-' + suffix}) RETURNING id`;
         const [slot] = await sql`INSERT INTO randomization_list (study_id, rand_code, treatment_arm, stratum)
-            VALUES (${studyA.id}, ${assignmentB.rand_code}, 'Test', ${'fail-' + suffix}) RETURNING id`;
-        const result = await request('/api/randomization', { method: 'POST', cookie: admin.cookie,
-            body: { subjectId: subject.id, stratum: 'fail-' + suffix } });
-        assert.equal(result.status, 500);
+            VALUES (${studyA.id}, ${'ROLLBACK-' + suffix}, 'Test', ${'fail-' + suffix}) RETURNING id`;
+        await sql`ALTER TABLE audit_trails RENAME TO audit_trails_test_hidden`;
+        try {
+            const result = await request('/api/randomization', { method: 'POST', cookie: admin.cookie,
+                body: { subjectId: subject.id, stratum: 'fail-' + suffix } });
+            assert.equal(result.status, 500);
+        } finally {
+            await sql`ALTER TABLE audit_trails_test_hidden RENAME TO audit_trails`;
+        }
         const [after] = await sql`SELECT is_used FROM randomization_list WHERE id = ${slot.id}`;
         assert.equal(after.is_used, false);
+        const assignments = await sql`SELECT id FROM subject_randomization WHERE subject_id = ${subject.id}`;
+        assert.equal(assignments.length, 0);
     });
 
     await t.test('MFA setup cannot overwrite an enabled factor; challenges and backup codes are single use', async () => {
@@ -203,6 +250,10 @@ test('security HTTP/SQL integration on disposable PostgreSQL', { skip: !enabled 
         assert.equal(rows.length, 1);
         const pending = await sql`SELECT id FROM verification WHERE identifier = ${'mfa:' + users.admin.id}`;
         assert.equal(pending.length, 0);
+        const reused = await request('/api/security/change-password', { method: 'POST', cookie: result.cookie,
+            body: { currentPassword: 'New-Independent!Password83', newPassword: password } });
+        assert.equal(reused.status, 400);
+        admin = result;
     });
     await t.test('legacy MFA material is migrated once and the same key is required afterwards', async () => {
         const userId = users.other.id;
@@ -241,11 +292,14 @@ test('security HTTP/SQL integration on disposable PostgreSQL', { skip: !enabled 
 
     await t.test('rate limiting uses database buckets and rejects requests after the shared IP ceiling', async () => {
         await resetLimits();
-        const results = await Promise.all(Array.from({ length: 31 }, () => request('/api/mfa/direct-login', { method: 'POST' })));
-        assert.equal(results.filter(result => result.status === 410).length, 30);
+        const results = await Promise.all(Array.from({ length: 31 }, (_, index) => request('/api/mfa/initiate', {
+            method: 'POST', body: { email: `rate-${index}-${suffix}@example.test`, password: 'Wrong-Password!27' },
+        })));
+        assert.equal(results.filter(result => result.status === 401).length, 30);
         assert.equal(results.filter(result => result.status === 429).length, 1);
         const rows = await sql`SELECT count FROM security_rate_limits`;
         assert.ok(rows.some(row => row.count === 31));
+        assert.equal((await request('/api/mfa/logout', { method: 'POST', cookie: admin.cookie })).status, 200);
     });
 
 });

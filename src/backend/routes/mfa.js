@@ -6,6 +6,7 @@ import { verifyPassword, hashPassword } from '@better-auth/utils/password';
 import { client, db } from '../db/connection.js';
 import { POLICY } from '../lib/passwordpolicy.js';
 import { requireAuth } from '../middleware/auth.js';
+import { rateLimitAuth } from '../middleware/ratelimit.js';
 import { writeAudit } from '../lib/audit.js';
 import { asyncRoute, validCredentials } from '../lib/http-security.js';
 import { encryptSecret, decryptSecret, backupDigest, tokenDigest, equalDigest, credentialFingerprint } from '../lib/security-crypto.js';
@@ -16,6 +17,15 @@ const totp = new TOTP({ crypto: new NobleCryptoPlugin(), base32: new ScureBase32
 // Match password verification cost for unknown users without storing any credential.
 let dummyHash;
 const codeIsValidInput = code => typeof code === 'string' && /^[a-zA-Z0-9\s]{6,24}$/.test(code);
+const validateLoginInput = (req, res, next) => validCredentials(req.body)
+    ? next()
+    : res.status(400).json({ error: 'Invalid email or password format.' });
+const validateChallengeInput = (req, res, next) => {
+    const { tempToken, totpCode } = req.body ?? {};
+    return typeof tempToken === 'string' && /^[a-f0-9]{64}$/.test(tempToken) && codeIsValidInput(totpCode)
+        ? next()
+        : res.status(400).json({ error: 'Invalid verification input.' });
+};
 
 function jsonArray(value) {
     if (Array.isArray(value)) return value;
@@ -74,15 +84,14 @@ async function verifyTotp(code, row) {
     catch { return false; }
 }
 
-async function loginAudit(user, req, reason) {
-    await writeAudit(db, {
+async function loginAudit(store, user, req, reason) {
+    await writeAudit(store, {
         tableName: 'user', recordId: user.id, action: 'LOGIN', reason,
         user: { ...user, organizationId: user.organization_id }, ipAddress: req.ip,
     });
 }
 
-router.post('/initiate', asyncRoute(async (req, res) => {
-    if (!validCredentials(req.body)) return res.status(400).json({ error: 'Invalid email or password format.' });
+router.post('/initiate', validateLoginInput, rateLimitAuth, asyncRoute(async (req, res) => {
     const email = req.body.email.trim().toLowerCase();
     const result = await client.begin(async tx => {
         await lockEmail(tx, email);
@@ -117,21 +126,18 @@ router.post('/initiate', asyncRoute(async (req, res) => {
         }
         const token = await createSession(tx, user.id, req);
         await resetFailures(tx, email, req.ip);
+        await loginAudit(tx, user, req, 'Successful login');
         return { token, user };
     });
     if (result.locked) return res.status(423).json({ error: 'Account temporarily locked.' });
     if (result.invalid) return res.status(401).json({ error: 'Invalid email or password.' });
     if (result.tempToken) return res.json({ status: 'totp_required', tempToken: result.tempToken });
-    await loginAudit(result.user, req, 'Successful login');
     setSessionCookie(res, result.token);
     res.json({ status: 'authenticated', user: publicUser(result.user) });
 }));
 
-router.post('/totp-verify', asyncRoute(async (req, res) => {
+router.post('/totp-verify', validateChallengeInput, rateLimitAuth, asyncRoute(async (req, res) => {
     const { tempToken, totpCode } = req.body ?? {};
-    if (typeof tempToken !== 'string' || !/^[a-f0-9]{64}$/.test(tempToken) || !codeIsValidInput(totpCode)) {
-        return res.status(400).json({ error: 'Invalid verification input.' });
-    }
     const id = tokenDigest(tempToken);
     const result = await client.begin(async tx => {
         // Resolve only this indexed challenge; never scan all verification records.
@@ -169,10 +175,11 @@ router.post('/totp-verify', asyncRoute(async (req, res) => {
         }
         await tx`DELETE FROM verification WHERE id = ${id}`;
         await resetFailures(tx, user.email, req.ip);
-        return { token: await createSession(tx, user.id, req), user };
+        const token = await createSession(tx, user.id, req);
+        await loginAudit(tx, user, req, 'Successful login (TOTP verified)');
+        return { token, user };
     });
     if (!result) return res.status(401).json({ error: 'Invalid or expired verification.' });
-    await loginAudit(result.user, req, 'Successful login (TOTP verified)');
     setSessionCookie(res, result.token);
     res.json({ user: publicUser(result.user) });
 }));
@@ -211,11 +218,11 @@ router.post('/totp/enable', requireAuth, asyncRoute(async (req, res) => {
             WHERE user_id = ${req.user.id}`;
         await tx`DELETE FROM session WHERE user_id = ${req.user.id} AND token <> ${req.authTokenHash}`;
         await tx`DELETE FROM verification WHERE identifier = ${`mfa:${req.user.id}`}`;
+        await writeAudit(tx, { tableName: 'user_totp', recordId: row.id, action: 'UPDATE',
+            fieldName: 'is_enabled', newValue: 'true', reason: 'Enabled TOTP', user: req.user, ipAddress: req.ip });
         return { id: row.id, codes };
     });
     if (!result) return res.status(400).json({ error: 'Invalid code or authenticator already enabled.' });
-    await writeAudit(db, { tableName: 'user_totp', recordId: result.id, action: 'UPDATE',
-        fieldName: 'is_enabled', newValue: 'true', reason: 'Enabled TOTP', user: req.user, ipAddress: req.ip });
     res.json({ enabled: true, backupCodes: result.codes });
 }));
 
@@ -228,11 +235,11 @@ router.delete('/totp/disable', requireAuth, asyncRoute(async (req, res) => {
         await tx`DELETE FROM user_totp WHERE user_id = ${req.user.id}`;
         await tx`DELETE FROM verification WHERE identifier = ${`mfa:${req.user.id}`}`;
         await tx`DELETE FROM session WHERE user_id = ${req.user.id} AND token <> ${req.authTokenHash}`;
+        await writeAudit(tx, { tableName: 'user_totp', recordId: mfa.id, action: 'UPDATE',
+            fieldName: 'is_enabled', newValue: 'false', reason: 'Disabled TOTP', user: req.user, ipAddress: req.ip });
         return mfa;
     });
     if (!row) return res.status(401).json({ error: 'Invalid code or authenticator disabled.' });
-    await writeAudit(db, { tableName: 'user_totp', recordId: row.id, action: 'UPDATE',
-        fieldName: 'is_enabled', newValue: 'false', reason: 'Disabled TOTP', user: req.user, ipAddress: req.ip });
     res.json({ enabled: false });
 }));
 

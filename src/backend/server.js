@@ -396,6 +396,12 @@ async function runMigrations() {
         `ALTER TABLE protocol_deviations ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
         `ALTER TABLE informed_consents  ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
         `ALTER TABLE randomization_list ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
+        // Randomization codes are protocol/study-local. The legacy constraints
+        // made a valid code in one study block the same code in every other study.
+        `ALTER TABLE randomization_list DROP CONSTRAINT IF EXISTS randomization_list_rand_code_unique`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS randomization_list_study_code_unique
+            ON randomization_list (study_id, rand_code)`,
+        `ALTER TABLE subject_randomization DROP CONSTRAINT IF EXISTS subject_randomization_rand_code_unique`,
         `ALTER TABLE study_db_lock      ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
         `ALTER TABLE delegation_log     ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
         `ALTER TABLE training_records   ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
@@ -1026,13 +1032,17 @@ async function runMigrations() {
              END IF;
          END $$`,
     ];
+    const failures = [];
     for (const stmt of stmts) {
         try {
             await client.unsafe(stmt);
         } catch (err) {
-            // Log but continue — idempotent statements mean retries are safe
-            console.warn('Migration stmt warning (non-fatal):', err.message?.slice(0, 120));
+            failures.push(err);
+            console.error('Migration statement failed:', err.message?.slice(0, 120));
         }
+    }
+    if (failures.length) {
+        throw new AggregateError(failures, `${failures.length} database migration statement(s) failed`);
     }
 }
 const app = express();
@@ -1094,7 +1104,7 @@ app.use('/api/import', express.json({ limit: '25mb' }));
 app.use(express.json());
 
 // Auth-required API routes
-app.use('/api/mfa',      rateLimitAuth, mfaRouter);
+app.use('/api/mfa',      mfaRouter);
 app.use('/api/register', rateLimitAuth, registerRouter);
 app.use('/api/signup',   rateLimitAuth, signupRouter);   // public self-service tenant signup (gated by ALLOW_TENANT_SIGNUP)
 app.use('/api/sites',      requireAuth, sitesRouter);
