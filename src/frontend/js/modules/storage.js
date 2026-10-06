@@ -13,6 +13,10 @@ export function removeStored(key) {
     try { localStorage.removeItem(key); } catch { /* reads fail closed when storage is blocked */ }
 }
 
+export function clearSessionContext() {
+    for (const key of ['ecrf_session', 'ecrf_study_id', 'ecrf_study_meta', 'ecrf_site_context_id', 'ecrf_site_context_meta']) removeStored(key);
+}
+
 export function writeStored(key, value) {
     try { localStorage.setItem(key, value); } catch { throw storageError(); }
 }

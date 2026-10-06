@@ -1,5 +1,6 @@
 import { readObject, readContext, writeContext, removeStored } from './storage.js';
 import { request } from './http.js';
+import { authenticatedRequest } from './authenticated-http.js';
 // ============================================================
 // E-CRF API Module — calls real backend, no localStorage
 // ============================================================
@@ -12,7 +13,7 @@ function getStudyId() {
 // ── HTTP helper ────────────────────────────────────────────
 async function apiFetch(path, options = {}) {
     const studyId = getStudyId();
-    return request(path, {
+    return authenticatedRequest(path, {
         ...options,
         headers: { 'Content-Type': 'application/json', ...(studyId ? { 'X-Study-ID': studyId } : {}), ...(options.headers || {}) },
     });
@@ -20,7 +21,7 @@ async function apiFetch(path, options = {}) {
 
 async function apiDownload(path, filename, mimeType) {
     const studyId = getStudyId();
-    const blob = await request(path, { headers: studyId ? { 'X-Study-ID': studyId } : {} }, { responseType: 'blob' });
+    const blob = await authenticatedRequest(path, { headers: studyId ? { 'X-Study-ID': studyId } : {} }, { responseType: 'blob' });
     const url = URL.createObjectURL(new Blob([blob], { type: mimeType }));
     try {
         const a = document.createElement('a'); a.href = url; a.download = filename; a.click();

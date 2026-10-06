@@ -164,8 +164,9 @@
 
     <script type="module">
         import { authRequest } from './src/frontend/js/modules/auth-http.js';
+        import { verifyStoredSession } from './src/frontend/js/modules/authenticated-http.js';
         import { ApiError } from './src/frontend/js/modules/http.js';
-        import { readObject, writeStored } from './src/frontend/js/modules/storage.js';
+        import { writeStored } from './src/frontend/js/modules/storage.js';
 
         function readableError(error) {
             return error instanceof ApiError || error?.code === 'STORAGE_UNAVAILABLE'
@@ -336,10 +337,14 @@
             showError('Your local session has ended, but server sign-out could not be confirmed. Reconnect and sign in again; close this browser if using a shared computer.');
         }
 
-        // Redirect if already logged in
-        if (readObject('ecrf_session', value => typeof value.id === 'string' && typeof value.role === 'string')) {
-            window.location.href = 'select.html';
+        if (new URLSearchParams(window.location.search).get('reason') === 'session-expired') {
+            showError('Your session has ended. Please sign in again.');
         }
+
+        // Only the server can confirm that the cookie is still valid.
+        verifyStoredSession().then(user => {
+            if (user) window.location.href = user.role === 'platform_owner' ? 'platform.html' : 'select.html';
+        }).catch(error => showError(readableError(error)));
     </script>
 </body>
 </html>
