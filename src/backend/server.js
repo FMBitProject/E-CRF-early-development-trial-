@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { trustedOrigins, checkOrigin } from './lib/http-security.js';
 import { migrateSecurity } from './lib/security-migration.js';
 import { requireAuth } from './middleware/auth.js';
+import { createStartupGate } from './middleware/startup.js';
 import { client } from './db/connection.js';
 
 import subjectsRouter      from './routes/subjects.js';
@@ -1078,12 +1079,14 @@ app.use((req, res, next) => {
 // Exact deployment origins only; do not normalize/overwrite the caller's Origin.
 app.use(cors({ origin: (origin, cb) => cb(null, !origin || trustedOrigins().has(origin)), credentials: true }));
 app.use('/api', checkOrigin);
-let securityReady = false;
-app.use('/api', (req, res, next) => {
-    if (req.path === '/health') return next();
-    if (!securityReady) return res.status(503).json({ error: 'Service initializing' });
-    next();
-});
+app.use('/api', createStartupGate(async () => {
+    await ensureBaseSchema();
+    await runMigrations();
+    await migrateSecurity(client);
+}, {
+    onReady: () => console.log('DB and security migrations applied.'),
+    onError: err => console.error('Startup incomplete; requests remain blocked:', err.code || err.message),
+}));
 // Compatibility endpoints use the same custom session protocol as /api/mfa.
 app.post('/api/auth/sign-out', logout);
 app.get('/api/auth/get-session', requireAuth, (req, res) => res.json({
@@ -1199,7 +1202,8 @@ async function ensureBaseSchema() {
     console.log('Base schema created (fresh database).');
 }
 
-// Bind the port for liveness; API traffic remains blocked until mandatory security migration succeeds.
+// Bind the port for liveness. The first API request awaits mandatory migrations;
+// they must not run detached from the request lifetime on Vercel.
 app.listen(PORT, () => {
     console.log(`E-CRF Server running on http://localhost:${PORT}`);
     console.log(`Better Auth endpoint: http://localhost:${PORT}/api/auth`);
@@ -1213,9 +1217,4 @@ app.listen(PORT, () => {
             }
         }).catch(() => {});
     }
-    ensureBaseSchema()
-        .then(runMigrations)
-        .then(() => migrateSecurity(client))
-        .then(() => { securityReady = true; console.log('DB and security migrations applied.'); })
-        .catch(err => console.error('Startup incomplete; requests remain blocked:', err.code || err.message));
 });
