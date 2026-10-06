@@ -48,7 +48,7 @@ const NAV_ITEMS = [
     { id: 'conmeds',        label: 'Con. Medications',icon: 'pill',             section: 'core', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
     { id: 'vitalsigns',     label: 'Vital Signs',     icon: 'heart-pulse',      section: 'core', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
     { id: 'lab',            label: 'Laboratory',      icon: 'test-tube-2',      section: 'core', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
-    { id: 'ipdispensing',   label: 'IP Accountability',icon: 'package',         section: 'core', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
+    { id: 'ipdispensing',   label: 'IP Management & Accountability',icon: 'package',         section: 'core', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
 
     { id: 'ae',             label: 'Adverse Events',  icon: 'activity',         section: 'safety', roles: ['admin', 'investigator', 'pi', 'cra', 'crc', DM] },
     { id: 'saereports',     label: 'SAE Reports',     icon: 'alert-octagon',    section: 'safety', roles: ['admin', 'cra', 'pi', DM] },
@@ -356,7 +356,7 @@ const routes = {
         if (el) { const { renderScreeningLog } = await import('./modules/screening.js'); await renderScreeningLog(el); }
     },
     'ipdispensing': async () => {
-        renderBreadcrumb([{ label: 'IP Accountability', route: 'ipdispensing' }]);
+        renderBreadcrumb([{ label: 'IP Management & Accountability', route: 'ipdispensing' }]);
         const el = document.getElementById('main-content');
         if (el) { const { renderIPDispensing } = await import('./modules/ipdispensing.js'); await renderIPDispensing(el); }
     },

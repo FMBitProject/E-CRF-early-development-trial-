@@ -124,7 +124,7 @@ router.patch('/:id', requireRole('admin', 'investigator', 'pi', 'data_manager'),
             .where(and(eq(ipAccountability.id, id), eq(ipAccountability.studyId, req.studyId)));
         if (!existing) return res.status(404).json({ error: 'Record not found' });
 
-        const allowed = ['transactionDate', 'drugName', 'batchNo', 'quantityIn', 'quantityOut',
+        const allowed = ['recordType', 'transactionDate', 'drugName', 'batchNo', 'quantityIn', 'quantityOut',
                          'unit', 'expiryDate', 'supplierRef', 'returnedQuantity', 'destroyedQuantity',
                          'destructionRef', 'balance', 'notes'];
         const updates = {};
