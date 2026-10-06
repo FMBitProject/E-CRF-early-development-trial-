@@ -78,16 +78,23 @@ export async function renderDashboard() {
         <div class="w-7 h-7 rounded-full border-2 border-blue-700 border-t-transparent animate-spin"></div>
     </div>`;
 
-    let stats, aeStats, devStats, consentStats, dblockStatus, pwStatus;
-    try {
-        [stats, aeStats, devStats, consentStats, dblockStatus, pwStatus] = await Promise.all([
-            api.getDashboardStats(), api.getAEStats(), api.getDeviationStats(),
-            api.getConsentStats(), api.getDblockStatus(), api.getPasswordStatus(),
-        ]);
-    } catch {
-        content.innerHTML = '<div role="alert" class="p-6 text-red-700">Dashboard information could not be loaded. Counts and lock status are unavailable. Check your connection and reload the page.</div>';
-        return;
-    }
+    const sources = [
+        ['Clinical overview', () => api.getDashboardStats()],
+        ['Adverse events', () => api.getAEStats()],
+        ['Protocol deviations', () => api.getDeviationStats()],
+        ['Consent coverage', () => api.getConsentStats()],
+        ['Database lock status', () => api.getDblockStatus()],
+        ['Password status', () => api.getPasswordStatus()],
+    ];
+    const results = await Promise.allSettled(sources.map(([, load]) => Promise.resolve().then(load)));
+    const unavailable = results.flatMap((result, index) => result.status === 'rejected' ? [sources[index][0]] : []);
+    const [stats, aeStats, devStats, consentStats, dblockStatus, pwStatus] = results.map(result =>
+        result.status === 'fulfilled' ? result.value : null);
+    const loadWarning = unavailable.length ? `
+        <div role="alert" class="ph-card p-4 border border-amber-200 bg-amber-50 text-amber-900 text-sm">
+            <p>Some dashboard information is unavailable: ${unavailable.join(', ')}. Available information is shown below.</p>
+            <button id="dashboard-retry" class="ph-btn ph-btn-ghost text-xs mt-2">Retry loading</button>
+        </div>` : '';
     const user  = api.getCurrentUser();
     const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -126,6 +133,8 @@ export async function renderDashboard() {
     content.innerHTML = `
     <div class="p-5 space-y-5">
 
+        ${loadWarning}
+
         ${dblLockBanner || pwWarning ? `<div class="space-y-2">${dblLockBanner}${pwWarning}</div>` : ''}
 
         <!-- Page Header -->
@@ -139,25 +148,25 @@ export async function renderDashboard() {
 
         <!-- KPI Cards — Row 1: core metrics -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            ${kpiCard('Active Subjects',  stats.activeSubjects,  `${stats.totalSubjects} total enrolled`,  'users',          '#1554A0', '#EBF2FD')}
-            ${kpiCard('Pending Forms',    stats.pendingForms,    'awaiting submission',                    'file-edit',      '#B45309', '#FEF3C7')}
-            ${kpiCard('Open Queries',     stats.openQueries,     'requiring resolution',                   'message-square', '#991B1B', '#FEE2E2')}
-            ${kpiCard('Total Visits',     stats.totalVisits,     'visits conducted',                       'calendar-check', '#065F46', '#D1FAE5')}
+            ${kpiCard('Active Subjects',  stats?.activeSubjects,  `${stats?.totalSubjects} total enrolled`,  'users',          '#1554A0', '#EBF2FD')}
+            ${kpiCard('Pending Forms',    stats?.pendingForms,    'awaiting submission',                    'file-edit',      '#B45309', '#FEF3C7')}
+            ${kpiCard('Open Queries',     stats?.openQueries,     'requiring resolution',                   'message-square', '#991B1B', '#FEE2E2')}
+            ${kpiCard('Total Visits',     stats?.totalVisits,     'visits conducted',                       'calendar-check', '#065F46', '#D1FAE5')}
         </div>
         <!-- KPI Cards — Row 2: safety & compliance -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            ${kpiCardLink('Adverse Events', aeStats.total,
-                aeStats.serious > 0 ? `${aeStats.serious} SAE · ${aeStats.overdue > 0 ? aeStats.overdue + ' OVERDUE' : 'no overdue'}` : 'no serious events',
-                'activity', aeStats.overdue > 0 ? '#991B1B' : '#6D28D9', aeStats.overdue > 0 ? '#FEE2E2' : '#EDE9FE', 'ae')}
-            ${kpiCardLink('Protocol Deviations', devStats.total,
-                devStats.open > 0 ? `${devStats.open} open · ${devStats.major} major` : 'none open',
-                'alert-triangle', devStats.open > 0 ? '#92400E' : '#374151', devStats.open > 0 ? '#FEF3C7' : '#F1F5F9', 'deviations')}
-            ${kpiCardLink('Consent Coverage', consentStats.consented,
-                consentStats.unconsented > 0 ? `${consentStats.unconsented} subjects missing consent` : `of ${consentStats.totalActive} active subjects`,
-                'file-check', consentStats.unconsented > 0 ? '#991B1B' : '#065F46', consentStats.unconsented > 0 ? '#FEE2E2' : '#D1FAE5', 'consents')}
-            ${kpiCardLink('Unreported SAEs', aeStats.draft,
-                aeStats.draft > 0 ? 'pending expedited reporting' : 'all SAEs reported',
-                'send', aeStats.draft > 0 ? '#B45309' : '#065F46', aeStats.draft > 0 ? '#FEF3C7' : '#D1FAE5', 'ae')}
+            ${kpiCardLink('Adverse Events', aeStats?.total,
+                aeStats?.serious > 0 ? `${aeStats?.serious} SAE · ${aeStats?.overdue > 0 ? aeStats?.overdue + ' OVERDUE' : 'no overdue'}` : 'no serious events',
+                'activity', aeStats?.overdue > 0 ? '#991B1B' : '#6D28D9', aeStats?.overdue > 0 ? '#FEE2E2' : '#EDE9FE', 'ae')}
+            ${kpiCardLink('Protocol Deviations', devStats?.total,
+                devStats?.open > 0 ? `${devStats?.open} open · ${devStats?.major} major` : 'none open',
+                'alert-triangle', devStats?.open > 0 ? '#92400E' : '#374151', devStats?.open > 0 ? '#FEF3C7' : '#F1F5F9', 'deviations')}
+            ${kpiCardLink('Consent Coverage', consentStats?.consented,
+                consentStats?.unconsented > 0 ? `${consentStats?.unconsented} subjects missing consent` : `of ${consentStats?.totalActive} active subjects`,
+                'file-check', consentStats?.unconsented > 0 ? '#991B1B' : '#065F46', consentStats?.unconsented > 0 ? '#FEE2E2' : '#D1FAE5', 'consents')}
+            ${kpiCardLink('Unreported SAEs', aeStats?.draft,
+                aeStats?.draft > 0 ? 'pending expedited reporting' : 'all SAEs reported',
+                'send', aeStats?.draft > 0 ? '#B45309' : '#065F46', aeStats?.draft > 0 ? '#FEF3C7' : '#D1FAE5', 'ae')}
         </div>
 
         <!-- Main Grid -->
@@ -181,9 +190,9 @@ export async function renderDashboard() {
                             </tr>
                         </thead>
                         <tbody class="ph-table-body">
-                            ${stats.recentAudit.length === 0
+                            ${!stats ? `<tr><td colspan="5" class="text-center py-8 text-sm text-slate-400">Audit activity unavailable</td></tr>` : stats.recentAudit.length === 0
                                 ? `<tr><td colspan="5" class="text-center py-8 text-sm text-slate-400">No recent activity</td></tr>`
-                                : stats.recentAudit.map(a => `
+                                : stats?.recentAudit.map(a => `
                                 <tr>
                                     <td><span class="${ACTION_BADGE[a.action] || 'badge bg-slate-100 text-slate-600'}">${a.action}</span></td>
                                     <td class="text-xs font-medium text-slate-700">${a.table_name}<br><span class="text-slate-400 font-normal">#${a.record_id}</span></td>
@@ -226,8 +235,8 @@ export async function renderDashboard() {
                                 <i data-lucide="activity" class="w-3.5 h-3.5 text-red-600"></i>
                             </div>
                             <span class="font-medium text-xs flex-1">Adverse Events</span>
-                            ${aeStats.overdue > 0 ? `<span class="text-xs font-bold text-white bg-red-600 px-1.5 py-0.5 rounded-full">${aeStats.overdue} OVERDUE</span>` :
-                              aeStats.serious > 0 ? `<span class="text-xs font-bold text-white bg-purple-600 px-1.5 py-0.5 rounded-full">${aeStats.serious} SAE</span>` : ''}
+                            ${aeStats?.overdue > 0 ? `<span class="text-xs font-bold text-white bg-red-600 px-1.5 py-0.5 rounded-full">${aeStats?.overdue} OVERDUE</span>` :
+                              aeStats?.serious > 0 ? `<span class="text-xs font-bold text-white bg-purple-600 px-1.5 py-0.5 rounded-full">${aeStats?.serious} SAE</span>` : ''}
                             <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500 transition"></i>
                         </a>
                         <a href="#queries" class="flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-slate-50 transition group text-sm text-slate-700 border border-transparent hover:border-slate-200">
@@ -235,7 +244,7 @@ export async function renderDashboard() {
                                 <i data-lucide="message-square" class="w-3.5 h-3.5 text-amber-600"></i>
                             </div>
                             <span class="font-medium text-xs flex-1">Data Queries</span>
-                            ${stats.openQueries > 0 ? `<span class="text-xs font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">${stats.openQueries}</span>` : ''}
+                            ${stats?.openQueries > 0 ? `<span class="text-xs font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">${stats?.openQueries}</span>` : ''}
                             <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500 transition"></i>
                         </a>
                         ${['admin', 'pi', 'cra', 'data_manager'].includes(user.role) ? `
@@ -275,10 +284,10 @@ export async function renderDashboard() {
                         ${compItem('Reason for Change', 'Enforced on Edit', true)}
                         ${compItem('MFA (OTP Email)', 'Enabled', true)}
                         ${compItem('Session Timeout', '30-min inactivity', true)}
-                        ${compItem('DB Lock Status', dblockStatus?.isLocked ? 'LOCKED 🔒' : (dblockStatus?.current?.status === 'Pending Approval' || dblockStatus?.current?.status === 'Pending Signatures') ? 'Pending' : 'Unlocked', !dblockStatus?.isLocked)}
-                        ${compItem('AE/SAE Reporting', aeStats.overdue > 0 ? `${aeStats.overdue} report(s) overdue` : 'Tracking active', aeStats.overdue === 0)}
-                        ${compItem('Protocol Deviations', devStats.open > 0 ? `${devStats.open} open` : 'None open', devStats.open === 0)}
-                        ${compItem('UU PDP Consent', consentStats.unconsented > 0 ? `${consentStats.unconsented} subjects missing` : 'All subjects consented', consentStats.unconsented === 0)}
+                        ${compItem('DB Lock Status', !dblockStatus ? 'Unavailable' : dblockStatus.isLocked ? 'LOCKED 🔒' : (dblockStatus?.current?.status === 'Pending Approval' || dblockStatus?.current?.status === 'Pending Signatures') ? 'Pending' : 'Unlocked', !!dblockStatus && !dblockStatus.isLocked)}
+                        ${compItem('AE/SAE Reporting', !aeStats ? 'Unavailable' : aeStats.overdue > 0 ? `${aeStats?.overdue} report(s) overdue` : 'Tracking active', aeStats?.overdue === 0)}
+                        ${compItem('Protocol Deviations', !devStats ? 'Unavailable' : devStats.open > 0 ? `${devStats?.open} open` : 'None open', devStats?.open === 0)}
+                        ${compItem('UU PDP Consent', !consentStats ? 'Unavailable' : consentStats.unconsented > 0 ? `${consentStats?.unconsented} subjects missing` : 'All subjects consented', consentStats?.unconsented === 0)}
                     </div>
                 </div>
             </div>
@@ -286,10 +295,12 @@ export async function renderDashboard() {
     </div>
     `;
 
-    lucide.createIcons();
+    document.getElementById('dashboard-retry')?.addEventListener('click', renderDashboard);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 function kpiCard(label, value, sub, icon, textColor, bgColor) {
+    if (value == null) { value = '—'; sub = 'Unavailable'; textColor = '#64748B'; bgColor = '#F1F5F9'; }
     return `
     <div class="ph-card p-5">
         <div class="flex items-start justify-between mb-3">
@@ -304,6 +315,7 @@ function kpiCard(label, value, sub, icon, textColor, bgColor) {
 }
 
 function kpiCardLink(label, value, sub, icon, textColor, bgColor, route) {
+    if (value == null) { value = '—'; sub = 'Unavailable'; textColor = '#64748B'; bgColor = '#F1F5F9'; }
     return `
     <a href="#${route}" class="ph-card p-5 block hover:shadow-sm transition cursor-pointer">
         <div class="flex items-start justify-between mb-3">
