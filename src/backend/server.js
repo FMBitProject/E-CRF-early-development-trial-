@@ -391,6 +391,18 @@ async function runMigrations() {
         )`,
         `CREATE INDEX IF NOT EXISTS idx_study_users_study ON study_users (study_id)`,
         `CREATE INDEX IF NOT EXISTS idx_study_users_user  ON study_users (user_id)`,
+        // Existing databases skip the drizzle base migrations. This assignment
+        // table is required by site authorization and migrateSecurity(), so it
+        // must also be created by the incremental upgrade path.
+        `CREATE TABLE IF NOT EXISTS user_sites (
+            id           INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+            user_id      TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+            site_id      INTEGER NOT NULL,
+            study_id     INTEGER NOT NULL,
+            assigned_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+            assigned_by  TEXT REFERENCES "user"(id)
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_user_sites_user_study ON user_sites (user_id, study_id)`,
         // Add study_id FK to all clinical tables
         `ALTER TABLE subjects           ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
         `ALTER TABLE adverse_events     ADD COLUMN IF NOT EXISTS study_id INTEGER REFERENCES studies(id)`,
