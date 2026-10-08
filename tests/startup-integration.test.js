@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
 import crypto from 'node:crypto';
@@ -122,6 +122,27 @@ test('startup upgrade and API access on disposable PostgreSQL', { skip: !enabled
         assert.equal((await get('/api/register/config')).status, 503);
         assert.equal((await get('/api/health')).status, 200);
         assert.match(logs(), /Startup incomplete; requests remain blocked: MFA_ENCRYPTION_KEY/);
+    });
+    await t.test('operator recovery clears a lock and records its audit without changing account privileges', async t => {
+        const { db, get, databaseUrl } = await fixture(t, { legacy: true });
+        assert.equal((await get('/api/ready')).status, 200);
+        await db`INSERT INTO account_locks (user_id, email, failed_count, locked_at)
+            VALUES ('legacy-pi', 'pi@example.test', 5, NOW())`;
+        const [before] = await db`SELECT * FROM "user" WHERE id = 'legacy-pi'`;
+        execFileSync(process.execPath, ['scripts/unlock-account.mjs'], {
+            cwd: root, env: { ...process.env, DATABASE_URL: databaseUrl },
+            input: JSON.stringify({ email: 'pi@example.test', reason: 'Verified operator recovery test' }),
+            stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        const [lock] = await db`SELECT * FROM account_locks WHERE user_id = 'legacy-pi'`;
+        assert.equal(lock.failed_count, 0);
+        assert.ok(lock.unlocked_at);
+        assert.equal(lock.auto_unlock_at, null);
+        const [after] = await db`SELECT * FROM "user" WHERE id = 'legacy-pi'`;
+        assert.deepEqual(after, before);
+        const [audit] = await db`SELECT * FROM audit_trails WHERE table_name = 'account_locks'`;
+        assert.equal(audit.user_name, 'Local recovery operator');
+        assert.match(audit.reason, /Verified operator recovery test/);
     });
     await t.test('concurrent instances apply a version once and failed upgrades roll back', async t => {
         const { db, get, databaseUrl } = await fixture(t);
