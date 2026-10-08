@@ -139,9 +139,14 @@ test('startup upgrade and API access on disposable PostgreSQL', { skip: !enabled
         assert.deepEqual(results.sort(), [false, true]);
         assert.equal(upgrades, 1);
         // A new client represents another serverless instance.
-        const independent = postgres(databaseUrl, { onnotice: () => {} });
+        const queries = [];
+        const independent = postgres(databaseUrl, { onnotice: () => {},
+            debug: (_connection, query) => queries.push(query) });
         try {
             assert.equal(await upgradeSchemaOnce(independent, 'test-version-1', upgrade), false);
+            assert.equal(queries.filter(query => /app_schema_versions/.test(query)).length, 1);
+            assert.ok(!queries.some(query => /pg_advisory|create table|^begin/i.test(query)),
+                'already upgraded instances must avoid migration transactions and locks');
         } finally { await independent.end(); }
         await assert.rejects(upgradeSchemaOnce(db, 'test-version-2', async tx => {
             await tx`INSERT INTO upgrade_probe (value) VALUES ('must roll back')`;

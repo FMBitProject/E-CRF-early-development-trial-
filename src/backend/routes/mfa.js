@@ -58,18 +58,20 @@ async function recordFailure(tx, email, userId, ip) {
 }
 
 async function resetFailures(tx, email, ip) {
-    await tx`UPDATE account_locks SET failed_count = 0, auto_unlock_at = NULL,
-        unlocked_at = NOW(), unlock_reason = 'Successful authentication' WHERE email = ${email}`;
-    await tx`INSERT INTO login_attempts (email, ip_address, success) VALUES (${email}, ${ip || 'unknown'}, TRUE)`;
+    await tx`WITH reset AS (
+        UPDATE account_locks SET failed_count = 0, auto_unlock_at = NULL,
+            unlocked_at = NOW(), unlock_reason = 'Successful authentication' WHERE email = ${email}
+    ) INSERT INTO login_attempts (email, ip_address, success) VALUES (${email}, ${ip || 'unknown'}, TRUE)`;
 }
 
 async function checkAccount(tx, userId) {
-    const [user] = await tx`SELECT u.*, o.status AS org_status FROM "user" u
-        LEFT JOIN organizations o ON o.id = u.organization_id WHERE u.id = ${userId} FOR UPDATE OF u`;
+    const [user] = await tx`SELECT u.*, o.status AS org_status,
+        l.locked_at, l.unlocked_at, l.auto_unlock_at FROM "user" u
+        LEFT JOIN organizations o ON o.id = u.organization_id
+        LEFT JOIN account_locks l ON l.email = u.email WHERE u.id = ${userId} FOR UPDATE OF u`;
     if (!user || !user.is_active || !user.email_verified ||
         (user.role !== 'platform_owner' && user.org_status !== 'Active')) return null;
-    const [lock] = await tx`SELECT * FROM account_locks WHERE email = ${user.email}`;
-    if (lock?.locked_at && !lock.unlocked_at && (!lock.auto_unlock_at || new Date(lock.auto_unlock_at) > new Date())) return null;
+    if (user.locked_at && !user.unlocked_at && (!user.auto_unlock_at || new Date(user.auto_unlock_at) > new Date())) return null;
     return user;
 }
 
@@ -102,8 +104,8 @@ router.post('/initiate', validateLoginInput, rateLimitAuth, asyncRoute(async (re
             if (!lock.auto_unlock_at || new Date(lock.auto_unlock_at) > new Date()) return { locked: true };
             await tx`UPDATE account_locks SET failed_count = 0, unlocked_at = NOW(), auto_unlock_at = NULL WHERE id = ${lock.id}`;
         }
-        dummyHash ??= hashPassword(crypto.randomBytes(32).toString('hex'));
-        const valid = await verifyPassword(record?.password || await dummyHash, req.body.password);
+        const passwordHash = record?.password || await (dummyHash ??= hashPassword(crypto.randomBytes(32).toString('hex')));
+        const valid = await verifyPassword(passwordHash, req.body.password);
         if (!record || !valid) {
             await recordFailure(tx, email, record?.id ?? null, req.ip);
             return { invalid: true };
@@ -111,9 +113,11 @@ router.post('/initiate', validateLoginInput, rateLimitAuth, asyncRoute(async (re
         const user = await checkAccount(tx, record.id);
         if (!user) return { invalid: true };
         // Lock/read the current credential again to detect a concurrent password change.
-        const [current] = await tx`SELECT password FROM account WHERE user_id = ${user.id} AND provider_id = 'credential'`;
+        const [current] = await tx`SELECT a.password, m.is_enabled, m.secret FROM account a
+            LEFT JOIN user_totp m ON m.user_id = a.user_id
+            WHERE a.user_id = ${user.id} AND a.provider_id = 'credential'`;
         if (current?.password !== record.password) return { invalid: true };
-        const [mfa] = await tx`SELECT * FROM user_totp WHERE user_id = ${user.id}`;
+        const mfa = current;
         if (mfa?.is_enabled) {
             decryptSecret(mfa.secret, user.id); // fail closed until legacy secrets have been migrated
             const tempToken = crypto.randomBytes(32).toString('hex');

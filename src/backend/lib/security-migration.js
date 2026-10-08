@@ -23,7 +23,9 @@ export async function migrateSecurity(client) {
         for (const row of rows) {
             const encrypted = row.secret.startsWith('enc1:');
             if (encrypted) decryptSecret(row.secret, row.user_id); // fail startup on wrong key
-            const codes = jsonArray(row.backup_codes).map(code => code.digest
+            const previousCodes = jsonArray(row.backup_codes);
+            if (encrypted && previousCodes.every(code => code.digest)) continue;
+            const codes = previousCodes.map(code => code.digest
                 ? code
                 : { digest: backupDigest(code.code, row.user_id), used: !!code.used });
             await tx`UPDATE user_totp SET secret = ${encrypted ? row.secret : encryptSecret(row.secret, row.user_id)},
@@ -33,9 +35,9 @@ export async function migrateSecurity(client) {
         await tx`DELETE FROM session WHERE token NOT LIKE 'sha256:%'`;
         await tx`DELETE FROM verification WHERE identifier LIKE 'mfa:%' AND id NOT LIKE 'sha256:%'`;
         // Required authorization/security schema must be queryable before readiness.
-        await tx`SELECT user_id, failed_count, unlocked_at FROM account_locks LIMIT 0`;
-        await tx`SELECT user_id, must_change FROM password_meta LIMIT 0`;
-        await tx`SELECT user_id, study_id, site_id FROM user_sites LIMIT 0`;
-        await tx`SELECT study_id, status FROM study_db_lock LIMIT 0`;
+        await tx`SELECT l.user_id, l.failed_count, l.unlocked_at,
+            p.user_id, p.must_change, s.user_id, s.study_id, s.site_id, d.study_id, d.status
+            FROM account_locks l CROSS JOIN password_meta p
+            CROSS JOIN user_sites s CROSS JOIN study_db_lock d LIMIT 0`;
     });
 }
