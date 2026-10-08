@@ -52,6 +52,7 @@ of it. A non-zero exit code is a failed OQ-A and blocks release.
 | OQ-A18 | `tests/validate.test.js` | Server-side edit checks: required (incl. empty multi-select), hard vs soft ranges, closed codelists, conditional required, cross-field BP rule, regex patterns | DC-01 |
 | OQ-A19 | `tests/formschema.test.js` | Form schema rules: key format, key uniqueness, answer-type whitelist, choice questions need choices | DC-01, DC-02 |
 | OQ-A20 | `tests/isodate.test.js` | Export date formatting degrades a malformed value to an empty cell instead of aborting the export | EXP-01, EXP-02 |
+| OQ-A21 | `tests/xlsxexport.test.js` | Excel workbook: valid package with verified CRCs; subject codes with leading zeros stay text; text never becomes a formula; impossible dates stay text; CRF wide pivot keeps answers to removed questions | EXP-03 |
 
 ### OQ-B Authentication & access (SEC)
 | ID | Step | Expected | P/F |
@@ -85,6 +86,7 @@ of it. A non-zero exit code is a failed OQ-A and blocks release.
 | OQ-D4 | CSV IC export as PI of Study A | Contains only Study A consents (EXP-02) | |
 | OQ-D5 | As a user of Study A, `PATCH /api/queries/:id/resolve` and `/close` using an id belonging to Study B | 404 — cross-study query mutation refused (SEC-07). Regression test for DEV-002. | |
 | OQ-D6 | As a user of Study A, `POST /api/dblock/:id/sign-cra` using a lock id from Study B | 404 — cross-study lock signature refused (SEC-07) | |
+| OQ-D7 | Excel export as a PI assigned only to Site 1 of Study A; open in Excel | Workbook opens without repair prompt; every sheet contains only Site 1 subjects of Study A; export recorded in audit trail (EXP-03) | |
 
 ### OQ-E Audit trail (AUD)
 | ID | Step | Expected | P/F |
@@ -136,7 +138,7 @@ Trained users execute the end-to-end trial process under the governing SOPs.
 | PQ-01 | CRC: enroll subject → record consent → enter CRF data across a visit | Data captured, validations behave, audit complete | |
 | PQ-02 | PI: review and e-sign the subject's forms | Signatures applied and manifested | |
 | PQ-03 | CRA: raise query on a value → CRC resolves → CRA closes; perform SDV; submit monitoring visit; PI acknowledges | Full monitoring loop completes | |
-| PQ-04 | DM/Admin: run pre-lock checks → CRA sign → Admin sign → export ODM + CSV | Study locks; exports contain only this study; data read-only afterward | |
+| PQ-04 | DM/Admin: run pre-lock checks → CRA sign → Admin sign → export ODM + CSV + Excel | Study locks; exports contain only this study; data read-only afterward | |
 | PQ-05 | Two concurrent site users at different sites | Each sees only their own site's data throughout | |
 
 ---

@@ -19,9 +19,14 @@ async function apiFetch(path, options = {}) {
     });
 }
 
+// Whole-study exports query every domain and can outlast the 30 s API default
+// on a slow link or a cold database.
+const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
+
 async function apiDownload(path, filename, mimeType) {
     const studyId = getStudyId();
-    const blob = await authenticatedRequest(path, { headers: studyId ? { 'X-Study-ID': studyId } : {} }, { responseType: 'blob' });
+    const blob = await authenticatedRequest(path, { headers: studyId ? { 'X-Study-ID': studyId } : {} },
+        { responseType: 'blob', timeoutMs: DOWNLOAD_TIMEOUT_MS });
     const url = URL.createObjectURL(new Blob([blob], { type: mimeType }));
     try {
         const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
@@ -668,7 +673,11 @@ export const api = {
     },
 
     async downloadXLSX() {
-        await apiDownload('/api/export/xlsx', `study-export-${new Date().toISOString().slice(0, 10)}.xlsx`,
+        // Local calendar day: toISOString() is UTC, which names the file after
+        // yesterday for anyone exporting before 07:00 WIB.
+        const d = new Date();
+        const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        await apiDownload('/api/export/xlsx', `study-export-${day}.xlsx`,
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     },
 

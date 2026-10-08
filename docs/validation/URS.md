@@ -67,3 +67,4 @@ IQ/OQ/PQ scripts. Risk: **H** = subject safety / data integrity critical,
 |----|------|-------------|
 | EXP-01 | M | CDISC ODM-XML 1.3.2 export scoped strictly to the active study. |
 | EXP-02 | M | CSV domain exports (DM/AE/DEV/IC) scoped strictly to the active study. |
+| EXP-03 | M | Excel (.xlsx) workbook export of the active study (domain sheets, one wide sheet per CRF form, data dictionary), site-scoped and audited; cell values reproduced without reinterpretation (codes stay text, no formulas). |

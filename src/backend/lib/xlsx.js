@@ -17,7 +17,29 @@
  *   - everything else is an inline string. Inline strings are never evaluated,
  *     so a value starting with '=' cannot become a formula.
  */
-import { deflateRawSync, crc32 } from 'node:zlib';
+import * as zlib from 'node:zlib';
+
+/**
+ * CRC-32 (IEEE) for the ZIP headers. zlib.crc32 only exists from Node 20.15 /
+ * 22.2, and package.json allows any Node >= 20: a named import of it would
+ * make export.js — and with it the whole server — fail to load on an older
+ * runtime. Fall back to a table-driven implementation.
+ */
+let crcTable;
+export function crc32Fallback(buf) {
+    if (!crcTable) {
+        crcTable = new Uint32Array(256);
+        for (let n = 0; n < 256; n++) {
+            let c = n;
+            for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+            crcTable[n] = c >>> 0;
+        }
+    }
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < buf.length; i++) crc = crcTable[(crc ^ buf[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+const crc32 = typeof zlib.crc32 === 'function' ? zlib.crc32 : crc32Fallback;
 
 // ── Cell / sheet XML ─────────────────────────────────────────────────────────
 
@@ -225,7 +247,7 @@ export function zip(files) {
     for (const [name, content] of files) {
         const nameBuf = Buffer.from(name, 'utf8');
         const raw = Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf8');
-        const data = deflateRawSync(raw);
+        const data = zlib.deflateRawSync(raw);
         const crc = crc32(raw);
 
         const local = Buffer.alloc(30);

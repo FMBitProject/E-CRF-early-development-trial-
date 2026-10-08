@@ -46,6 +46,7 @@ reaches · **⬜ Not executed** — verification is scripted but has not been ru
 | WF-05 | L | `lib/email.js`, `routes/notifications.js` | — | (PQ observation) | ⬜ |
 | EXP-01 | M | `lib/odm.js`; `lib/isodate.js`; `routes/export.js` /odm (study-scoped) | `tests/odm.test.js` (OQ-A7) — 42 checks: ODM 1.3.2 structure, XML escaping, per-subject isolation, boolean/array fidelity, malformed-date resilience; `tests/isodate.test.js` (OQ-A20) | PQ-04 | ◐ |
 | EXP-02 | M | `lib/csv.js`; `routes/export.js` /csv (study-scoped) | `tests/csvexport.test.js` (OQ-A8) — 25 checks: RFC 4180 quoting, domain whitelist, VS long format | OQ-D4, PQ-04 | ◐ |
+| EXP-03 | M | `lib/xlsx.js`; `lib/crfwide.js`; `routes/export.js` /xlsx (study- and site-scoped, audited) | `tests/xlsxexport.test.js` (OQ-A21) — ZIP/CRC integrity, cell typing (leading zeros kept, no formulas, valid dates only), sheet-name rules, CRF wide pivot incl. orphaned answers | OQ-D7, PQ-04 | ◐ |
 
 ## Coverage summary
 

@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { inflateRawSync, crc32 } from 'node:zlib';
 import {
-    buildXlsx, sheetXml, columnLetter, excelDateSerial, uniqueSheetNames, xmlEscape,
+    buildXlsx, sheetXml, columnLetter, excelDateSerial, uniqueSheetNames, xmlEscape, crc32Fallback,
 } from '../src/backend/lib/xlsx.js';
 import { crfWideSheets, crfDictionarySheet, crfCellValue, CRF_ID_HEADERS } from '../src/backend/lib/crfwide.js';
 
@@ -121,6 +121,13 @@ test('the workbook is a valid zip with every required part', () => {
     assert.match(files['xl/workbook.xml'], /<sheet name="DM" sheetId="1" r:id="rId1"\/>/);
     assert.match(files['xl/workbook.xml'], /<sheet name="AE" sheetId="2" r:id="rId2"\/>/);
     assert.match(files['xl/_rels/workbook.xml.rels'], /Id="rId3"[^>]*styles/);
+});
+
+test('the CRC-32 fallback for Node < 20.15 matches zlib', () => {
+    assert.equal(crc32Fallback(Buffer.from('123456789')), 0xCBF43926);
+    assert.equal(crc32Fallback(Buffer.alloc(0)), 0);
+    const sample = Buffer.from('<?xml version="1.0"?><sheetData>Ünïcødé 中文</sheetData>');
+    assert.equal(crc32Fallback(sample), crc32(sample));
 });
 
 test('identical input produces identical bytes', () => {
