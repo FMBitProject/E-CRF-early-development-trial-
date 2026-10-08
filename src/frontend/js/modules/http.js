@@ -49,7 +49,9 @@ export async function request(path, options = {}, { responseType = 'json', timeo
             if (!data || typeof data !== 'object' || Array.isArray(data)) data = {};
             const serverFailure = res.status >= 500;
             const supplied = data.error || data.message;
-            const message = res.status === 403 && data.mustChangePassword === true
+            const message = res.status === 403 && data.code === 'ORIGIN_NOT_ALLOWED'
+                ? 'This website address is not configured for sign-in or saving. Contact your administrator to check the application URL.'
+                : res.status === 403 && data.mustChangePassword === true
                 ? 'Change your password in Account Security before continuing.'
                 : serverFailure
                 ? `The service is temporarily unavailable. ${uncertain} Contact support if this continues.`
