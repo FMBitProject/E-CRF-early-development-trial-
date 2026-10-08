@@ -102,3 +102,25 @@ test('delayed verification cannot clear a newer successful login', async t => {
     assert.equal(await verification, null);
     assert.equal(values.get('ecrf_session'), newerSession);
 });
+
+test('login allows cold-start time and reports a bounded timeout without replaying credentials', async t => {
+    browser(t);
+    let expire, timeout, calls = 0;
+    t.mock.method(globalThis, 'setTimeout', (callback, ms) => { expire = callback; timeout = ms; return 0; });
+    t.mock.method(globalThis, 'fetch', (path, options) => {
+        calls++;
+        return new Promise((resolve, reject) => {
+            options.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+        });
+    });
+    const pending = authRequest('/api/mfa/initiate', { method: 'POST', body: '{}' });
+    assert.equal(timeout, 120000);
+    expire();
+    await assert.rejects(pending, error => error.code === 'TIMEOUT' && /Sign-in is taking longer/.test(error.message) && !/saving/.test(error.message));
+    assert.equal(calls, 1);
+    const verification = verifyStoredSession();
+    assert.equal(timeout, 120000, 'saved-session verification also waits for startup');
+    expire();
+    await assert.rejects(verification, error => error.code === 'TIMEOUT');
+    assert.equal(calls, 2);
+});

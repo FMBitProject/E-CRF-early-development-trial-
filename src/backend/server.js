@@ -8,6 +8,8 @@ import { trustedOrigins, checkOrigin } from './lib/http-security.js';
 import { migrateSecurity } from './lib/security-migration.js';
 import { requireAuth } from './middleware/auth.js';
 import { createStartupGate } from './middleware/startup.js';
+import { createHash } from 'node:crypto';
+import { upgradeSchemaOnce } from './lib/schema-upgrade.js';
 import { client } from './db/connection.js';
 
 import subjectsRouter      from './routes/subjects.js';
@@ -66,7 +68,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir   = path.resolve(__dirname, '../../');
 
 // ── Startup migration: add extended visit columns if missing ──
-async function runMigrations() {
+async function runMigrations(connection = client) {
     const stmts = [
         // Visit extended columns
         `ALTER TABLE visits ADD COLUMN IF NOT EXISTS visit_order integer`,
@@ -1045,17 +1047,13 @@ async function runMigrations() {
              END IF;
          END $$`,
     ];
-    const failures = [];
     for (const stmt of stmts) {
         try {
-            await client.unsafe(stmt);
+            await connection.unsafe(stmt);
         } catch (err) {
-            failures.push(err);
             console.error('Migration statement failed:', err.message?.slice(0, 120));
+            throw err;
         }
-    }
-    if (failures.length) {
-        throw new AggregateError(failures, `${failures.length} database migration statement(s) failed`);
     }
 }
 const app = express();
@@ -1092,8 +1090,14 @@ app.use((req, res, next) => {
 app.use(cors({ origin: (origin, cb) => cb(null, !origin || trustedOrigins().has(origin)), credentials: true }));
 app.use('/api', checkOrigin);
 app.use('/api', createStartupGate(async () => {
-    await ensureBaseSchema();
-    await runMigrations();
+    // SQL changes produce a new version automatically; a failed upgrade never
+    // records success. Security/key validation still runs on every instance.
+    const version = createHash('sha256').update(ensureBaseSchema.toString())
+        .update(runMigrations.toString()).digest('hex');
+    await upgradeSchemaOnce(client, version, async tx => {
+        await ensureBaseSchema();
+        await runMigrations(tx);
+    });
     await migrateSecurity(client);
 }, {
     onReady: () => console.log('DB and security migrations applied.'),

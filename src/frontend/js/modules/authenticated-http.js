@@ -21,7 +21,7 @@ export async function verifyStoredSession() {
     const cached = readObject('ecrf_session', value => typeof value.id === 'string' && typeof value.role === 'string');
     if (!cached) return null;
     try {
-        const result = await request('/api/auth/get-session');
+        const result = await request('/api/auth/get-session', {}, { timeoutMs: 120000 });
         // A login completed while verification was pending. Leave that newer
         // session and its navigation to the login form's success handler.
         if (readStored('ecrf_session') !== snapshot) return null;

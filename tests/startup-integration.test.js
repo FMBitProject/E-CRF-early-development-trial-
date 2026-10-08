@@ -8,6 +8,8 @@ import { createServer } from 'node:net';
 import { once } from 'node:events';
 import crypto from 'node:crypto';
 import postgres from 'postgres';
+import { hashPassword } from '@better-auth/utils/password';
+import { upgradeSchemaOnce } from '../src/backend/lib/schema-upgrade.js';
 
 const enabled = !!process.env.STARTUP_TEST_DATABASE_URL;
 const root = new URL('../', import.meta.url);
@@ -71,13 +73,14 @@ async function fixture(t, { legacy = false, missingKey = false } = {}) {
         child.once('exit', () => { clearTimeout(timer); reject(new Error('isolated server exited before binding')); });
     });
     const get = (path, headers = {}) => fetch(base + path, { headers, signal: AbortSignal.timeout(20000) });
-    return { db, get, logs: () => logs };
+    const post = (path, body) => fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
+    return { db, get, post, databaseUrl: url.toString(), logs: () => logs };
 }
 
 test('startup upgrade and API access on disposable PostgreSQL', { skip: !enabled }, async t => {
     for (const legacy of [false, true]) {
         await t.test(legacy ? 'legacy database keeps data and restores all module APIs' : 'fresh database initializes successfully', async t => {
-            const { db, get } = await fixture(t, { legacy });
+            const { db, get, post } = await fixture(t, { legacy });
             const ready = await get('/api/ready');
             assert.equal(ready.status, 200);
             assert.deepEqual(await ready.json(), { status: 'ready', db: 'up' });
@@ -87,13 +90,19 @@ test('startup upgrade and API access on disposable PostgreSQL', { skip: !enabled
             const [org] = await db`INSERT INTO organizations (name, slug) VALUES ('Test Org', 'startup-test') RETURNING id`;
             const [study] = await db`INSERT INTO studies (title, protocol_no, organization_id) VALUES ('Test Study', 'STARTUP', ${org.id}) RETURNING id`;
             const [site] = await db`INSERT INTO sites (name, code, organization_id) VALUES ('Test Site', 'TEST', ${org.id}) RETURNING id`;
-            await db`UPDATE "user" SET organization_id = ${org.id}, site_id = ${site.id} WHERE id = 'legacy-pi'`;
+            await db`UPDATE "user" SET organization_id = ${org.id}, site_id = ${site.id}, email_verified = TRUE WHERE id = 'legacy-pi'`;
             await db`INSERT INTO study_users (study_id, user_id) VALUES (${study.id}, 'legacy-pi')`;
             await db`UPDATE subjects SET study_id = ${study.id}, site_id = ${site.id} WHERE subject_code = 'LEGACY-KEEP'`;
-            const token = 'v1.' + crypto.randomBytes(32).toString('hex');
-            const digest = 'sha256:' + crypto.createHash('sha256').update(token).digest('hex');
-            await db`INSERT INTO session (id, user_id, token, expires_at) VALUES ('test-session', 'legacy-pi', ${digest}, NOW() + INTERVAL '1 hour')`;
-            const headers = { Cookie: 'better-auth.session_token=' + token, 'X-Study-ID': String(study.id) };
+            const password = 'Startup-Test!Password42';
+            const passwordHash = await hashPassword(password);
+            await db`INSERT INTO account (id, account_id, provider_id, user_id, password)
+                VALUES ('test-account', 'legacy-pi', 'credential', 'legacy-pi', ${passwordHash})`;
+            const signedIn = await post('/api/mfa/initiate', { email: 'pi@example.test', password });
+            assert.equal(signedIn.status, 200, 'PI can sign in after upgrade');
+            assert.equal((await signedIn.json()).status, 'authenticated');
+            const cookie = signedIn.headers.get('set-cookie')?.split(';')[0];
+            assert.match(cookie || '', /^better-auth\.session_token=v1\./);
+            const headers = { Cookie: cookie, 'X-Study-ID': String(study.id) };
             const paths = ['/api/dashboard/stats', '/api/subjects', '/api/screening', '/api/consents',
                 '/api/randomization', '/api/medhistory', '/api/conmeds', '/api/vitalsigns', '/api/lab',
                 '/api/ip', '/api/ae', '/api/deviations', '/api/queries', '/api/dblock/status',
@@ -113,5 +122,34 @@ test('startup upgrade and API access on disposable PostgreSQL', { skip: !enabled
         assert.equal((await get('/api/register/config')).status, 503);
         assert.equal((await get('/api/health')).status, 200);
         assert.match(logs(), /Startup incomplete; requests remain blocked: MFA_ENCRYPTION_KEY/);
+    });
+    await t.test('concurrent instances apply a version once and failed upgrades roll back', async t => {
+        const { db, get, databaseUrl } = await fixture(t);
+        assert.equal((await get('/api/ready')).status, 200);
+        await db`CREATE TABLE upgrade_probe (value TEXT)`;
+        let upgrades = 0;
+        const upgrade = async tx => {
+            upgrades++;
+            await tx`INSERT INTO upgrade_probe (value) VALUES ('applied')`;
+        };
+        const results = await Promise.all([
+            upgradeSchemaOnce(db, 'test-version-1', upgrade),
+            upgradeSchemaOnce(db, 'test-version-1', upgrade),
+        ]);
+        assert.deepEqual(results.sort(), [false, true]);
+        assert.equal(upgrades, 1);
+        // A new client represents another serverless instance.
+        const independent = postgres(databaseUrl, { onnotice: () => {} });
+        try {
+            assert.equal(await upgradeSchemaOnce(independent, 'test-version-1', upgrade), false);
+        } finally { await independent.end(); }
+        await assert.rejects(upgradeSchemaOnce(db, 'test-version-2', async tx => {
+            await tx`INSERT INTO upgrade_probe (value) VALUES ('must roll back')`;
+            throw new Error('simulated migration failure');
+        }), /simulated migration failure/);
+        assert.equal((await db`SELECT * FROM upgrade_probe`).length, 1);
+        assert.equal((await db`SELECT * FROM app_schema_versions WHERE version = 'test-version-2'`).length, 0);
+        assert.equal(await upgradeSchemaOnce(db, 'test-version-2', upgrade), true);
+        assert.equal(upgrades, 2);
     });
 });

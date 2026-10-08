@@ -264,7 +264,7 @@
                     _tempToken = data.tempToken;
                     btn.disabled = false;
                     btnText.textContent = 'Sign In';
-                    btnIcon.setAttribute('data-lucide', 'log-in');
+                    document.getElementById('btn-icon').setAttribute('data-lucide', 'log-in');
                     lucide.createIcons();
                     showStep('totp');
                     setTimeout(() => document.getElementById('totp-code').focus(), 80);
@@ -278,7 +278,7 @@
                 showError(readableError(err));
                 btn.disabled = false;
                 btnText.textContent = 'Sign In';
-                btnIcon.setAttribute('data-lucide', 'log-in');
+                document.getElementById('btn-icon').setAttribute('data-lucide', 'log-in');
                 lucide.createIcons();
             }
         });
@@ -315,7 +315,7 @@
                 showError(readableError(err));
                 btn.disabled = false;
                 btnText.textContent = 'Verify';
-                btnIcon.setAttribute('data-lucide', 'shield-check');
+                document.getElementById('totp-btn-icon').setAttribute('data-lucide', 'shield-check');
                 lucide.createIcons();
             }
         });
