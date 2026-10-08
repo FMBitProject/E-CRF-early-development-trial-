@@ -5,3 +5,6 @@ TEST_ACCOUNTS.md
 # License signing keys — private key must never be committed
 license-keys/
 *.license.json
+
+# Private local account notes
+/docs/private/
