@@ -92,6 +92,26 @@ test('security HTTP/SQL integration on disposable PostgreSQL', { skip: !enabled 
         }
     });
 
+    await t.test('page access immediately reflects password resets, account locks and study removal', async () => {
+        await sql`INSERT INTO password_meta (user_id, must_change) VALUES (${users.pi.id}, TRUE)
+            ON CONFLICT (user_id) DO UPDATE SET must_change = TRUE`;
+        assert.equal((await request('/api/dashboard/stats', { cookie: pi.cookie })).status, 403);
+        assert.equal((await request('/api/security/password-status', { cookie: pi.cookie })).status, 200);
+        await sql`UPDATE password_meta SET must_change = FALSE WHERE user_id = ${users.pi.id}`;
+        await sql`INSERT INTO account_locks (user_id, email, locked_at, unlocked_at)
+            VALUES (${users.pi.id}, ${users.pi.email}, NOW(), NULL)
+            ON CONFLICT (email) DO UPDATE SET locked_at = NOW(), unlocked_at = NULL, auto_unlock_at = NULL`;
+        assert.equal((await request('/api/dashboard/stats', { cookie: pi.cookie })).status, 423);
+        await sql`UPDATE account_locks SET unlocked_at = NOW() WHERE user_id = ${users.pi.id}`;
+        { const result = await request('/api/dashboard/stats', { cookie: pi.cookie });
+          assert.equal(result.status, 200, JSON.stringify(result.data)); }
+        await sql`DELETE FROM study_users WHERE user_id = ${users.pi.id} AND study_id = ${studyA.id}`;
+        assert.equal((await request('/api/dashboard/stats', { cookie: pi.cookie })).status, 403);
+        await sql`INSERT INTO study_users (study_id, user_id) VALUES (${studyA.id}, ${users.pi.id})`;
+        { const result = await request('/api/dashboard/stats', { cookie: pi.cookie });
+          assert.equal(result.status, 200, JSON.stringify(result.data)); }
+    });
+
     await t.test('randomization reads and unblind deny foreign tenant objects', async () => {
         assert.equal((await request('/api/randomization?subjectId=not-an-id', { cookie: admin.cookie })).status, 400);
         assert.equal((await request('/api/randomization/not-an-id/unblind', {

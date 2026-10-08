@@ -1,6 +1,6 @@
 import { readSessionToken } from '../lib/session.js';
 import { tokenDigest } from '../lib/security-crypto.js';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { session as sessionTable, user, accountLocks, passwordMeta, organizations } from '../db/schemas/schema.js';
 
@@ -32,10 +32,16 @@ export async function requireAuth(req, res, next) {
                 organizationId: user.organizationId,
                 orgStatus:   organizations.status,
                 isActive:    user.isActive,
+                accountLocked: sql`exists (select 1 from ${accountLocks}
+                    where ${accountLocks.userId} = ${user.id}
+                    and ${accountLocks.unlockedAt} is null and ${accountLocks.lockedAt} is not null
+                    and (${accountLocks.autoUnlockAt} is null or ${accountLocks.autoUnlockAt} > now()))`,
+                mustChange: passwordMeta.mustChange,
             })
             .from(sessionTable)
             .innerJoin(user, eq(sessionTable.userId, user.id))
             .leftJoin(organizations, eq(user.organizationId, organizations.id))
+            .leftJoin(passwordMeta, eq(passwordMeta.userId, user.id))
             .where(eq(sessionTable.token, tokenDigest(token)));
 
         if (!row || new Date(row.expiresAt) < new Date()) {
@@ -59,30 +65,16 @@ export async function requireAuth(req, res, next) {
 
         // ICH GCP E6(R3) C.4.3 — reject requests from locked accounts
         // Fail closed if security tables cannot be checked.
-        {
-            const [lock] = await db.select().from(accountLocks)
-                .where(eq(accountLocks.userId, row.userId));
-            if (lock && !lock.unlockedAt && lock.lockedAt) {
-                if (!lock.autoUnlockAt || new Date(lock.autoUnlockAt) > new Date()) {
-                    return res.status(423).json({ error: 'Account is locked. Contact your administrator.' });
-                }
-            }
+        if (row.accountLocked) {
+            return res.status(423).json({ error: 'Account is locked. Contact your administrator.' });
         }
 
-        // Admin-forced password reset: block the API (not just the UI) until
-        // the password is actually changed (ICH GCP E6(R3) C.4.3).
-        {
-            const url = (req.originalUrl || req.url || '').split('?')[0];
-            if (!MUST_CHANGE_ALLOWED.has(url)) {
-                const [meta] = await db.select({ mustChange: passwordMeta.mustChange })
-                    .from(passwordMeta).where(eq(passwordMeta.userId, row.userId));
-                if (meta?.mustChange) {
-                    return res.status(403).json({
-                        error: 'Password change required before continuing.',
-                        mustChangePassword: true,
-                    });
-                }
-            }
+        const url = (req.originalUrl || req.url || '').split('?')[0];
+        if (!MUST_CHANGE_ALLOWED.has(url) && row.mustChange) {
+            return res.status(403).json({
+                error: 'Password change required before continuing.',
+                mustChangePassword: true,
+            });
         }
 
         req.authTokenHash = tokenDigest(token);

@@ -1,5 +1,5 @@
 // Study context middleware — validates X-Study-ID header and user access
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { studyUsers, studies, studyDbLock } from '../db/schemas/schema.js';
 import { computeSiteScope } from '../lib/sitescope.js';
@@ -23,7 +23,10 @@ export async function requireStudy(req, res, next) {
     if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid study ID' });
 
     try {
-        const [study] = await db.select({ id: studies.id, status: studies.status, organizationId: studies.organizationId })
+        const [study] = await db.select({ id: studies.id, status: studies.status, organizationId: studies.organizationId,
+            assigned: sql`exists (select 1 from ${studyUsers}
+                where ${studyUsers.studyId} = ${id} and ${studyUsers.userId} = ${req.user.id})`,
+        })
             .from(studies).where(eq(studies.id, id));
         if (!study) return res.status(404).json({ error: 'Study not found' });
 
@@ -37,10 +40,7 @@ export async function requireStudy(req, res, next) {
         // Within the org: admin (and platform_owner) reach any study; other
         // roles must be explicitly assigned to it.
         if (req.user.role !== 'admin' && !isPlatformOwner(req.user)) {
-            const [assignment] = await db.select({ id: studyUsers.id })
-                .from(studyUsers)
-                .where(and(eq(studyUsers.studyId, id), eq(studyUsers.userId, req.user.id)));
-            if (!assignment) {
+            if (!study.assigned) {
                 return res.status(403).json({ error: 'You are not assigned to this study' });
             }
         }

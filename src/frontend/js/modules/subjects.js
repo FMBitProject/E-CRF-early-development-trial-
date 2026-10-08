@@ -650,11 +650,11 @@ export async function renderSubjectDetail(id) {
     const content = document.getElementById('main-content');
     content.innerHTML = SPINNER;
 
-    const [subject, forms] = await Promise.all([
+    const [subject, forms, allEntries] = await Promise.all([
         api.getSubject(id),
         api.getCRFForms(),
+        api.getDataEntries(id),
     ]);
-    const allEntries    = await api.getDataEntries(id);
     const user          = api.getCurrentUser();
     const canManageVisit = ['investigator', 'pi', 'admin', 'crc'].includes(user.role);
 
