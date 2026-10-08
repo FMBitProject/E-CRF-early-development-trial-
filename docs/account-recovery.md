@@ -21,3 +21,16 @@ rate-limit response (429) must still be allowed to expire.
 
 A code deployment alone does not unlock an existing database account. If a
 password was exposed, change it after regaining access.
+
+If recovery reports that `DATABASE_URL` is missing, the Vercel environment
+variables are not automatically available in your Codespace terminal. Create a
+local `.env` file in the project root and add the same value used by the deployed
+application:
+
+```dotenv
+DATABASE_URL=<PostgreSQL connection URL from Vercel or your database provider>
+```
+
+Keep this file private; never commit it or send its contents in chat. Run the
+recovery command again after saving it. `.env.example` is only a template and is
+not loaded as the active configuration.
