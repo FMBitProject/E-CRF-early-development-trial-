@@ -118,6 +118,7 @@ export const EXPECTED = {
     '/api/export': {
         'GET /odm': ['admin', 'cra', 'data_manager', 'pi'],
         'GET /csv': ['admin', 'cra', 'data_manager', 'pi'],
+        'GET /xlsx': ['admin', 'cra', 'data_manager', 'pi'],
     },
     '/api/sites': {
         'GET /':      null,

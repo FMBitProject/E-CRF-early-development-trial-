@@ -667,6 +667,11 @@ export const api = {
         await apiDownload('/api/export/odm', 'export-odm.xml', 'application/xml');
     },
 
+    async downloadXLSX() {
+        await apiDownload('/api/export/xlsx', `study-export-${new Date().toISOString().slice(0, 10)}.xlsx`,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    },
+
     async downloadCSV(domain) {
         await apiDownload(`/api/export/csv?domain=${domain}`, `export-${domain}.csv`, 'text/csv');
     },

@@ -12,6 +12,8 @@ import { writeAudit } from '../lib/audit.js';
 import { buildOdmXml } from '../lib/odm.js';
 import { isoDay, isoDateTime } from '../lib/isodate.js';
 import { buildCsv, withBom, INVALID_DOMAIN_ERROR, vitalsToRows } from '../lib/csv.js';
+import { buildXlsx, XLSX_MIME } from '../lib/xlsx.js';
+import { crfWideSheets, crfDictionarySheet } from '../lib/crfwide.js';
 
 const router = Router();
 
@@ -93,145 +95,155 @@ router.get('/odm', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
 
 // ── Comprehensive CSV Export ─────────────────────────────────────────────────
 
-// GET /api/export/csv?domain=DM|AE|CRF|DEV — domain CSV (admin, cra)
+/**
+ * Headers and rows for one export domain, scoped to the caller's study and
+ * sites. Shared by the CSV and Excel exports so both carry identical data.
+ * Returns null for an unknown domain.
+ */
+async function domainTable(req, domain) {
+    let headers = [];
+    let rows    = [];
+
+    const sid = req.studyId;
+    if (domain === 'DM') {
+        headers = ['SUBJID','SITEID','SITE_NAME','SEX','GENDER_IDENTITY','DOB','ENRLDTC','STATUS','WDRAWDTC','WDRAWREASON'];
+        const data = await db.select().from(subjects).leftJoin(sites, eq(subjects.siteId, sites.id)).where(and(eq(subjects.studyId, sid), siteCondition(req)));
+        rows = data.map(r => {
+            const s = r.subjects ?? r;
+            const site = r.sites ?? null;
+            return [
+                s.subjectCode, site?.code || '', site?.name || '',
+                s.sex || 'U', s.genderIdentity || '', s.dateOfBirth || '',
+                isoDay(s.enrolledAt),
+                s.status || '',
+                isoDay(s.withdrawnAt),
+                s.withdrawReason || '',
+            ];
+        });
+    } else if (domain === 'AE') {
+        headers = ['SUBJID','AESEQ','AETERM','AEDECOD','AESOC','AESTDTC','AEENDTC','AESEV','AESER','AEREL','AEOUT','AEACN','AESTATUS','CREATED_BY','CREATED_AT'];
+        const data = await db.select().from(adverseEvents)
+            .leftJoin(subjects, eq(adverseEvents.subjectId, subjects.id))
+            .where(and(eq(adverseEvents.studyId, sid), exportSubjectScope(req, adverseEvents.subjectId)))
+            .orderBy(adverseEvents.subjectId, adverseEvents.id);
+        rows = data.map(r => {
+            const ae = r.adverse_events ?? r;
+            const subj = r.subjects ?? null;
+            return [
+                subj?.subjectCode || '', ae.id,
+                ae.aeTerm, ae.meddraPt || '', ae.meddraSoc || '',
+                ae.onsetDate || '', ae.resolutionDate || '',
+                ae.severity, ae.isSerious ? 'Y' : 'N',
+                ae.causality || '', ae.outcome || '', ae.actionTaken || '',
+                ae.reportStatus, ae.createdByName || '',
+                isoDateTime(ae.createdAt),
+            ];
+        });
+    } else if (domain === 'DEV') {
+        headers = ['DEVID','SUBJID','TYPE','CATEGORY','DESCRIPTION','DEVIATION_DATE','DISCOVERY_DATE','ROOT_CAUSE','IMPACT','CAPA','REPORTED_TO_IRB','STATUS','CREATED_BY','CREATED_AT'];
+        const data = await db.select().from(protocolDeviations)
+            .leftJoin(subjects, eq(protocolDeviations.subjectId, subjects.id))
+            .where(and(eq(protocolDeviations.studyId, sid), exportSubjectScope(req, protocolDeviations.subjectId)))
+            .orderBy(protocolDeviations.id);
+        rows = data.map(r => {
+            const d = r.protocol_deviations ?? r;
+            const subj = r.subjects ?? null;
+            return [
+                d.id, subj?.subjectCode || '', d.deviationType, d.category || '',
+                d.description, d.deviationDate || '', d.discoveryDate || '',
+                d.rootCause || '', d.impactOnSubject || '', d.capa || '',
+                d.reportedToIrb ? 'Y' : 'N', d.status,
+                d.createdByName || '',
+                isoDateTime(d.createdAt),
+            ];
+        });
+    } else if (domain === 'IC') {
+        headers = ['ICID','SUBJID','VERSION','DATE','TIME','TYPE','LANGUAGE','OBTAINED_BY','WITNESS','WITNESS_TYPE','ASSENT','ASSENT_DTC','COPY_PROVIDED','WITHDRAWN','WITHDRAWN_DTC','WITHDRAWN_REASON','CREATED_BY','CREATED_AT'];
+        const data = await db.select().from(informedConsents)
+            .leftJoin(subjects, eq(informedConsents.subjectId, subjects.id))
+            .where(and(eq(informedConsents.studyId, sid), exportSubjectScope(req, informedConsents.subjectId)))
+            .orderBy(informedConsents.id);
+        rows = data.map(r => {
+            const c = r.informed_consents ?? r;
+            const subj = r.subjects ?? null;
+            return [
+                c.id, subj?.subjectCode || '', c.consentVersion, c.consentDate,
+                c.consentTime || '',
+                c.consentType, c.language, c.obtainedByName || '',
+                c.witnessName || '', c.witnessType || '',
+                c.assentObtained ? 'Y' : 'N', c.assentDate || '',
+                c.copyProvided ? 'Y' : 'N',
+                c.isWithdrawn ? 'Y' : 'N',
+                isoDay(c.withdrawnAt),
+                c.withdrawnReason || '', c.createdByName || '',
+                isoDateTime(c.createdAt),
+            ];
+        });
+    } else if (domain === 'LB') {
+        // Laboratory — SDTM-style long format (one row per test result), the
+        // natural shape for SPSS / stats.
+        headers = ['SUBJID','VISIT','LBTEST','LBORRES','LBORRESU','LBORNRLO','LBORNRHI','LBORNR','LBDTC','LBNAM'];
+        const data = await db.select().from(labResults)
+            .leftJoin(subjects, eq(labResults.subjectId, subjects.id))
+            .leftJoin(visits, eq(labResults.visitId, visits.id))
+            .where(and(eq(labResults.studyId, sid), exportSubjectScope(req, labResults.subjectId)))
+            .orderBy(labResults.subjectId, labResults.id);
+        rows = data.map(r => {
+            const l = r.lab_results ?? r;
+            return [
+                r.subjects?.subjectCode || '', r.visits?.visitName || '',
+                l.testName, l.valueNumeric ?? l.valueText ?? '', l.unit || '',
+                l.refRangeLow ?? '', l.refRangeHigh ?? '', l.refRangeText || '',
+                l.assessmentDate || '', l.labName || '',
+            ];
+        });
+    } else if (domain === 'VS') {
+        // Vital Signs — SDTM-style long format (one row per measurement).
+        headers = ['SUBJID','VISIT','VSTESTCD','VSTEST','VSORRES','VSORRESU','VSDTC'];
+        const data = await db.select().from(vitalSigns)
+            .leftJoin(subjects, eq(vitalSigns.subjectId, subjects.id))
+            .leftJoin(visits, eq(vitalSigns.visitId, visits.id))
+            .where(and(eq(vitalSigns.studyId, sid), exportSubjectScope(req, vitalSigns.subjectId)))
+            .orderBy(vitalSigns.subjectId, vitalSigns.id);
+        rows = data.flatMap(r => vitalsToRows(
+            r.vital_signs ?? r,
+            r.subjects?.subjectCode || '',
+            r.visits?.visitName || '',
+        ));
+    } else if (domain === 'CRF') {
+        // CRF form data — long format (one row per captured field), safe across
+        // forms with different field sets.
+        headers = ['SUBJID','VISIT','FORM','FIELD','VALUE'];
+        const data = await db.select().from(crfDataEntries)
+            .leftJoin(subjects, eq(crfDataEntries.subjectId, subjects.id))
+            .leftJoin(visits, eq(crfDataEntries.visitId, visits.id))
+            .leftJoin(crfForms, eq(crfDataEntries.formId, crfForms.id))
+            .where(and(eq(subjects.studyId, sid), siteCondition(req)))
+            .orderBy(crfDataEntries.subjectId, crfDataEntries.id);
+        rows = data.flatMap(r => {
+            const e = r.crf_data_entries ?? r;
+            const subj = r.subjects?.subjectCode || '';
+            const vis = r.visits?.visitName || '';
+            const form = r.crf_forms?.name || '';
+            const dj = e.dataJson && typeof e.dataJson === 'object' ? e.dataJson : {};
+            return Object.entries(dj).map(([field, value]) => [
+                subj, vis, form, field, Array.isArray(value) ? value.join('; ') : (value ?? ''),
+            ]);
+        });
+    } else {
+        return null;
+    }
+    return { headers, rows };
+}
+
+// GET /api/export/csv?domain=DM|AE|DEV|IC|LB|VS|CRF — domain CSV
 router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
     try {
         const domain = (req.query.domain || 'DM').toUpperCase();
+        const table = await domainTable(req, domain);
+        if (!table) return res.status(400).json({ error: INVALID_DOMAIN_ERROR });
 
-        let headers = [];
-        let rows    = [];
-
-        const sid = req.studyId;
-        if (domain === 'DM') {
-            headers = ['SUBJID','SITEID','SITE_NAME','SEX','GENDER_IDENTITY','DOB','ENRLDTC','STATUS','WDRAWDTC','WDRAWREASON'];
-            const data = await db.select().from(subjects).leftJoin(sites, eq(subjects.siteId, sites.id)).where(and(eq(subjects.studyId, sid), siteCondition(req)));
-            rows = data.map(r => {
-                const s = r.subjects ?? r;
-                const site = r.sites ?? null;
-                return [
-                    s.subjectCode, site?.code || '', site?.name || '',
-                    s.sex || 'U', s.genderIdentity || '', s.dateOfBirth || '',
-                    isoDay(s.enrolledAt),
-                    s.status || '',
-                    isoDay(s.withdrawnAt),
-                    s.withdrawReason || '',
-                ];
-            });
-        } else if (domain === 'AE') {
-            headers = ['SUBJID','AESEQ','AETERM','AEDECOD','AESOC','AESTDTC','AEENDTC','AESEV','AESER','AEREL','AEOUT','AEACN','AESTATUS','CREATED_BY','CREATED_AT'];
-            const data = await db.select().from(adverseEvents)
-                .leftJoin(subjects, eq(adverseEvents.subjectId, subjects.id))
-                .where(and(eq(adverseEvents.studyId, sid), exportSubjectScope(req, adverseEvents.subjectId)))
-                .orderBy(adverseEvents.subjectId, adverseEvents.id);
-            rows = data.map(r => {
-                const ae = r.adverse_events ?? r;
-                const subj = r.subjects ?? null;
-                return [
-                    subj?.subjectCode || '', ae.id,
-                    ae.aeTerm, ae.meddraPt || '', ae.meddraSoc || '',
-                    ae.onsetDate || '', ae.resolutionDate || '',
-                    ae.severity, ae.isSerious ? 'Y' : 'N',
-                    ae.causality || '', ae.outcome || '', ae.actionTaken || '',
-                    ae.reportStatus, ae.createdByName || '',
-                    isoDateTime(ae.createdAt),
-                ];
-            });
-        } else if (domain === 'DEV') {
-            headers = ['DEVID','SUBJID','TYPE','CATEGORY','DESCRIPTION','DEVIATION_DATE','DISCOVERY_DATE','ROOT_CAUSE','IMPACT','CAPA','REPORTED_TO_IRB','STATUS','CREATED_BY','CREATED_AT'];
-            const data = await db.select().from(protocolDeviations)
-                .leftJoin(subjects, eq(protocolDeviations.subjectId, subjects.id))
-                .where(and(eq(protocolDeviations.studyId, sid), exportSubjectScope(req, protocolDeviations.subjectId)))
-                .orderBy(protocolDeviations.id);
-            rows = data.map(r => {
-                const d = r.protocol_deviations ?? r;
-                const subj = r.subjects ?? null;
-                return [
-                    d.id, subj?.subjectCode || '', d.deviationType, d.category || '',
-                    d.description, d.deviationDate || '', d.discoveryDate || '',
-                    d.rootCause || '', d.impactOnSubject || '', d.capa || '',
-                    d.reportedToIrb ? 'Y' : 'N', d.status,
-                    d.createdByName || '',
-                    isoDateTime(d.createdAt),
-                ];
-            });
-        } else if (domain === 'IC') {
-            headers = ['ICID','SUBJID','VERSION','DATE','TIME','TYPE','LANGUAGE','OBTAINED_BY','WITNESS','WITNESS_TYPE','ASSENT','ASSENT_DTC','COPY_PROVIDED','WITHDRAWN','WITHDRAWN_DTC','WITHDRAWN_REASON','CREATED_BY','CREATED_AT'];
-            const data = await db.select().from(informedConsents)
-                .leftJoin(subjects, eq(informedConsents.subjectId, subjects.id))
-                .where(and(eq(informedConsents.studyId, sid), exportSubjectScope(req, informedConsents.subjectId)))
-                .orderBy(informedConsents.id);
-            rows = data.map(r => {
-                const c = r.informed_consents ?? r;
-                const subj = r.subjects ?? null;
-                return [
-                    c.id, subj?.subjectCode || '', c.consentVersion, c.consentDate,
-                    c.consentTime || '',
-                    c.consentType, c.language, c.obtainedByName || '',
-                    c.witnessName || '', c.witnessType || '',
-                    c.assentObtained ? 'Y' : 'N', c.assentDate || '',
-                    c.copyProvided ? 'Y' : 'N',
-                    c.isWithdrawn ? 'Y' : 'N',
-                    isoDay(c.withdrawnAt),
-                    c.withdrawnReason || '', c.createdByName || '',
-                    isoDateTime(c.createdAt),
-                ];
-            });
-        } else if (domain === 'LB') {
-            // Laboratory — SDTM-style long format (one row per test result), the
-            // natural shape for SPSS / stats.
-            headers = ['SUBJID','VISIT','LBTEST','LBORRES','LBORRESU','LBORNRLO','LBORNRHI','LBORNR','LBDTC','LBNAM'];
-            const data = await db.select().from(labResults)
-                .leftJoin(subjects, eq(labResults.subjectId, subjects.id))
-                .leftJoin(visits, eq(labResults.visitId, visits.id))
-                .where(and(eq(labResults.studyId, sid), exportSubjectScope(req, labResults.subjectId)))
-                .orderBy(labResults.subjectId, labResults.id);
-            rows = data.map(r => {
-                const l = r.lab_results ?? r;
-                return [
-                    r.subjects?.subjectCode || '', r.visits?.visitName || '',
-                    l.testName, l.valueNumeric ?? l.valueText ?? '', l.unit || '',
-                    l.refRangeLow ?? '', l.refRangeHigh ?? '', l.refRangeText || '',
-                    l.assessmentDate || '', l.labName || '',
-                ];
-            });
-        } else if (domain === 'VS') {
-            // Vital Signs — SDTM-style long format (one row per measurement).
-            headers = ['SUBJID','VISIT','VSTESTCD','VSTEST','VSORRES','VSORRESU','VSDTC'];
-            const data = await db.select().from(vitalSigns)
-                .leftJoin(subjects, eq(vitalSigns.subjectId, subjects.id))
-                .leftJoin(visits, eq(vitalSigns.visitId, visits.id))
-                .where(and(eq(vitalSigns.studyId, sid), exportSubjectScope(req, vitalSigns.subjectId)))
-                .orderBy(vitalSigns.subjectId, vitalSigns.id);
-            rows = data.flatMap(r => vitalsToRows(
-                r.vital_signs ?? r,
-                r.subjects?.subjectCode || '',
-                r.visits?.visitName || '',
-            ));
-        } else if (domain === 'CRF') {
-            // CRF form data — long format (one row per captured field), safe across
-            // forms with different field sets.
-            headers = ['SUBJID','VISIT','FORM','FIELD','VALUE'];
-            const data = await db.select().from(crfDataEntries)
-                .leftJoin(subjects, eq(crfDataEntries.subjectId, subjects.id))
-                .leftJoin(visits, eq(crfDataEntries.visitId, visits.id))
-                .leftJoin(crfForms, eq(crfDataEntries.formId, crfForms.id))
-                .where(and(eq(subjects.studyId, sid), siteCondition(req)))
-                .orderBy(crfDataEntries.subjectId, crfDataEntries.id);
-            rows = data.flatMap(r => {
-                const e = r.crf_data_entries ?? r;
-                const subj = r.subjects?.subjectCode || '';
-                const vis = r.visits?.visitName || '';
-                const form = r.crf_forms?.name || '';
-                const dj = e.dataJson && typeof e.dataJson === 'object' ? e.dataJson : {};
-                return Object.entries(dj).map(([field, value]) => [
-                    subj, vis, form, field, Array.isArray(value) ? value.join('; ') : (value ?? ''),
-                ]);
-            });
-        } else {
-            return res.status(400).json({ error: INVALID_DOMAIN_ERROR });
-        }
-
-        const csv = buildCsv(headers, rows);
+        const csv = buildCsv(table.headers, table.rows);
         res.set('Content-Type', 'text/csv; charset=utf-8');
         res.set('Content-Disposition', `attachment; filename="${domain}_${Date.now()}.csv"`);
 
@@ -243,6 +255,70 @@ router.get('/csv', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req
         });
 
         res.send(withBom(csv)); // BOM so Excel detects UTF-8
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── Excel workbook export ────────────────────────────────────────────────────
+
+/** Domain sheets in the workbook, in tab order, with the columns Excel should treat as numbers. */
+const XLSX_DOMAIN_SHEETS = [
+    { domain: 'DM',  name: 'Demographics (DM)' },
+    { domain: 'IC',  name: 'Informed Consent (IC)' },
+    { domain: 'AE',  name: 'Adverse Events (AE)' },
+    { domain: 'DEV', name: 'Deviations (DEV)' },
+    { domain: 'VS',  name: 'Vital Signs (VS)', numberColumns: ['VSORRES'] },
+    { domain: 'LB',  name: 'Laboratory (LB)',  numberColumns: ['LBORRES', 'LBORNRLO', 'LBORNRHI'] },
+];
+
+// GET /api/export/xlsx — whole study as one Excel workbook: one sheet per
+// domain, one wide sheet per CRF form (a row per subject-visit, a column per
+// question) and a data dictionary.
+router.get('/xlsx', requireRole('admin', 'cra', 'pi', 'data_manager'), async (req, res) => {
+    try {
+        const sid = req.studyId;
+        const [domainTables, entryRows] = await Promise.all([
+            Promise.all(XLSX_DOMAIN_SHEETS.map(d => domainTable(req, d.domain))),
+            db.select({
+                formId:      crfDataEntries.formId,
+                status:      crfDataEntries.status,
+                dataJson:    crfDataEntries.dataJson,
+                subjectCode: subjects.subjectCode,
+                siteCode:    sites.code,
+                visitName:   visits.visitName,
+                visitDate:   sql`coalesce(${visits.actualDate}, ${visits.visitDate})`,
+            }).from(crfDataEntries)
+                .innerJoin(subjects, eq(crfDataEntries.subjectId, subjects.id))
+                .leftJoin(sites, eq(subjects.siteId, sites.id))
+                .leftJoin(visits, eq(crfDataEntries.visitId, visits.id))
+                .where(and(eq(subjects.studyId, sid), siteCondition(req)))
+                .orderBy(subjects.subjectCode, visits.visitOrder, visits.id),
+        ]);
+
+        const usedFormIds = [...new Set(entryRows.map(e => e.formId))];
+        const forms = usedFormIds.length
+            ? await db.select().from(crfForms).where(inArray(crfForms.id, usedFormIds)).orderBy(crfForms.id)
+            : [];
+
+        const sheets = [
+            ...XLSX_DOMAIN_SHEETS.map((d, i) => ({ ...d, ...domainTables[i] })),
+            ...crfWideSheets(forms, entryRows),
+            crfDictionarySheet(forms),
+        ];
+        const workbook = buildXlsx(sheets);
+
+        res.set('Content-Type', XLSX_MIME);
+        res.set('Content-Disposition', `attachment; filename="study_export_${isoDay(new Date())}.xlsx"`);
+
+        await writeAudit(db, {
+            tableName: 'export', recordId: sid, action: 'EXPORT',
+            fieldName: 'format', newValue: 'XLSX',
+            reason: `Excel export — ${sheets.length} sheets`,
+            user: req.user, ipAddress: req.ip,
+        });
+
+        res.send(workbook);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

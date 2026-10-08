@@ -249,6 +249,10 @@ export async function renderDashboard() {
                         </a>
                         ${['admin', 'pi', 'cra', 'data_manager'].includes(user.role) ? `
                         <div class="pt-1.5 border-t border-slate-100">
+                            <p class="text-xs text-slate-400 font-medium px-1 py-1 uppercase tracking-wide">Excel Export</p>
+                            <button onclick="api.downloadXLSX().catch(e => showToast(e.message, 'error'))" class="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 mb-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded transition">
+                                <i data-lucide="sheet" class="w-3 h-3"></i> Download Excel (.xlsx) — all data
+                            </button>
                             <p class="text-xs text-slate-400 font-medium px-1 py-1 uppercase tracking-wide">CDISC Export</p>
                             <div class="flex gap-1.5">
                                 <button onclick="api.downloadODM()" class="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded transition">

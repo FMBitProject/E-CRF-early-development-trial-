@@ -123,6 +123,20 @@ Dashboard menampilkan ringkasan kondisi studi secara real-time:
 
 Klik angka pada KPI card untuk langsung menuju modul terkait.
 
+### 4.1 Download Data ke Excel
+
+Admin, PI, CRA, dan Data Manager dapat mengunduh seluruh data studi dalam satu file Excel:
+
+1. Di Dashboard, pada panel menu cepat, klik **Download Excel (.xlsx) — all data**
+2. File `study-export-YYYY-MM-DD.xlsx` akan terunduh, berisi beberapa sheet:
+   - **Demographics (DM)**, **Informed Consent (IC)**, **Adverse Events (AE)**, **Deviations (DEV)**, **Vital Signs (VS)**, **Laboratory (LB)**
+   - **Satu sheet per form CRF** — satu baris per subjek per visit, satu kolom per pertanyaan
+   - **Data Dictionary** — arti setiap kolom (label pertanyaan, tipe, pilihan jawaban, satuan)
+
+Hanya data dari site yang menjadi akses Anda yang ikut terunduh, dan setiap export tercatat di Audit Trail.
+
+> **Tips:** Jika membuka file **CSV** langsung di Excel dan semua data masuk ke satu kolom, itu karena Excel dengan pengaturan Indonesia memakai `;` sebagai pemisah. Gunakan file Excel di atas, atau buka CSV lewat **Data → From Text/CSV** dan pilih *Delimiter: Comma*.
+
 ---
 
 ## 5. Subjects — Enrollment Subjek

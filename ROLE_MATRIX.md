@@ -151,7 +151,7 @@ The DM role mirrors the data-oversight subset of admin, per the backend route gu
 | Blind Data Review | Create and update review records |
 | QTL | Record and update threshold breaches |
 | Monitoring Plan / Essential Docs / Amendments | View and maintain |
-| Export | CSV and ODM-XML export |
+| Export | Excel (.xlsx), CSV and ODM-XML export |
 | IP Dispensing | Record dispensing |
 
 Not granted: clinical data entry (CRF/AE/deviations/consents), subject enrollment or status changes, e-signatures on CRFs, final DB Lock admin signature, randomization, user/site/study management.

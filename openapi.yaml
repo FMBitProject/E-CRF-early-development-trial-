@@ -1965,7 +1965,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [DM, AE, DEV, IC]
+            enum: [DM, AE, DEV, IC, LB, VS, CRF]
       responses:
         "200":
           description: CSV file
@@ -1973,6 +1973,23 @@ paths:
             text/csv:
               schema:
                 type: string
+
+  /api/export/xlsx:
+    get:
+      summary: Export the whole study as an Excel workbook
+      description: >
+        One sheet per domain (DM, IC, AE, DEV, VS, LB), one wide sheet per CRF
+        form (a row per subject-visit, a column per question) and a data
+        dictionary. Site-scoped like the other exports; audited.
+      tags: [Export]
+      responses:
+        "200":
+          description: Excel workbook
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
 
   # ── Users ────────────────────────────────────────────────
   /api/users:
